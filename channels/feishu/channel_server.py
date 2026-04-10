@@ -26,6 +26,7 @@ from websockets.asyncio.server import ServerConnection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CREDENTIALS_PATH = PROJECT_ROOT / ".feishu-credentials.json"
 ACK_EMOJI = "OnIt"
+DISCUSS_IDLE_TIMEOUT = 15 * 60  # 15 minutes
 
 log = logging.getLogger("channel-server")
 
@@ -119,6 +120,10 @@ class ChannelServer:
         if self.feishu_enabled:
             task = asyncio.create_task(self._run_feishu_safe(), name="feishu-ws")
             self._tasks.append(task)
+
+        # Discuss idle checker — runs every 60 seconds
+        idle_task = asyncio.create_task(self._run_discuss_idle_checker(), name="discuss-idle")
+        self._tasks.append(idle_task)
 
         mode_str = " (pool_mode)" if self.pool_mode else ""
         await self._notify_admin(f"Channel-Server online{mode_str}")
@@ -281,6 +286,8 @@ class ChannelServer:
     _recent_sent: set[str] = set()
     _user_cache: dict[str, str] = {}          # open_id -> display name
     _chat_modes: dict[str, str] = {}          # chat_id -> "production" | "improve"
+    _discuss_prev_modes: dict[str, str] = {}   # chat_id → mode before discuss
+    _discuss_sessions: dict[str, float] = {}   # chat_id → last_message_timestamp
     _known_chats: dict[str, dict] = {}         # chat_id → {"user": ..., "source": ..., "label": ...}
     _msg_counter: dict[str, int] = {"sent": 0, "received": 0}
     _ack_reactions: dict[str, str] = {}        # message_id → reaction_id (for removal after reply)
@@ -520,6 +527,86 @@ class ChannelServer:
             }
             await self.route_message(target_chat_id, injected_msg)
             await self._reply_feishu(msg["chat_id"], f"Injected to {target_chat_id}")
+            return
+
+        if text.startswith("/discuss"):
+            args = text[len("/discuss"):].strip()
+
+            # /discuss (no args) — show usage
+            if not args:
+                await self._reply_feishu(msg["chat_id"], (
+                    "Usage:\n"
+                    '  /discuss "话题描述"  — Start a discussion\n'
+                    "  /discuss @docs/file.md  — Discuss a document\n"
+                    '  /discuss @docs/file.md "聚焦方向"  — Document + focus\n'
+                    "  /discuss end  — End discussion, generate report\n"
+                    "  /discuss status  — Check discussion progress"
+                ))
+                return
+
+            chat_id = msg["chat_id"]
+
+            # /discuss end — route to skill, then restore mode
+            if args == "end":
+                discuss_msg = {
+                    "type": "message",
+                    "chat_id": chat_id,
+                    "text": "/discuss end",
+                    "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                    "user": "admin",
+                    "user_id": "",
+                    "runtime_mode": "discuss",
+                    "business_mode": "customer_service",
+                    "source": "admin",
+                    "admin_chat_id": self.admin_chat_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.route_message(chat_id, discuss_msg)
+                # Restore previous mode
+                prev_mode = self._discuss_prev_modes.pop(chat_id, "production")
+                self._chat_modes[chat_id] = prev_mode
+                # Clean up idle tracking
+                self._discuss_sessions.pop(chat_id, None)
+                return
+
+            # /discuss status — route to skill
+            if args == "status":
+                discuss_msg = {
+                    "type": "message",
+                    "chat_id": chat_id,
+                    "text": "/discuss status",
+                    "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                    "user": "admin",
+                    "user_id": "",
+                    "runtime_mode": "discuss",
+                    "business_mode": "customer_service",
+                    "source": "admin",
+                    "admin_chat_id": self.admin_chat_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.route_message(chat_id, discuss_msg)
+                return
+
+            # /discuss "topic" or /discuss @file — start discussion
+            prev_mode = self._chat_modes.get(chat_id, "production")
+            self._discuss_prev_modes[chat_id] = prev_mode
+            self._chat_modes[chat_id] = "discuss"
+
+            await self._reply_feishu(chat_id, f"📋 正在启动讨论...")
+            discuss_msg = {
+                "type": "message",
+                "chat_id": chat_id,
+                "text": text,
+                "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                "user": "admin",
+                "user_id": "",
+                "runtime_mode": "discuss",
+                "business_mode": "customer_service",
+                "source": "admin",
+                "admin_chat_id": self.admin_chat_id,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.route_message(chat_id, discuss_msg)
             return
 
         if text.startswith("/explain"):
@@ -1008,6 +1095,10 @@ class ChannelServer:
         Priority: exact > prefix > pool_route > pool_assign > wildcard(observe).
         When pool_mode is active, wildcard instances only receive observation copies.
         """
+        # Track discuss session activity for idle detection
+        if message.get("runtime_mode") == "discuss":
+            self._discuss_sessions[chat_id] = time.time()
+
         routed = False
         routed_by: str | None = None  # instance_id for observation tagging
 
@@ -1078,6 +1169,47 @@ class ChannelServer:
                 "   To start dedicated: ./autoservice.sh %s",
                 source, user, chat_id,
             )
+
+    # ------------------------------------------------------------------
+    # Discuss idle detection
+    # ------------------------------------------------------------------
+
+    async def _check_discuss_idle(self) -> None:
+        """Check for idle discuss sessions and send reminders."""
+        now = time.time()
+        idle_chats = [
+            (chat_id, now - last_ts)
+            for chat_id, last_ts in self._discuss_sessions.items()
+            if now - last_ts > DISCUSS_IDLE_TIMEOUT
+        ]
+        for chat_id, idle_secs in idle_chats:
+            idle_minutes = int(idle_secs // 60)
+            reminder = {
+                "type": "discuss_idle_reminder",
+                "chat_id": chat_id,
+                "idle_minutes": idle_minutes,
+            }
+            # Route to all instances that handle this chat_id
+            for inst in self.wildcard_instances:
+                await self._send(inst.ws, reminder)
+            if chat_id in self.exact_routes:
+                await self._send(self.exact_routes[chat_id].ws, reminder)
+            log.info("Discuss idle reminder sent for %s (%d min)", chat_id, idle_minutes)
+            # Update timestamp to avoid spamming — next reminder after another timeout period
+            self._discuss_sessions[chat_id] = now
+
+    async def _run_discuss_idle_checker(self) -> None:
+        """Periodically check for idle discuss sessions."""
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=60)
+                break  # stop_event was set
+            except asyncio.TimeoutError:
+                pass  # 60 seconds elapsed, do the check
+            try:
+                await self._check_discuss_idle()
+            except Exception as e:
+                log.warning("Discuss idle check error: %s", e)
 
     # ------------------------------------------------------------------
     # Message handlers
@@ -1230,6 +1362,9 @@ class ChannelServer:
             "  Example: /inject #1 注意当前活动打八折\n"
             "/explain <场景描述> — Generate flow visualization\n"
             "  Example: /explain 用户问DID号码的价格\n"
+            "/discuss <话题> — Start a group discussion\n"
+            "  /discuss end — End discussion and generate report\n"
+            "  /discuss status — Check discussion progress\n"
             "\n"
             "Non-command messages → forwarded to Claude Code\n"
             "\n"
