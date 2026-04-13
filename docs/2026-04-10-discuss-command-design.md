@@ -4,7 +4,30 @@
 
 `discuss` 是 AutoService 飞书频道中的群组异步讨论命令。管理群成员通过 `/discuss` 发起讨论，AI 作为主持人引导群内自由讨论，最终生成结构化报告并 commit 到仓库。
 
-`discuss` 替代现有的 `/evaluate` skill，作为更通用的"结构化收集团队观点"框架。后续 `evaluate`、`explain`、`feature-request`、`debug` 等将作为子命令纳入。
+`discuss` 替代现有的 `/evaluate` skill，作为更通用的"结构化收集团队观点"框架。后续 `explain`、`feature-request`、`debug` 等将作为子命令纳入。
+
+## Revision History & Roadmap
+
+### v1.0（已完成，2026-04-11）
+- `/discuss`、`/discuss end`、`/discuss status` 核心流程
+- 每次讨论临时 worktree（`discuss/{slug}` 分支）
+- 报告 commit + merge 回 main
+- 18 单元测试 + 13 e2e 测试通过，飞书真实环境手动测试通过
+
+### v1.1（当前迭代，会议愿景对齐）
+对比会议原始设计（docs/my_task.md），v1.0 有三处方向偏离，本轮修正：
+
+1. **worktree 常驻化**：改为单一常驻 dev worktree（`.discuss-worktree/`），所有讨论共用，讨论不再各自建临时分支
+2. **结果不合并 main**：报告保留在 worktree 的 `discussions/` 目录下，worktree 内 commit 但不 merge 回主库
+3. **子命令命名对齐**：预留类型从 `bug/feature/deploy` 改为 `explain/feature-request/debug`（v1.1 仍不实现，仅对齐命名）
+
+v1.1 暂不做：启动时 rebase（待真实冲突出现再加）、输入形态变更（保留纯话题字符串）、idle 超时调整（保留 15min）。
+
+### v2 路线（小步发布）
+- **v2.0 Meta Command Creator**：命令→skill 映射抽成配置文件，支持热更新。共享 channel-server + 路由层，Creator 写配置后即可在飞书使用新命令
+- **v2.1 首个子命令 `/explain`**：对接现有 explain skill，验证 Creator 机制
+- **v2.2 `/debug` + Bug→Issue 自动化**：讨论确认 bug 后自动开 Issue 指派开发
+- **v2.3 跨天异步模式**：idle 改为天级，晚间汇总报告，次日推送到群
 
 ## Architecture — Hybrid 轻量方案
 
@@ -91,7 +114,7 @@ skills/discuss/
 ```yaml
 topic: "优化登录流程"
 source: null                      # 或文档路径 "docs/prd.md"
-topic_type: general               # general | bug | feature | deploy | ...
+topic_type: general               # general | explain | feature-request | debug | ...
 status: active                    # agenda_draft | active | ended
 chat_id: "oc_xxxxx"
 started_by: "dai.ming"
@@ -177,65 +200,71 @@ DISCUSS_IDLE_TIMEOUT = 15 * 60             # 15 分钟，可配置
 
 ## 6. Worktree Lifecycle
 
-### 分支策略
+### 常驻 Worktree 策略（v1.1）
 
-每次讨论使用独立的临时分支 `discuss/{topic-slug}`，避免直接在 main 上操作产生冲突。
+所有 `/discuss` 讨论共用一个常驻的 dev worktree（默认路径 `.discuss-worktree/`，位于仓库根目录同级或可配置），分支名 `discuss/dev`。
 
-这个分支策略同时为未来扩展留出空间：当讨论从"结论阶段"推进到"执行阶段"（如根据讨论结果直接修改代码、新建 skill 等）时，`discuss/{topic-slug}` 分支可以继续承载开发工作，最终通过 PR 合入 main。第一版只做到结论（报告 commit），分支在报告合入后即删除。
+**设计动机**（对齐会议原始愿景）：
+- 讨论结果不污染 main 分支，保留在 worktree 内
+- 用户在 worktree 中的修改积累，给后续 v2 子命令（如 debug/feature-request）沉淀上下文
+- 避免每次讨论新建/销毁分支的开销
 
 ### 生命周期
 
-**创建：** `/discuss` 启动时
+**首次使用：** channel-server 启动或首个 `/discuss` 到来时，初始化脚本确保常驻 worktree 存在：
 
 ```bash
-git worktree add -b discuss/{topic-slug} /tmp/discuss-{chat_id}-{timestamp} main
+# 若 worktree 不存在则创建；存在则复用
+if ! git worktree list | grep -q "discuss/dev"; then
+  git worktree add -b discuss/dev <worktree-path> main
+fi
 ```
 
-**讨论过程中：** 所有状态文件写入 worktree 的 `.discuss/` 目录。
+**讨论过程中：** 每次讨论在 worktree 内创建独立会话目录 `.discuss/sessions/{date}-{slug}/`：
+
+```
+<worktree>/
+├── .discuss/
+│   └── sessions/
+│       └── 2026-04-13-优化登录流程/
+│           ├── session.yaml
+│           ├── agenda.md
+│           └── transcript.md
+└── discussions/              # 讨论报告沉淀目录
+    └── 2026-04-13-优化登录流程.md
+```
+
+同一时刻只支持一个活跃讨论（保留 v1 限制）。session.yaml 中的 `chat_id` 用于识别该会话属于哪个群。
 
 **结束时（`/discuss end`）：**
 
 ```bash
-# 1. 生成报告写入 worktree 内 .discuss/report.md
-# 2. 将报告复制到 docs/discussions/（该目录会被 commit）
-cp .discuss/report.md docs/discussions/{date}-{topic-slug}.md
+cd <worktree-path>
+# 1. 写最终报告
+#    .discuss/sessions/{slug}/report.md  → discussions/{date}-{slug}.md
 
-# 3. 在 discuss/{topic-slug} 分支上 commit
-git add docs/discussions/{date}-{topic-slug}.md
-git commit -m "docs(discuss): {topic} — discussion report
+# 2. 在 discuss/dev 分支上 commit（只 commit 在 worktree 内，不 merge 回 main）
+git add discussions/{date}-{slug}.md .discuss/sessions/{slug}/
+git commit -m "discuss: {topic} — session report
 
 Participants: dai.ming, allen.woods
 Duration: 45min
 Action items: 3"
-
-# 4. 将报告合入 main
-git checkout main
-git merge discuss/{topic-slug}
-
-# 5. 清理 worktree 和临时分支
-git worktree remove /tmp/discuss-{chat_id}-{timestamp}
-git branch -d discuss/{topic-slug}
 ```
 
-只有最终报告进入 `docs/discussions/`，`.discuss/` 下的过程文件随 worktree 清理一并删除。
+报告留在 worktree 的 `discuss/dev` 分支，**不 merge 回 main**。main 保持干净，只包含核心代码和框架。
 
-进程重启时可从 worktree 的 `session.yaml` 恢复状态继续。
+**清理：** worktree 常驻，不清理。会话状态目录（`.discuss/sessions/{slug}/`）保留作为讨论历史，可在后续 v2 阶段用于跨会话引用。
 
-### 合并策略
+**进程重启恢复：** 重启后扫描 worktree 内所有 `session.yaml`，找到 `status: active` 的恢复会话。
 
-根据变更内容决定合并方式：
+### 访问讨论结果
 
-- **仅报告文件**（`docs/discussions/*.md`）→ 直接 merge 到 main。讨论本身即 review，无需额外审批
-- **包含代码变更**（未来扩展）→ 创建 PR，等待人工 review 后合并。代码影响线上行为，必须有人 review
+开发人员查看讨论记录：`cd <worktree-path> && ls discussions/`。worktree 目录对用户完全开放，可自由浏览、grep、引用。
 
-判断标准：commit 中是否包含 `docs/discussions/` 以外的文件变更。
-
-### 未来扩展路径（第一版不实现）
-
-当讨论达成共识并需要推进到执行阶段时：
-- `/discuss end` 后不删除分支，而是保留 `discuss/{topic-slug}` 分支
-- AI 基于讨论结论在该分支上继续开发（修改代码、新建 skill 等）
-- 开发完成后自动创建 PR，实现"讨论 → 结论 → 开发 → PR review → 合并"的完整闭环
+### v2 扩展路径
+- v2.2 `/debug` 发现 bug 后自动开 Issue：在 worktree 内先记录到 `.rdefect/`，再通过 API 创建 Issue 指派开发
+- 代码变更（共识后推进开发）：从 `discuss/dev` 派生 feature 分支 → PR → main，保持 main 纯净
 
 ## 7. Report Format
 
@@ -293,18 +322,18 @@ general:
   label: "通用讨论"
   agenda_hint: "根据话题内容，生成 3-5 个讨论维度"
 
-# --- 预留，第一版不实现 ---
-bug:
-  label: "Bug 讨论"
-  agenda_hint: "围绕复现步骤、影响范围、根因分析、修复方案展开"
+# --- 预留，v1.x 不实现，v2 通过 Meta Command Creator 引入 ---
+explain:
+  label: "方案解释"
+  agenda_hint: "围绕方案目标、关键设计、预期收益、风险点展开"
 
-feature:
+feature-request:
   label: "功能需求讨论"
   agenda_hint: "围绕用户场景、需求价值、技术可行性、优先级展开"
 
-deploy:
-  label: "部署方案讨论"
-  agenda_hint: "围绕变更内容、回滚策略、影响评估、上线计划展开"
+debug:
+  label: "Bug / 调试讨论"
+  agenda_hint: "围绕复现步骤、影响范围、根因分析、修复方案展开"
 ```
 
 第一版全部走 `general`，AI 根据输入内容自动生成议程。
@@ -327,17 +356,21 @@ deploy:
 
 不做过度防御：不限制参与人数、不做发言频率限制、不做内容审核。
 
-## 10. First Version Scope
+## 10. Version Scope
 
-**做：**
-- `general` 话题类型的完整讨论流程
-- 议程生成 → 确认 → 自由讨论 → 报告输出
-- worktree 生命周期管理
-- channel-server discuss 路由 + 超时检测
-- `/discuss`、`/discuss end`、`/discuss status` 三个命令
+### v1.0（已完成）
+- `general` 话题类型完整流程：议程生成 → 确认 → 自由讨论 → 报告输出
+- 临时 worktree（`discuss/{slug}` 分支），结束后合并回 main
+- channel-server discuss 路由 + 15min 空闲超时
+- `/discuss`、`/discuss end`、`/discuss status`
 
-**不做：**
-- 子命令（bug、feature、deploy 等话题类型）
+### v1.1（当前）
+- **常驻 dev worktree**（`discuss/dev` 分支），讨论沉淀在 worktree 内
+- **报告不合并 main**，留在 worktree 的 `discussions/` 目录
+- 子命令命名从 `bug/feature/deploy` 对齐为 `explain/feature-request/debug`（仅 spec，未实现）
+
+### v1.1 不做
+- 子命令实现（v2.1+）
 - 自动转 Issue
 - 与 `/evaluate`、`/explain` 的迁移整合
 - 讨论历史的搜索和索引

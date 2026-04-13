@@ -117,10 +117,18 @@ make run-channel
 - **启动需要 `ADMIN_CHAT_ID` 环境变量**，否则 `/discuss` 命令不会被 channel-server 拦截
 - **代理配置**写入 `autoservice.local.sh`（已被 gitignore），`autoservice.sh` 会自动 source
 - **快速测试脚本** `test-discuss.sh` 无需 tmux，一键启动 channel-server + Claude Code
-- 讨论报告自动保存在 `docs/discussions/` 目录，通过 `discuss/{slug}` 临时分支合并到当前分支
+- 讨论报告自动保存在 `docs/discussions/` 目录，通过 `discuss/{slug}` 临时分支合并到当前分支（v1.0 行为，v1.1 起改为常驻 worktree）
 
-### 未来迭代
-- 子命令扩展（explain, feature-request, debug）
-- 讨论结论推进到开发/测试阶段（达成共识后可推进到开发和测试）
-- 多讨论并行支持
-- 非发起人结束讨论的权限控制验证
+## v1.1 修正方向（2026-04-13 启动）
+
+对比会议原始愿景（`docs/my_task.md`），v1.0 有三处方向偏离需要修正。完整说明见设计 spec 的 Revision History 节。
+
+- **worktree 常驻化**：改为单一 `discuss/dev` 分支 + 常驻 worktree，讨论沉淀其中，不再每次新建临时分支
+- **报告不合并 main**：报告留在 worktree 的 `discussions/` 目录，main 保持干净
+- **子命令命名对齐**：预留类型从 `bug/feature/deploy` 改为 `explain/feature-request/debug`
+
+### v2 路线
+- **v2.0 Meta Command Creator**：命令→skill 映射抽成可热更新的配置文件，Creator 写配置即可注册新命令
+- **v2.1 `/explain`**：首个子命令，对接现有 explain skill
+- **v2.2 `/debug` + Bug → Issue 自动化**
+- **v2.3 跨天异步模式**：晚间汇总报告，次日推送
