@@ -34,46 +34,53 @@ Parse the incoming message to determine the action:
 
 2. **Derive slug** from topic: lowercase, replace spaces/special chars with hyphens, truncate to 50 chars.
 
-3. **Run init script** to create worktree and state files:
+3. **Run init script** to ensure the persistent dev worktree and create a session directory:
    ```bash
+   REPO="$(git rev-parse --show-toplevel)"
+   # Persistent dev worktree lives alongside the repo by default
+   WORKTREE="${DISCUSS_WORKTREE:-${REPO}/.discuss-worktree}"
    uv run skills/discuss/scripts/init_discuss.py \
      --topic "{topic}" \
      --slug "{slug}" \
      --chat-id "{chat_id}" \
      --started-by "{user}" \
      --source "{source}" \
-     --repo-path "$(git rev-parse --show-toplevel)" \
-     --worktree-path "/tmp/discuss-{chat_id}-$(date +%s)"
+     --repo-path "$REPO" \
+     --worktree-path "$WORKTREE"
    ```
+
+   The worktree is **persistent** (branch `discuss/dev`). First invocation creates it; subsequent invocations reuse it. The session directory is `<worktree>/.discuss/sessions/{YYYY-MM-DD}-{slug}/`.
 
 4. **If source document exists**, read it to understand the context.
 
 ### Phase 2 — Generate Agenda
 
+Session state lives in `<worktree>/.discuss/sessions/{date}-{slug}/` (referred to below as `<session_dir>`).
+
 1. Read `skills/discuss/templates/agenda.md` for the generation guide.
 2. Read `skills/discuss/templates/topic-types.yaml` and use the `general` type's `agenda_hint`.
 3. Generate 3-5 discussion questions tailored to the topic (and source document if provided).
 4. Reply to the group with the proposed agenda. Ask the initiator to confirm or adjust.
-5. Write the agenda to `.discuss/agenda.md` in the worktree.
-6. Update `.discuss/session.yaml`: set `status: agenda_draft`.
+5. Write the agenda to `<session_dir>/agenda.md`.
+6. Update `<session_dir>/session.yaml`: set `status: agenda_draft`.
 
 ### Phase 3 — Agenda Confirmation
 
 When the initiator confirms (says "ok", "确认", "可以", "没问题", etc.) or adjusts:
-- If confirmed: update `session.yaml` → `status: active`, `agenda_confirmed: true`
+- If confirmed: update `<session_dir>/session.yaml` → `status: active`, `agenda_confirmed: true`
 - If adjusted: update the agenda, ask for confirmation again
 - Reply: "讨论正式开始，大家可以针对以上议题自由发言。"
 
 ## 2. Process Message
 
-**Trigger:** Any message while `session.yaml` status is `active`.
+**Trigger:** Any message while the active session's `session.yaml` status is `active`.
 
 For each incoming message:
 
 1. **Identify the speaker** from the message `user` field.
-2. **Add participant** to `session.yaml` if not already listed.
+2. **Add participant** to `<session_dir>/session.yaml` if not already listed.
 3. **Determine which agenda items** the message relates to. Tag with `[议题 N]`.
-4. **Append to transcript** in `.discuss/transcript.md`:
+4. **Append to transcript** in `<session_dir>/transcript.md`:
    ```markdown
    ## {timestamp} — {user}
    [议题 {N}] {message content}
@@ -91,46 +98,40 @@ For each incoming message:
 
 **Trigger:** `/discuss end` message.
 
-1. **Verify the sender** is the discussion initiator (`started_by` in `session.yaml`). If not, reply: "只有讨论发起人 {started_by} 可以结束讨论。"
+1. **Verify the sender** is the discussion initiator (`started_by` in `<session_dir>/session.yaml`). If not, reply: "只有讨论发起人 {started_by} 可以结束讨论。"
 
 2. **Generate report:**
    - Read `skills/discuss/templates/report.md` for the report structure guide.
-   - Read `.discuss/session.yaml` for metadata.
-   - Read `.discuss/agenda.md` for the agenda.
-   - Read `.discuss/transcript.md` for the full transcript.
+   - Read `<session_dir>/session.yaml` for metadata.
+   - Read `<session_dir>/agenda.md` for the agenda.
+   - Read `<session_dir>/transcript.md` for the full transcript.
    - Generate the structured report following the template.
 
-3. **Save and commit:**
+3. **Save and commit inside the worktree (do NOT merge back to main):**
    ```bash
-   # Write report to worktree
-   # (use Write tool to create the report file)
+   cd <worktree>
+   # Write <session_dir>/report.md with the generated report (use Write tool).
+   cp .discuss/sessions/{date}-{slug}/report.md discussions/{date}-{slug}.md
 
-   # Copy to docs/discussions/ and commit
-   cd {worktree_path}
-   cp .discuss/report.md docs/discussions/{date}-{slug}.md
-   git add docs/discussions/{date}-{slug}.md
-   git commit -m "docs(discuss): {topic} — discussion report
+   git add discussions/{date}-{slug}.md .discuss/sessions/{date}-{slug}/
+   git commit -m "discuss: {topic} — session report
 
    Participants: {participant_list}
    Duration: {duration}
    Action items: {count}"
-
-   # Merge to main and cleanup
-   cd $(git rev-parse --show-toplevel)
-   git merge discuss/{slug}
-   git worktree remove {worktree_path}
-   git branch -d discuss/{slug}
    ```
 
-4. **Reply to group** with a summary: the key conclusions, action items, and where the full report is saved.
+   The report stays on the `discuss/dev` branch inside the persistent worktree. `main` is never touched. Developers can browse `<worktree>/discussions/` to read past reports.
 
-5. **Update session.yaml** → `status: ended` (before cleanup, for crash recovery).
+4. **Reply to group** with a summary: key conclusions, action items, and the report location (e.g. `discussions/{date}-{slug}.md` in the discuss worktree).
+
+5. **Update session.yaml** → `status: ended` before committing (so the ended state is captured in the commit and survives restarts).
 
 ## 4. Discussion Status
 
 **Trigger:** `/discuss status` message.
 
-Read `.discuss/session.yaml` and `.discuss/transcript.md`, then reply with:
+Find the session directory for this chat (scan `<worktree>/.discuss/sessions/*/session.yaml` for matching `chat_id` with `status: active`). Read its `session.yaml` and `transcript.md`, then reply with:
 - Current status (agenda_draft / active / ended)
 - Topic and agenda items
 - Number of participants and their names
@@ -152,4 +153,4 @@ Reply to the group:
 | Non-initiator sends `/discuss end` | "只有讨论发起人 {started_by} 可以结束讨论。" |
 | `/discuss end` with no substantive messages | Generate minimal report noting no discussion occurred |
 | Worktree creation fails | Reply with error, do not enter discuss state |
-| Session recovery after restart | Read `.discuss/session.yaml`, resume from current status, notify group: "我回来了，讨论继续。" |
+| Session recovery after restart | Scan `<worktree>/.discuss/sessions/*/session.yaml` for `status: active`, resume from current status, notify group: "我回来了，讨论继续。" |

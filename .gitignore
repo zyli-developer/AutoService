@@ -24,3 +24,9 @@ uv.lock
 .claude/commands
 .claude/agents
 .claude/hooks
+
+# Persistent discuss worktree (branch: discuss/dev)
+.discuss-worktree/
+
+# Local overrides sourced by autoservice.sh
+autoservice.local.sh
