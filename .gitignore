@@ -24,6 +24,7 @@ uv.lock
 .claude/commands
 .claude/agents
 .claude/hooks
+.claude/settings.local.json
 
 # Persistent discuss worktree (branch: discuss/dev)
 .discuss-worktree/
