@@ -10,6 +10,12 @@ cd "$SCRIPT_DIR"
 [ -f "$SCRIPT_DIR/autoservice.local.sh" ] && source "$SCRIPT_DIR/autoservice.local.sh"
 [ -f "$SCRIPT_DIR/.mcp.env" ] && set -a && source "$SCRIPT_DIR/.mcp.env" && set +a
 
+# Bypass corporate proxy for localhost — channel.py → channel-server is local WS.
+# Without this, Python websockets routes ws://localhost:9999 through https_proxy
+# and gets back an HTTP error instead of a WS upgrade ("InvalidMessage" in logs).
+export no_proxy="localhost,127.0.0.1,::1${no_proxy:+,$no_proxy}"
+export NO_PROXY="$no_proxy"
+
 LOG_DIR="$SCRIPT_DIR/.autoservice/logs"
 mkdir -p "$LOG_DIR"
 SERVER_LOG="$LOG_DIR/channel-server.stdout.log"
