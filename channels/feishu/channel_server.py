@@ -15,6 +15,7 @@ import signal
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,13 +70,25 @@ class ChannelServer:
         host: str = "localhost",
         port: int = 9999,
         feishu_enabled: bool = True,
-        admin_chat_id: str | None = None,
+        admin_chat_id: str | Iterable[str] | None = None,
         pool_mode: bool = False,
     ) -> None:
         self.host = host
         self.port = port
         self.feishu_enabled = feishu_enabled
-        self.admin_chat_id = admin_chat_id
+        # admin_chat_id accepts a single id (back-compat), an iterable of ids,
+        # or a single comma-separated string. Internally stored as a set so
+        # private + group chats can both act as admin.
+        if admin_chat_id is None:
+            ids: list[str] = []
+        elif isinstance(admin_chat_id, str):
+            ids = [p.strip() for p in admin_chat_id.split(",") if p.strip()]
+        else:
+            ids = [p.strip() for p in admin_chat_id if p and p.strip()]
+        self.admin_chat_ids: set[str] = set(ids)
+        # Primary admin id used for outbound notifications / pass-through tagging.
+        # First configured id wins; None if nothing configured.
+        self.admin_chat_id: str | None = ids[0] if ids else None
         self.pool_mode = pool_mode
 
         # Route tables
@@ -777,7 +790,7 @@ class ChannelServer:
             if is_new_chat:
                 # Determine label
                 label = display_name.split(" (")[0] if display_name else "unknown"
-                if chat_id == self.admin_chat_id:
+                if chat_id in self.admin_chat_ids:
                     label = "管理群"
                 self._known_chats[chat_id] = {
                     "user": label,
@@ -850,7 +863,7 @@ class ChannelServer:
             self._msg_counter["received"] += 1
 
             # Notify admin about new user's first message
-            if is_new_chat and self.admin_chat_id and chat_id != self.admin_chat_id:
+            if is_new_chat and self.admin_chat_ids and chat_id not in self.admin_chat_ids:
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
                     {"_admin_notify": f"New chat: {chat_id} from {display_name}"},
@@ -965,13 +978,14 @@ class ChannelServer:
 
                 chat_id = msg.get("chat_id", "")
 
-                # Admin group: intercept slash commands, pass through normal messages
-                if self.admin_chat_id and chat_id == self.admin_chat_id:
+                # Admin chat(s): intercept slash commands, pass through normal messages.
+                # Any chat_id configured via ADMIN_CHAT_ID (private or group) is treated as admin.
+                if self.admin_chat_ids and chat_id in self.admin_chat_ids:
                     text = msg.get("text", "").strip()
                     if text.startswith("/"):
                         await self._handle_admin_message(msg)
                         continue
-                    # Non-command messages in admin group → route normally
+                    # Non-command messages in admin chats → route normally
                     # so Claude Code can assist the admin
 
                 # Normal routing
@@ -1396,11 +1410,12 @@ class ChannelServer:
 
     async def _notify_admin(self, text: str) -> None:
         """Fire-and-forget admin notification. Degrades gracefully."""
-        if not self.admin_chat_id:
+        if not self.admin_chat_ids:
             log.info("[admin] %s", text)
             return
         # Placeholder: would send via Feishu API
-        log.info("[admin → %s] %s", self.admin_chat_id, text)
+        for cid in self.admin_chat_ids:
+            log.info("[admin → %s] %s", cid, text)
 
 
 # ---------------------------------------------------------------------------
@@ -1464,8 +1479,9 @@ async def _async_main() -> None:
     print(f"  Listening  : ws://localhost:{port}")
     print(f"  Feishu     : {'enabled' if feishu_enabled else 'disabled'}")
     print(f"  Pool mode  : {'enabled' if pool_mode else 'disabled'}")
-    if admin_chat_id:
-        print(f"  Admin group: {admin_chat_id}")
+    if server.admin_chat_ids:
+        admin_list = ", ".join(sorted(server.admin_chat_ids))
+        print(f"  Admin chats: {admin_list}")
     print()
     print("  Next steps:")
     print(f"    1. Start Claude Code:  ./autoservice.sh")

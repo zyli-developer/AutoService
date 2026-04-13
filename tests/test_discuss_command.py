@@ -325,3 +325,53 @@ class TestChannelIdleReminder:
         assert "[DISCUSS_IDLE_REMINDER]" in reminder_msg["text"]
         assert reminder_msg["user"] == "system"
         assert reminder_msg["source"] == "system"
+
+
+class TestMultipleAdminChats:
+    """ADMIN_CHAT_ID should accept a comma-separated list so that both private
+    and group chats can act as admin simultaneously."""
+
+    def test_single_string_populates_admin_set(self):
+        s = ChannelServer(port=0, feishu_enabled=False, admin_chat_id="oc_group")
+        assert s.admin_chat_ids == {"oc_group"}
+        assert s.admin_chat_id == "oc_group"
+
+    def test_comma_separated_string_parsed(self):
+        s = ChannelServer(
+            port=0, feishu_enabled=False,
+            admin_chat_id="oc_group, oc_dm , ",
+        )
+        assert s.admin_chat_ids == {"oc_group", "oc_dm"}
+
+    def test_iterable_accepted(self):
+        s = ChannelServer(
+            port=0, feishu_enabled=False,
+            admin_chat_id=["oc_a", "oc_b"],
+        )
+        assert s.admin_chat_ids == {"oc_a", "oc_b"}
+
+    def test_empty_when_none(self):
+        s = ChannelServer(port=0, feishu_enabled=False, admin_chat_id=None)
+        assert s.admin_chat_ids == set()
+        assert s.admin_chat_id is None
+
+    @pytest.mark.asyncio
+    async def test_both_admin_chats_trigger_command_intercept(self):
+        """Slash commands from any configured admin chat_id should hit the handler."""
+        s = ChannelServer(
+            port=0, feishu_enabled=False,
+            admin_chat_id=["oc_group", "oc_dm"],
+        )
+        s._reply_feishu = AsyncMock()
+        s.route_message = AsyncMock()
+
+        for chat_id in ("oc_group", "oc_dm"):
+            s.route_message.reset_mock()
+            s._reply_feishu.reset_mock()
+            await s._handle_admin_message(
+                {"chat_id": chat_id, "text": '/discuss "multi-admin"'}
+            )
+            s.route_message.assert_called_once()
+            routed = s.route_message.call_args[0][1]
+            assert routed["runtime_mode"] == "discuss"
+            assert routed["chat_id"] == chat_id
