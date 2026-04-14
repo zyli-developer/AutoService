@@ -220,7 +220,9 @@ class ChannelServer:
     async def _handle_pool_message(self, chat_id: str, message: dict) -> None:
         """Route a message through the CC Pool instead of WebSocket instances.
 
-        Called when pool_mode is enabled and no registered instance handles this chat_id.
+        Called by route_message when a PoolRoute exists or is newly created.
+        Formats the message as a <channel> prompt and sends via session_query.
+        Responses arrive via _pool_reply_callback (MCP tool callback).
         """
         try:
             # Format prompt as channel notification content
