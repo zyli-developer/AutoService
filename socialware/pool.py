@@ -151,11 +151,13 @@ class AsyncPool(Generic[T]):
         factory: Callable[[], Awaitable[T]],
         instance_prefix: str = "inst",
         logger: logging.Logger | None = None,
+        on_sticky_release: Callable[[str], Awaitable[None]] | None = None,
     ):
         self._config = config
         self._factory = factory
         self._instance_prefix = instance_prefix
         self._log = logger or log
+        self._on_sticky_release = on_sticky_release
         self._available: asyncio.Queue[PooledInstance[T]] = asyncio.Queue()
         self._all_instances: dict[str, PooledInstance[T]] = {}
         self._lock = asyncio.Lock()
@@ -416,6 +418,12 @@ class AsyncPool(Generic[T]):
         )
         await self.checkin(binding.instance)
 
+        if self._on_sticky_release:
+            try:
+                await self._on_sticky_release(key)
+            except Exception as e:
+                self._log.warning("on_sticky_release callback failed for key=%s: %s", key, e)
+
     @property
     def sticky_count(self) -> int:
         """Number of active sticky bindings."""
@@ -454,6 +462,15 @@ class AsyncPool(Generic[T]):
         # Destroy outside lock
         for binding in removed_bindings:
             await self._destroy_instance(binding.instance)
+
+        # Notify listener of expired keys
+        if self._on_sticky_release:
+            for binding in removed_bindings:
+                try:
+                    await self._on_sticky_release(binding.key)
+                except Exception as e:
+                    self._log.warning("on_sticky_release callback failed for key=%s: %s",
+                                      binding.key, e)
 
     # ------------------------------------------------------------------
     # Status

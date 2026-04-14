@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import websockets
 from websockets.asyncio.server import ServerConnection
@@ -43,6 +44,15 @@ class Instance:
     runtime_mode: str = "service"      # "service" | "improve"
     business_mode: str = "customer_service"
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class PoolRoute:
+    """Virtual route backed by a CC Pool sticky session."""
+    pool: Any  # CCPool — use Any to avoid circular import
+    chat_id: str
+    instance_id: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +81,9 @@ class ChannelServer:
         self.exact_routes: dict[str, Instance] = {}      # chat_id -> Instance
         self.prefix_routes: dict[str, Instance] = {}     # prefix  -> Instance
         self.wildcard_instances: list[Instance] = []      # role=developer, chat_ids=["*"]
+
+        # Pool virtual routes (pool_mode only)
+        self.pool_routes: dict[str, PoolRoute] = {}   # chat_id -> PoolRoute
 
         # ws -> Instance reverse lookup (for disconnect cleanup)
         self._ws_to_instance: dict[ServerConnection, Instance] = {}
@@ -217,10 +230,18 @@ class ChannelServer:
             except Exception as e:
                 log.warning("Pool react failed: %s", e)
 
+    async def _on_pool_route_expired(self, chat_id: str) -> None:
+        """Called when a pool sticky binding expires or is released."""
+        removed = self.pool_routes.pop(chat_id, None)
+        if removed:
+            log.info("Pool route expired: chat_id=%s (was %s)", chat_id, removed.instance_id)
+
     async def _handle_pool_message(self, chat_id: str, message: dict) -> None:
         """Route a message through the CC Pool instead of WebSocket instances.
 
-        Called when pool_mode is enabled and no registered instance handles this chat_id.
+        Called by route_message when a PoolRoute exists or is newly created.
+        Formats the message as a <channel> prompt and sends via session_query.
+        Responses arrive via _pool_reply_callback (MCP tool callback).
         """
         try:
             # Format prompt as channel notification content
@@ -238,12 +259,11 @@ class ChannelServer:
 
             prompt = f"<channel {' '.join(meta_parts)}>\n{text}\n</channel>"
 
-            log.info("Pool routing: chat_id=%s user=%s text=%s",
-                     chat_id, user, text[:40])
+            log.info("Pool routing: chat_id=%s user=%s text=%.40s",
+                     chat_id, user, text)
 
             async for msg in self._pool.session_query(chat_id, prompt):
                 # Responses are handled by the reply_callback in the MCP tools
-                # We just need to consume the stream here
                 pass
 
         except Exception as e:
@@ -983,53 +1003,81 @@ class ChannelServer:
     # ------------------------------------------------------------------
 
     async def route_message(self, chat_id: str, message: dict) -> None:
-        """Route a message to the appropriate instance(s)."""
-        routed_instance: Instance | None = None
+        """Route a message to the appropriate instance(s).
 
-        # 1. Exact match
+        Priority: exact > prefix > pool_route > pool_assign > wildcard(observe).
+        When pool_mode is active, wildcard instances only receive observation copies.
+        """
+        routed = False
+        routed_by: str | None = None  # instance_id for observation tagging
+
+        # 1. Exact match (WebSocket)
         if chat_id in self.exact_routes:
-            routed_instance = self.exact_routes[chat_id]
-            await self._send(routed_instance.ws, message)
+            inst = self.exact_routes[chat_id]
+            await self._send(inst.ws, message)
+            routed = True
+            routed_by = inst.instance_id
 
-        # 2. Prefix match (only if no exact match)
-        if routed_instance is None:
+        # 2. Prefix match
+        if not routed:
             for prefix, inst in self.prefix_routes.items():
                 if chat_id.startswith(prefix):
-                    routed_instance = inst
                     await self._send(inst.ws, message)
+                    routed = True
+                    routed_by = inst.instance_id
                     break
 
-        # 3. Wildcard -- always receives a copy
-        for inst in self.wildcard_instances:
-            # Skip if this wildcard instance is also the exact/prefix match
-            if routed_instance is not None and inst.ws is routed_instance.ws:
-                continue
-            # Add routed_to hint when message was also sent to a specific instance
-            if routed_instance is not None:
-                wc_msg = {**message, "routed_to": routed_instance.instance_id}
-            else:
-                wc_msg = message
-            await self._send(inst.ws, wc_msg)
-
-        # 4. Pool mode fallback — route to CC Pool if no registered instance
-        if routed_instance is None and not self.wildcard_instances and self._pool is not None:
+        # 3. Pool route (existing sticky binding)
+        if not routed and chat_id in self.pool_routes:
+            route = self.pool_routes[chat_id]
             asyncio.create_task(
                 self._handle_pool_message(chat_id, message),
                 name=f"pool-msg-{chat_id}",
             )
-            return
+            routed = True
+            routed_by = route.instance_id
 
-        # 5. Log actionable info when no dedicated instance exists
-        if routed_instance is None and self.wildcard_instances:
+        # 4. Pool auto-assign (first message, pool_mode enabled, not admin)
+        if (not routed
+                and self.pool_mode
+                and self._pool is not None
+                and chat_id != self.admin_chat_id):
+            try:
+                instance = await self._pool.acquire_sticky(chat_id)
+                self.pool_routes[chat_id] = PoolRoute(
+                    pool=self._pool, chat_id=chat_id, instance_id=instance.id,
+                )
+                asyncio.create_task(
+                    self._handle_pool_message(chat_id, message),
+                    name=f"pool-msg-{chat_id}",
+                )
+                routed = True
+                routed_by = instance.id
+                log.info("Pool assigned: chat_id=%s -> %s", chat_id, instance.id)
+            except Exception as e:
+                log.error("Pool assign failed for chat_id=%s: %s", chat_id, e)
+
+        # 5. Wildcard — always send observation copy
+        for inst in self.wildcard_instances:
+            if routed_by and routed_by == inst.instance_id:
+                continue  # don't double-send to the handler
+            if routed:
+                wc_msg = {**message, "routed_to": routed_by}
+            else:
+                wc_msg = message
+            await self._send(inst.ws, wc_msg)
+
+        # 6. Nothing handled
+        if not routed and not self.wildcard_instances:
+            log.warning("No route for chat_id=%s, message dropped", chat_id)
+        elif not routed and self.wildcard_instances:
             user = message.get("user", "unknown")
             source = message.get("source", "?")
             log.info(
-                "💬 [%s] %s → wildcard (no dedicated instance)\n"
-                "   To start dedicated instance:  ./autoservice.sh %s",
+                "No dedicated instance for [%s] %s -> wildcard\n"
+                "   To start dedicated: ./autoservice.sh %s",
                 source, user, chat_id,
             )
-        elif routed_instance is None and not self.wildcard_instances and self._pool is None:
-            log.warning("No route for chat_id=%s, message dropped", chat_id)
 
     # ------------------------------------------------------------------
     # Message handlers
