@@ -41,7 +41,7 @@ async def main():
     print("=== E2E: /discuss Command Lifecycle ===")
     print()
 
-    from feishu.channel_server import ChannelServer
+    from channels.feishu.channel_server import ChannelServer
     server = ChannelServer(
         port=SERVER_PORT,
         feishu_enabled=False,

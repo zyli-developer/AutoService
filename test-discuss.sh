@@ -35,7 +35,7 @@ echo "  tail -f $SERVER_LOG"
 echo ""
 
 # Start channel-server in background, redirecting ALL output to a file
-uv run python3 feishu/channel_server.py > "$SERVER_LOG" 2>&1 &
+uv run python3 channels/feishu/channel_server.py > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 # Give the server a moment to bind the port

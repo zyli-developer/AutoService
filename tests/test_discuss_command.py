@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from feishu.channel_server import ChannelServer
+from channels.feishu.channel_server import ChannelServer
 
 
 @pytest.fixture
@@ -131,7 +131,7 @@ class TestDiscussIdleTimeout:
         }
         mock_ws = AsyncMock()
         mock_ws.remote_address = ("127.0.0.1", 0)
-        from feishu.channel_server import Instance
+        from channels.feishu.channel_server import Instance
         inst = Instance(
             ws=mock_ws,
             instance_id="test-channel",
@@ -156,7 +156,7 @@ class TestDiscussIdleTimeout:
         }
         mock_ws = AsyncMock()
         mock_ws.remote_address = ("127.0.0.1", 0)
-        from feishu.channel_server import Instance
+        from channels.feishu.channel_server import Instance
         inst = Instance(
             ws=mock_ws,
             instance_id="test-channel",
@@ -290,7 +290,7 @@ class TestChannelIdleReminder:
     async def test_idle_reminder_converted_to_message(self):
         """discuss_idle_reminder should be converted into a message with discuss runtime_mode."""
         import asyncio
-        from feishu.channel import ChannelClient
+        from channels.feishu.channel import ChannelClient
 
         client = ChannelClient(server_url="ws://localhost:0")  # won't connect
 
