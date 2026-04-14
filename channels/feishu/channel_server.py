@@ -1243,10 +1243,30 @@ async def _async_main() -> None:
     admin_chat_id = os.environ.get("ADMIN_CHAT_ID")
     feishu_enabled = os.environ.get("FEISHU_ENABLED", "true").lower() in ("true", "1", "yes")
 
+    # Read pool_mode from config.local.yaml (repo root)
+    pool_mode = os.environ.get("POOL_MODE", "").lower() in ("true", "1", "yes")
+    if not pool_mode:
+        # Walk up from PROJECT_ROOT to find repo root (.git marker)
+        repo_root = PROJECT_ROOT
+        for ancestor in [PROJECT_ROOT] + list(PROJECT_ROOT.parents):
+            if (ancestor / ".git").exists():
+                repo_root = ancestor
+                break
+        config_local = repo_root / ".autoservice" / "config.local.yaml"
+        if config_local.exists():
+            try:
+                import yaml
+                cfg = yaml.safe_load(config_local.read_text(encoding="utf-8")) or {}
+                pool_mode = bool(cfg.get("pool_mode", False))
+                log.info("Loaded pool_mode=%s from %s", pool_mode, config_local)
+            except Exception as e:
+                log.warning("Failed to read config.local.yaml: %s", e)
+
     server = ChannelServer(
         port=port,
         feishu_enabled=feishu_enabled,
         admin_chat_id=admin_chat_id,
+        pool_mode=pool_mode,
     )
 
     loop = asyncio.get_running_loop()
@@ -1260,6 +1280,7 @@ async def _async_main() -> None:
     print("  AutoService Channel Server")
     print(f"  Listening  : ws://localhost:{port}")
     print(f"  Feishu     : {'enabled' if feishu_enabled else 'disabled'}")
+    print(f"  Pool mode  : {'enabled' if pool_mode else 'disabled'}")
     if admin_chat_id:
         print(f"  Admin group: {admin_chat_id}")
     print()
