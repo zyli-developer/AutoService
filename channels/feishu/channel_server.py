@@ -238,12 +238,11 @@ class ChannelServer:
 
             prompt = f"<channel {' '.join(meta_parts)}>\n{text}\n</channel>"
 
-            log.info("Pool routing: chat_id=%s user=%s text=%s",
-                     chat_id, user, text[:40])
+            log.info("Pool routing: chat_id=%s user=%s text=%.40s",
+                     chat_id, user, text)
 
             async for msg in self._pool.session_query(chat_id, prompt):
                 # Responses are handled by the reply_callback in the MCP tools
-                # We just need to consume the stream here
                 pass
 
         except Exception as e:
