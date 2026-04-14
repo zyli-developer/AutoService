@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AutoService · 完整产品流程</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#fff;--oat:#e0e2e6;--oat-l:#f8fafc;--silver:#9f9b93;--charcoal:#55534e;--m300:#dbeafe;--m600:#1b61c9;--m800:#181d26;--s500:#3bd3fd;--s800:#0089ad;--l400:#f8cc65;--l500:#fbbd41;--l700:#d08a11;--l800:#9d6a09;--u300:#c1b0ff;--u500:#8a5cf6;--u800:#43089f;--u900:#32037d;--p:#fc7981;--shd:rgba(0,0,0,0.1) 0px 1px 1px,rgba(0,0,0,0.04) 0px -1px 1px inset}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fafafa;font-family:'Inter','Noto Sans SC',sans-serif;color:#000;font-size:14px}
+.page{max-width:1600px;margin:0 auto;padding:20px 28px}
+.hd{margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid var(--m800)}
+.lbl{display:inline-block;font-size:10px;font-weight:600;letter-spacing:1.08px;text-transform:uppercase;color:var(--m600);background:var(--m300);padding:3px 9px;border-radius:6px;margin-bottom:6px}
+h1{font-size:26px;font-weight:600;letter-spacing:-0.8px;margin:0 0 4px}
+.sub{font-size:13px;color:var(--charcoal);margin:0;line-height:1.5}
+.act{margin-bottom:24px;background:#fff;border:1px solid var(--oat);border-radius:16px;padding:18px 24px;box-shadow:var(--shd);display:flex;flex-direction:column;height:92vh;max-height:920px;min-height:640px;gap:12px}
+.act-top{display:flex;align-items:center;gap:18px;flex-shrink:0}
+.ahd{display:flex;align-items:center;gap:12px;flex-shrink:0;padding-right:18px;border-right:1px dashed var(--oat)}
+.an{width:42px;height:42px;border-radius:11px;background:var(--m800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+.an.b{background:var(--u800)}.an.c{background:var(--l700)}
+.ai h2{font-size:17px;margin:0 0 2px;font-weight:600;letter-spacing:-0.3px;line-height:1.2;white-space:nowrap}
+.ai p{font-size:11px;color:var(--silver);margin:0;line-height:1.4;white-space:nowrap}
+/* 横向 stepper 回归 */
+.stepper{display:flex;align-items:center;gap:6px;flex:1;flex-wrap:wrap}
+.step{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;background:#fff;border:1px solid var(--oat);cursor:pointer;font-size:12px;color:var(--charcoal);font-weight:500;user-select:none;box-shadow:rgba(0,0,0,0.06) 0 1px 1px;flex-shrink:0;transition:all .15s}
+.step:hover:not(.active){background:var(--oat-l)}
+.step.active{background:var(--m800);color:#fff;border-color:var(--m800)}
+.sn{width:19px;height:19px;border-radius:50%;background:var(--oat-l);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--charcoal);flex-shrink:0}
+.step.active .sn{background:var(--m300);color:var(--m800)}
+.sa{display:none}
+/* stage 占大头 */
+.stage{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;min-height:0}
+.stage.solo{grid-template-columns:1fr}
+.pn{display:flex;flex-direction:column;min-height:0}
+.pl{font-size:11px;color:var(--silver);margin-bottom:6px;letter-spacing:0.4px;text-transform:uppercase;font-weight:500;display:flex;align-items:center;gap:7px;min-height:18px;flex-shrink:0}
+.pl b{color:var(--charcoal);font-weight:600;font-size:12px}
+.pl::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--silver)}
+.pn.pn-c .pl::before{background:var(--s500)}
+.pn.pn-m .pl::before{background:var(--m600)}
+.pn.pn-p .pl::before{background:var(--u800)}
+.fr{background:#fff;border:1px solid var(--oat);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shd);position:relative;flex:1;min-height:0}
+.tabs{display:flex;gap:5px;align-items:center;min-height:28px;flex-shrink:0;flex-wrap:wrap}
+.tab{padding:5px 12px;border-radius:7px 7px 0 0;background:var(--oat-l);border:1px solid var(--oat);border-bottom:none;font-size:11px;color:var(--charcoal);cursor:pointer;font-weight:500;display:flex;align-items:center;gap:6px;user-select:none;font-family:inherit}
+.tab:hover:not(.active){background:#fff}
+.tab.active{background:#fff;color:var(--m800);font-weight:700;border-color:var(--m600);border-bottom:2px solid #fff;margin-bottom:-1px;position:relative;z-index:2}
+.tab .dot{width:6px;height:6px;border-radius:50%;background:var(--silver)}
+.tab.t-c .dot{background:var(--s500)}
+.tab.t-m .dot{background:var(--m600)}
+.tab.t-p .dot{background:var(--u800)}
+.tab-spacer{flex:1}
+.tab-hint{font-size:10px;color:var(--silver);font-style:italic}
+.fr.cc{border-color:var(--s500)}.fr.cm{border-color:var(--m600)}.fr.cp{border-color:var(--u800)}
+.desc{padding:11px 16px;background:var(--oat-l);border:1px dashed var(--oat);border-radius:10px;font-size:12px;color:var(--charcoal);line-height:1.55;flex-shrink:0}
+.desc b{color:#000;font-weight:700}
+.web-canvas{flex:1;position:relative;background:#fff;overflow:hidden}
+.web-page{padding:20px 28px;height:100%;overflow-y:auto}
+.web-nav{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--oat);margin-bottom:24px}
+.web-logo{font-size:18px;font-weight:600;color:var(--m800)}
+.web-nav-links{display:flex;gap:24px;font-size:14px;color:var(--charcoal)}
+.web-hero{background:var(--m300);border:1px solid var(--m600);border-radius:14px;padding:22px 18px;text-align:center;margin-bottom:14px}
+.web-hero-title{font-size:22px;font-weight:600;color:var(--m800);margin-bottom:6px;letter-spacing:-0.5px}
+.web-hero-sub{font-size:13px;color:var(--m800)}
+.web-features{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.web-feature-card{background:#fff;border:1px solid var(--oat);border-radius:14px;padding:18px;font-size:13px;color:var(--charcoal)}
+.web-feature-card-title{font-weight:600;color:#000;margin-bottom:6px;font-size:15px}
+.web-fab{position:absolute;right:18px;bottom:18px;width:48px;height:48px;border-radius:50%;background:var(--m800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:rgba(45,127,249,.22) 0 3px 10px;z-index:5}
+.web-fab.highlight{animation:fp 1.6s infinite}
+@keyframes fp{0%,100%{box-shadow:rgba(45,127,249,.22) 0 4px 12px,0 0 0 0 rgba(7,138,82,.5)}50%{box-shadow:rgba(45,127,249,.22) 0 4px 12px,0 0 0 14px rgba(7,138,82,0)}}
+.web-fab-call{position:absolute;right:25px;bottom:78px;width:38px;height:38px;border-radius:50%;background:#fff;border:2px solid var(--m800);color:var(--m800);display:flex;align-items:center;justify-content:center;font-size:15px;z-index:5}
+.web-modal{position:absolute;right:16px;bottom:78px;width:300px;height:380px;background:#fff;border:1px solid var(--oat);border-radius:14px;box-shadow:rgba(45,127,249,.28) 0 3px 14px,rgba(15,48,106,.08) 0 0 30px;display:flex;flex-direction:column;overflow:hidden;z-index:6}
+.web-modal-header{background:var(--m800);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+.web-modal-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.web-modal-title::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--m300)}
+.web-modal-close{font-size:18px;opacity:.8}
+.web-modal-body{flex:1;padding:16px;overflow-y:auto;background:#fff;display:flex;flex-direction:column;gap:8px}
+.web-msg{max-width:80%;padding:9px 14px;border-radius:16px;font-size:13px;line-height:1.5}
+.web-msg.customer{background:var(--m800);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.web-msg.agent{background:#fff;color:#000;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--oat)}
+.web-msg.system{align-self:center;background:transparent;color:var(--silver);font-size:11px;font-style:italic}
+.web-modal-input{padding:10px 16px;border-top:1px solid var(--oat);background:#fff}
+.web-modal-input-box{background:var(--oat-l);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--silver)}
+.im-w{flex:1;display:flex;flex-direction:column;min-height:0}
+.im-titlebar{background:var(--oat-l);border-bottom:1px solid var(--oat);padding:10px 16px;font-size:13px;display:flex;align-items:center;gap:12px}
+.im-titlebar-dots{display:inline-flex;gap:6px}
+.im-titlebar-dots span{width:11px;height:11px;border-radius:50%;background:var(--oat)}
+.im-workspace-name{font-weight:600;color:#000;font-size:13px}
+.im-body{display:grid;grid-template-columns:160px 1fr;flex:1;min-height:0}
+.im-sidebar{background:#fff;border-right:1px solid var(--oat);padding:14px 0;overflow-y:auto}
+.im-ws-header{padding:0 16px 12px;border-bottom:1px dashed var(--oat);margin-bottom:10px}
+.im-ws-title{color:#000;font-size:14px;font-weight:600}
+.im-ws-user{font-size:12px;color:var(--silver);margin-top:4px;display:flex;align-items:center;gap:6px}
+.im-ws-user::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--m300)}
+.im-section-title{font-size:11px;color:var(--silver);padding:8px 16px 5px;letter-spacing:0.5px;text-transform:uppercase;font-weight:600}
+.im-channel{padding:6px 16px;font-size:13px;color:var(--charcoal);cursor:pointer;display:flex;align-items:center;gap:6px}
+.im-channel::before{content:'#';color:var(--silver)}
+.im-channel.dm::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--m300)}
+.im-channel.active{background:var(--m300);color:var(--m800);font-weight:600}
+.im-channel-badge{margin-left:auto;background:var(--p);color:#fff;font-size:10px;padding:2px 7px;border-radius:9px;font-weight:600}
+.im-main{background:#fff;display:flex;flex-direction:column;min-height:0}
+.im-main-header{padding:14px 20px;border-bottom:1px solid var(--oat)}
+.im-main-title{font-size:14px;font-weight:600;color:#000;display:flex;align-items:center;gap:5px}
+.im-main-title::before{content:'#';color:var(--silver)}
+.im-main-subtitle{font-size:12px;color:var(--silver);margin-top:3px}
+.im-feed{flex:1;padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
+.im-empty{text-align:center;color:var(--silver);font-style:italic;padding:60px 0;font-size:13px;line-height:1.8}
+.im-card{display:flex;gap:11px}
+.im-avatar{width:34px;height:34px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff}
+.im-avatar.a1{background:var(--u800)}.im-avatar.a2{background:var(--s800)}.im-avatar.human{background:var(--m600)}
+.im-msg-body{flex:1;min-width:0}
+.im-msg-meta{display:flex;align-items:baseline;gap:7px;margin-bottom:3px}
+.im-msg-author{font-size:13px;font-weight:700;color:#000}
+.im-msg-bot-tag{background:var(--oat-l);color:var(--charcoal);font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600}
+.im-msg-time{font-size:11px;color:var(--silver)}
+.im-msg-text{font-size:13px;color:#000;line-height:1.5}
+.im-block{border:1px solid var(--oat);border-left:3px solid var(--s800);border-radius:9px;padding:10px 13px;margin-top:6px;background:#fff}
+.im-block.highlight{border-left-color:var(--u800);background:#f5f0ff}
+.im-block-title{font-size:13px;font-weight:700;color:#000;margin-bottom:3px}
+.im-block-meta{font-size:12px;color:var(--charcoal)}
+.im-block-status{display:inline-block;font-size:10px;padding:2px 7px;border-radius:8px;background:var(--m300);color:var(--m800);margin-left:7px;font-weight:600}
+.im-relay-line{font-size:13px;color:var(--charcoal);padding:3px 0}
+.im-relay-line .quote{background:var(--oat-l);padding:2px 6px;border-radius:4px;color:#000}
+.im-suggest{background:var(--l400);border-left:3px solid var(--l700);padding:9px 14px;border-radius:0 9px 9px 0;margin:5px 0;font-size:13px;color:var(--l800)}
+.im-cmd{font-family:'Space Mono',monospace;background:var(--p);padding:3px 7px;border-radius:4px;font-size:12px;color:#fff;font-weight:700}
+.im-handoff{background:var(--p);padding:9px 14px;margin:5px 0;border-radius:9px;font-size:13px;color:#4a0008;font-weight:600}
+.im-driver{background:var(--m300);padding:9px 14px;margin:5px 0;border-radius:9px;font-size:13px;color:var(--m800);font-weight:600}
+.im-sidebar-msg{background:var(--u300);padding:7px 13px;margin:5px 0;border-radius:9px;font-size:12px;color:var(--u900);font-style:italic}
+.im-system{text-align:center;font-size:12px;color:var(--silver);font-style:italic;padding:5px}
+.im-input{border-top:1px solid var(--oat);padding:12px 20px}
+.im-input-box{border:1px solid var(--oat);border-radius:13px;padding:9px 14px;font-size:12px;color:var(--silver);background:#fff}
+.im-toggle{display:inline-flex;background:var(--oat-l);border-radius:999px;padding:3px;margin:3px 0 9px;align-self:flex-start}
+.im-toggle button{background:transparent;border:none;padding:6px 14px;border-radius:999px;font-size:12px;color:var(--charcoal);cursor:pointer;font-family:inherit;font-weight:500}
+.im-toggle button.active{background:var(--m800);color:#fff;font-weight:600}
+.cs-w{flex:1;display:flex;flex-direction:column;min-height:0}
+.cs-tb{background:var(--oat-l);border-bottom:1px solid var(--oat);padding:10px 16px;font-size:13px;display:flex;align-items:center;gap:12px}
+.cs-tb-dots{display:inline-flex;gap:6px}
+.cs-tb-dots span{width:11px;height:11px;border-radius:50%;background:var(--oat)}
+.cs-app{font-weight:600;color:#000;font-size:13px}
+.cs-main{flex:1;padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.cs-wiz{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:0.3px;flex-wrap:wrap;padding:6px 0}
+.cs-wiz-step{padding:6px 12px;border-radius:999px;background:var(--oat-l);border:1px solid var(--oat);color:var(--silver);font-size:12px}
+.cs-wiz-step.done{background:var(--m300);color:var(--m800);border-color:var(--m600)}
+.cs-wiz-step.cur{background:var(--m800);color:#fff;border-color:var(--m800)}
+.cs-arr{color:var(--silver);font-size:13px}
+.cs-card{background:#fff;border:1px solid var(--oat);border-radius:13px;padding:16px 20px}
+.cs-card.hl{border-color:var(--m600);box-shadow:rgba(27,97,201,0.08) 0 2px 8px}
+.cs-ct{font-size:14px;font-weight:700;color:#000;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.cs-ct .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:var(--m300);color:var(--m800);border-radius:50%;font-size:12px;font-weight:700}
+.cs-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--oat-l);border-radius:7px;font-size:13px;color:var(--charcoal);margin-bottom:5px}
+.cs-row:last-child{margin-bottom:0}
+.cs-row .ck{color:var(--m600);font-weight:700}
+.cs-pg{padding:11px 16px;background:var(--m300);border-radius:9px;font-size:13px;color:var(--m800);font-weight:700;text-align:center}
+.cs-pg.warn{background:var(--l400);color:var(--l800)}
+.cs-pg.ok{background:#84e7a5;color:#0a4d28}
+.cs-mock{background:var(--oat-l);border-radius:9px;padding:11px 13px;font-size:12px;margin-bottom:8px}
+.cs-mock .lb{color:var(--silver);font-size:10px;font-weight:600;text-transform:uppercase;margin-bottom:3px;letter-spacing:0.4px}
+.cs-mock .ai{color:var(--m600);border-left:2px solid var(--m600);padding-left:8px;margin-top:5px}
+.cs-btns{display:flex;gap:6px;margin-top:8px}
+.cs-btn{flex:1;padding:6px;border-radius:6px;font-size:11px;font-weight:700;text-align:center}
+.cs-btn.ok{background:var(--m300);color:var(--m800)}
+.cs-btn.edit{background:#fff;border:1px solid var(--oat);color:var(--charcoal)}
+.bar{display:flex;gap:4px}
+.bar div{flex:1;height:7px;border-radius:4px}
+.dr-w{flex:1;display:flex;flex-direction:column;min-height:0;background:#0f0a1f;color:#e0d4ff}
+.dr-tb{background:var(--u900);padding:10px 16px;font-size:13px;color:var(--u300);display:flex;align-items:center;gap:12px}
+.dr-tb-dots span{background:var(--u800)!important;width:11px!important;height:11px!important}
+.dr-name{font-weight:600;color:#fff;font-size:13px}
+.dr-clock{margin-left:auto;font-family:'Space Mono',monospace;font-size:13px;color:var(--l400)}
+.dr-main{flex:1;padding:24px 32px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-content:start}
+.dr-card{background:rgba(193,176,255,0.08);border:1px solid var(--u800);border-left:3px solid var(--u500);border-radius:11px;padding:16px 20px}
+.dr-card.glow{box-shadow:0 0 20px rgba(138,92,246,0.3)}
+.dr-ct{font-size:14px;font-weight:700;color:#fff;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.dr-line{font-size:13px;color:var(--u300);line-height:1.7;padding:2px 0}
+.dr-line b{color:#fff}
+.dr-q{background:rgba(0,0,0,0.3);border-radius:7px;padding:7px 11px;font-size:12px;color:#e0d4ff;margin:5px 0;font-style:italic}
+.dr-tag{display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px;background:var(--u500);color:#fff;margin-right:5px}
+.dr-tag.warn{background:var(--l500);color:var(--l800)}
+.dr-tag.ok{background:#3bd396;color:#0a4d28}
+.dr-pg{margin-top:8px;height:7px;background:rgba(0,0,0,0.4);border-radius:4px;overflow:hidden}
+.dr-pgb{height:100%;background:linear-gradient(90deg,var(--u500),var(--s500))}
+.web-canvas.night{background:#1a1530}
+.web-canvas.night .web-page{color:var(--u300)}
+.web-canvas.night .web-nav{border-color:var(--u800)}
+.web-canvas.night .web-logo,.web-canvas.night .web-nav-links{color:var(--u300)}
+.web-canvas.night .web-hero{background:rgba(67,8,159,0.3);border-color:var(--u500)}
+.web-canvas.night .web-hero-title,.web-canvas.night .web-hero-sub{color:#e0d4ff}
+.web-canvas.night .web-feature-card{background:rgba(255,255,255,0.05);border-color:var(--u800);color:var(--u300)}
+.web-canvas.night .web-feature-card-title{color:#fff}
+.moon{position:absolute;top:24px;right:32px;font-size:32px;z-index:5}
+.foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--oat);font-size:11px;color:var(--silver);text-align:center}
+.empty-c{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--silver);font-size:15px;text-align:center;padding:40px;line-height:1.9}
+.ev{padding:2px 0;font-family:'Space Mono',monospace;font-size:12px;color:var(--charcoal)}
+.ev .t{color:var(--u800);margin-right:8px}
+.ev.warn{color:var(--l800)}.ev.ok{color:var(--m600);font-weight:700}
+</style></head><body><div class="page">
+<div class="hd"><span class="lbl">完整产品流程 · 三视角 × 三幕</span><h1>AutoService · 平台 / 商户 / C 端 全景旅程</h1><p class="sub">完整保留原 Slide 3 的 Web + IM 模拟视图 · 为自助上线和闲时学习配套同等保真的控制台与管理群视图 · 点击步骤切换 · <kbd style="display:inline-block;background:var(--oat-l);border:1px solid var(--oat);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-family:'Space Mono',monospace;font-size:11px;color:var(--m800)">←</kbd> <kbd style="display:inline-block;background:var(--oat-l);border:1px solid var(--oat);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-family:'Space Mono',monospace;font-size:11px;color:var(--m800)">→</kbd> 切换上下幕</p></div>
+<section class="act">
+<div class="act-top">
+<div class="ahd"><div class="an">A</div><div class="ai"><h2>第一幕 · 商户自助上线</h2><p>一次性 · ≤2h · 沙箱先行</p></div></div>
+<div class="stepper" id="s1"></div>
+</div>
+<div class="tabs" id="t1"></div>
+<div class="stage" id="stage1"></div>
+<div class="desc" id="d1"></div>
+</section>
+
+<section class="act">
+<div class="act-top">
+<div class="ahd"><div class="an b">B</div><div class="ai"><h2>第二幕 · 日常运营 · 实时对话</h2><p>原 Slide 3 六步状态机 · 三视角并行</p></div></div>
+<div class="stepper" id="s2"></div>
+</div>
+<div class="tabs" id="t2"></div>
+<div class="stage" id="stage2"></div>
+<div class="desc" id="d2"></div>
+</section>
+
+<section class="act">
+<div class="act-top">
+<div class="ahd"><div class="an c">C</div><div class="ai"><h2>第三幕 · 闲时学习 · 夜间循环</h2><p>每夜 · 商户拍板 · 灰度上线</p></div></div>
+<div class="stepper" id="s3"></div>
+</div>
+<div class="tabs" id="t3"></div>
+<div class="stage" id="stage3"></div>
+<div class="desc" id="d3"></div>
+</section>
+<div class="foot">AutoService @ OneSync 2026 · 复用原 Slide 3 设计语言 · 配套 PRD: AutoService-PRD.md</div></div>
+<script>
+function webTpl(step,um){
+const page=`<div class="web-page"><div class="web-nav"><div class="web-logo">◆ 商户独立站</div><div class="web-nav-links"><span>首页</span><span>产品</span><span>关于</span></div></div><div class="web-hero"><div class="web-hero-title">欢迎光临</div><div class="web-hero-sub">7×24 智能客服为您服务</div></div><div class="web-features"><div class="web-feature-card"><div class="web-feature-card-title">套餐 A</div>基础版,适合个人</div><div class="web-feature-card"><div class="web-feature-card-title">套餐 B</div>进阶版,本月特惠</div></div></div>`;
+const cb=`<div class="web-fab-call">📞</div>`;
+if(step===0)return page+cb+`<div class="web-fab highlight">💬</div>`;
+let m='';
+if(step===1)m=`<div class="web-msg agent">您好!我是智能客服,我们有 A/B/C 三档套餐</div><div class="web-msg customer">想了解套餐</div>`;
+else if(step===2)m=`<div class="web-msg agent">您好!我们有 A/B/C 三档套餐</div><div class="web-msg customer">想了解套餐</div><div class="web-msg customer">B 档怎么样?</div>`;
+else if(step===3)m=`<div class="web-msg customer">B 档怎么样?</div><div class="web-msg agent">B 档本月有特别优惠,首月可享 8 折,推荐您...</div><div class="web-msg customer">具体怎么收费?</div>`;
+else if(step===4){if(um==='a')m=`<div class="web-msg customer">我要找你们经理</div><div class="web-msg agent">好的,正在为您接通人工客服...</div><div class="web-msg system">系统:人工客服即将接入</div>`;else m=`<div class="web-msg customer">具体怎么收费?</div><div class="web-msg agent">稍等,为您接通专属客服...</div><div class="web-msg system">系统:正在转接人工</div>`;}
+else if(step===5)m=`<div class="web-msg agent">您好,我是客服小李,看到您在询问 B 档</div><div class="web-msg customer">嗯</div><div class="web-msg agent">注意到您之前买过 X 服务,B 档可以无缝接续</div><div class="web-msg customer">听起来不错,详细说说</div>`;
+return page+cb+`<div class="web-fab">💬</div><div class="web-modal"><div class="web-modal-header"><div class="web-modal-title">智能客服 · 在线</div><div class="web-modal-close">×</div></div><div class="web-modal-body">${m}</div><div class="web-modal-input"><div class="web-modal-input-box">输入消息...</div></div></div>`;
+}
+function imTpl(step,um){
+const sb=`<div class="im-sidebar"><div class="im-ws-header"><div class="im-ws-title">商户工作区</div><div class="im-ws-user">客服小李</div></div><div class="im-section-title">频道</div><div class="im-channel">管理群</div><div class="im-channel active">小李的Agent分队${step===1?`<span class="im-channel-badge">2</span>`:''}</div><div class="im-section-title">直接消息</div><div class="im-channel dm">管理 Agent</div></div>`;
+let mn='';
+if(step===0)mn=`<div class="im-main-header"><div class="im-main-title">小李的Agent分队</div><div class="im-main-subtitle">客服小李 + 负责的 Agents</div></div><div class="im-feed"><div class="im-empty">暂无进行中的对话<br>等待 Agent 接入新客户...</div></div><div class="im-input"><div class="im-input-box">发送消息到 Agent分队</div></div>`;
+else if(step===1)mn=`<div class="im-main-header"><div class="im-main-title">小李的Agent分队</div><div class="im-main-subtitle">2 个进行中对话</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a1">a1</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent1</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:38</span></div><div class="im-msg-text">客户A 接入,询问账户问题</div><div class="im-block"><div class="im-block-title">卡片 #1 · 客户A<span class="im-block-status">进行中</span></div><div class="im-block-meta">最近: 询问账户余额</div></div></div></div><div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:41</span></div><div class="im-msg-text">新客户接入,询问套餐</div><div class="im-block"><div class="im-block-title">卡片 #2 · 客户B<span class="im-block-status">进行中</span></div><div class="im-block-meta">最近: 想了解套餐</div></div></div></div></div><div class="im-input"><div class="im-input-box">发送消息到 Agent分队</div></div>`;
+else if(step===2)mn=`<div class="im-main-header"><div class="im-main-title">小李的Agent分队</div><div class="im-main-subtitle">点击卡片打开实时聊天窗</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a1">a1</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent1</span><span class="im-msg-time">9:38</span></div><div class="im-block"><div class="im-block-title">卡片 #1 · 客户A<span class="im-block-status">进行中</span></div><div class="im-block-meta">询问账户余额</div></div></div></div><div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-time">9:41</span></div><div class="im-block highlight"><div class="im-block-title">卡片 #2 · 客户B (点击中)<span class="im-block-status">打开</span></div><div class="im-block-meta">正在弹出实时聊天窗...</div></div></div></div></div><div class="im-input"><div class="im-input-box">发送消息到 Agent分队</div></div>`;
+else if(step===3)mn=`<div class="im-main-header"><div class="im-main-title">聊天窗 #2 · 客户B</div><div class="im-main-subtitle">默认 copilot 模式 · agent2 driver</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:42</span></div><div class="im-relay-line">客户说: <span class="quote">想了解套餐</span></div><div class="im-relay-line">拟回复: <span class="quote">我们有 A/B/C 三档...</span></div></div></div><div class="im-suggest">💡 <b>客服小李 (你)</b>: 建议强调 B 档本月优惠</div><div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:43</span></div><div class="im-relay-line">已采纳建议并发送给客户</div><div class="im-relay-line">客户说: <span class="quote">B 档怎么收费?</span></div></div></div><div class="im-system">↻ 实时刷新中</div></div><div class="im-input"><div class="im-input-box">输入建议给 agent2 (不会发给客户)</div></div>`;
+else if(step===4){const bA=`<div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:45</span></div><div class="im-relay-line">客户说: <span class="quote">我要找你们经理</span></div><div class="im-relay-line">超出处理范围,主动求助:</div></div></div><div class="im-handoff">⚠ <b>agent2</b> @客服小李 请接管 #2</div><div class="im-system">→ 等待人工响应</div>`;
+const bB=`<div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:45</span></div><div class="im-relay-line">客户说: <span class="quote">具体怎么收费?</span></div><div class="im-relay-line">拟回复: <span class="quote">B 档每月 199 元起...</span></div></div></div><div class="im-card"><div class="im-avatar human">李</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">客服小李</span><span class="im-msg-time">9:45</span></div><div class="im-msg-text"><span class="im-cmd">/hijack #2</span></div></div></div><div class="im-system">→ 角色翻转中...</div>`;
+mn=`<div class="im-main-header"><div class="im-main-title">聊天窗 #2 · 人工提醒</div><div class="im-main-subtitle">两种触发方式可切换查看</div></div><div class="im-feed"><div class="im-toggle"><button class="tg ${um==='a'?'active':''}" data-m="a">a) Agent 主动</button><button class="tg ${um==='b'?'active':''}" data-m="b">b) 人工主动</button></div>${um==='a'?bA:bB}</div><div class="im-input"><div class="im-input-box">输入消息或 / 命令</div></div>`;}
+else mn=`<div class="im-main-header"><div class="im-main-title">聊天窗 #2 · 客户B</div><div class="im-main-subtitle">⚡ 人工已接管 · agent2 副驾驶</div></div><div class="im-feed"><div class="im-driver">👤 <b>客服小李</b>: 您好,我是客服小李</div><div class="im-sidebar-msg">[侧栏] agent2: 客户上月购买过 X,可推荐升级</div><div class="im-driver">👤 <b>客服小李</b>: 注意到您之前买过 X,可无缝接续</div><div class="im-card"><div class="im-avatar a2">a2</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">agent2</span><span class="im-msg-bot-tag">APP</span><span class="im-msg-time">9:46</span></div><div class="im-relay-line">客户回复: <span class="quote">听起来不错,详细说说</span></div></div></div><div class="im-sidebar-msg">[侧栏] agent2: 强调首月免费试用条款</div><div class="im-system">↻ 人工 driver · agent 副驾驶</div></div><div class="im-input"><div class="im-input-box">直接输入,会发给客户 (人工 driver 模式)</div></div>`;
+return `<div class="im-titlebar"><div class="im-titlebar-dots"><span></span><span></span><span></span></div><div class="im-workspace-name">商户客服工作区</div></div><div class="im-body">${sb}<div class="im-main">${mn}</div></div>`;
+}
+function ccA(step){
+if(step<5)return `<div class="cs-tb"><div class="cs-tb-dots"><span></span><span></span><span></span></div><div class="cs-app">mystore.com (尚未发布)</div></div><div class="empty-c"><div style="font-size:32px;opacity:0.3">🌐</div><div style="font-style:italic">商户尚未对外开放<br>客户暂时无法接触<br><br>当前：商户在配置中</div></div>`;
+return webTpl(0);
+}
+function csA(step){
+const wiz=['上传','权限','预演','合规','可用'];
+const wh=`<div class="cs-wiz">${wiz.map((w,i)=>{let c='';if(step===0)c='';else if(i<step-1)c='done';else if(i===step-1||(step===5&&i===4))c='cur';return `<span class="cs-wiz-step ${c}">${i+1}.${w}</span>${i<wiz.length-1?'<span class="cs-arr">›</span>':''}`}).join('')}</div>`;
+const M=['<div class="cs-card hl"><div class="cs-ct">🆕 注册接入</div><div class="cs-row"><span>公司</span><span style="color:#000">MyAwesomeStore</span></div><div class="cs-row"><span>联系人</span><span style="color:#000">老陈</span></div><div class="cs-row"><span>主营国家</span><span style="color:#000">🇨🇳 🇪🇺 🇺🇸</span></div></div><div class="cs-pg">→ 平台正在分配独立租户沙箱...</div>',
+'<div class="cs-card hl"><div class="cs-ct"><span class="num">1</span>上传基础信息</div><div class="cs-row"><span>📄 公司官网 URL</span><span class="ck">✓</span></div><div class="cs-row"><span>📋 产品目录.pdf</span><span class="ck">✓</span></div><div class="cs-row"><span>💬 历史对话.csv</span><span class="ck">✓</span></div></div><div class="cs-card"><div class="cs-ct">🤖 Agent 初始化</div><div class="cs-row"><span>客服 Agent</span><span class="ck">✓</span></div><div class="cs-row"><span>翻译 Agent</span><span class="ck">✓</span></div><div class="cs-row"><span>线索收集 Agent</span><span class="ck">✓</span></div><div class="cs-row"><span>智能分流 Agent</span><span class="ck">✓</span></div></div><div class="cs-pg">~15 min · 基于公司资料生成专属 Agent</div>',
+'<div class="cs-card hl"><div class="cs-ct"><span class="num">2</span>配置权限</div><div class="cs-row"><span>管理 Agent 对话</span><span class="ck">☑</span></div><div class="cs-row"><span>查看客户档案</span><span class="ck">☑</span></div><div class="cs-row"><span>发送通知/推送</span><span class="ck">☑</span></div><div class="cs-row"><span>调用业务系统</span><span class="ck">☑</span></div></div><div class="cs-card"><div class="cs-ct">💬 IM 管理群</div><div class="cs-row"><span>群已创建</span><span class="ck">✓</span></div><div class="cs-row"><span>4 个 Agent 已入群</span><span class="ck">✓</span></div></div><div class="cs-pg">已配置 4/4</div>',
+'<div class="cs-card hl"><div class="cs-ct"><span class="num">3</span>虚拟客户预演</div><div class="cs-mock"><div class="lb">虚拟客户</div><div>"有优惠吗?"</div><div class="lb" style="margin-top:4px">AI 回答</div><div class="ai">"本月新客首购 8 折..."</div><div class="cs-btns"><div class="cs-btn ok">✓ 通过</div><div class="cs-btn edit">✎ 修改</div></div></div><div class="cs-mock"><div class="lb">虚拟客户</div><div>"¿Envío a México?"</div><div class="lb" style="margin-top:4px">AI 回答</div><div class="ai">"Sí, 7-10 días"</div><div class="cs-btns"><div class="cs-btn ok">✓ 通过</div><div class="cs-btn edit">✎ 修改</div></div></div></div><div class="cs-pg">~30 min · 已审 8 / 12 条</div>',
+'<div class="cs-card hl"><div class="cs-ct"><span class="num">4</span>合规自动预检</div><div class="cs-row"><span>🇪🇺 GDPR 同意声明</span><span class="ck">✓</span></div><div class="cs-row"><span>🇺🇸 CCPA 数据披露</span><span class="ck">✓</span></div><div class="cs-row"><span>🇨🇳 个保法条款</span><span class="ck">✓</span></div></div><div class="cs-pg warn">⚠ 沙箱内部可用 · 对外开放前需完成 1 项额外签署</div>',
+'<div class="cs-card hl"><div class="cs-ct">🎉 沙箱可用</div><div class="cs-row"><span>沙箱 URL</span><span style="color:var(--m600);font-family:Space Mono,monospace;font-size:9px">mystore.sandbox.onesync</span></div><div class="cs-row"><span>团队成员</span><span style="color:#000">已邀请 5 人</span></div><div class="cs-row"><span>对外开放</span><span style="color:var(--l700);font-weight:700">待商户决定</span></div></div><div class="cs-pg ok">✓ 总耗时 1h52min · 准备好后一键对外</div>'];
+return `<div class="cs-tb"><div class="cs-tb-dots"><span></span><span></span><span></span></div><div class="cs-app">console.onesync.io / mystore</div></div><div class="cs-main">${wh}${M[step]}</div>`;
+}
+function pA(step){
+const it=[[['tenant_id','mystore_8f3a','ok'],['独立沙箱','已分配','ok'],['IAM 凭证','已下发','ok'],['合规模板','EU+US+CN','ok']],[['CI 解析','运行中','warn'],['抽取 FAQ','87 条','ok'],['生成 Agents','4/4','ok'],['入库知识','tenant 私有','ok']],[['IM 管理群','已建','ok'],['权限绑定','4/4','ok'],['命令面板','已注册','ok'],['通知通道','就绪','ok']],[['生成器','行业+知识库','ok'],['虚拟对话','12 条','ok'],['通过率','92%','ok'],['反馈','用于调优','ok']],[['GDPR','下发完成','ok'],['CCPA','下发完成','ok'],['个保法','下发完成','ok'],['守门策略','开放前必过','warn']],[['7 项 SLA','监控开启','ok'],['告警通道','已绑定管理群','ok'],['计费','本期免费','ok'],['灰度通道','就绪','ok']]][step];
+return `<div class="cs-tb"><div class="cs-tb-dots"><span></span><span></span><span></span></div><div class="cs-app">platform.onesync / tenant#mystore_8f3a</div></div><div class="cs-main"><div class="cs-card"><div class="cs-ct">⚙️ 租户配置中心</div>${it.map(i=>`<div class="cs-row"><span>${i[0]}</span><span style="color:${i[2]==='ok'?'var(--m600)':'var(--l700)'};font-weight:700">${i[1]}</span></div>`).join('')}</div><div class="cs-card"><div class="cs-ct">📊 上线进度</div><div class="bar">${[0,1,2,3,4,5].map(i=>`<div style="background:${i<=step?'var(--m600)':'var(--oat)'}"></div>`).join('')}</div><div style="margin-top:5px;font-size:10px;color:var(--charcoal)">${step+1} / 6 · ${['注册','上传','权限','预演','合规','可用'][step]}</div></div></div>`;
+}
+function pB(step){
+const sla=[[['onboard 首屏','—','idle'],['占位消息','—','idle'],['接单等待','—','idle']],[['onboard 首屏','2.1s','ok'],['快模型问候','<1s','ok'],['tenant 路由','就绪','ok']],[['对话写入','2 条/min','ok'],['临时记忆池','活跃','ok'],['快慢模型','就位','ok']],[['Copilot 通道','已建','ok'],['隔离','对客户不可见','ok'],['fact_check','通过','ok']],[['快流式占位','<1s','ok'],['慢查询续写','8.2s','ok'],['CRM 调用','成功','ok']],[['HumanRequested','激活','warn'],['接单等待','42s/180s','warn'],['对话摘要','已生成','ok']],[['★ 接管次数','+1','ok'],['CSAT','5/5','ok'],['结案率','89.3%','ok']]][step];
+const ev=[['<div class="ev" style="text-align:center;font-style:italic;color:var(--silver);padding:20px 0">tenant 待命中...</div>'],['<div class="ev"><span class="t">09:38:02</span> conn.open tenant=mystore client=david</div>','<div class="ev"><span class="t">09:38:04</span> ctx.load history found ✓</div>','<div class="ev"><span class="t">09:38:05</span> agent.greet TTFB=2.1s</div>'],['<div class="ev"><span class="t">09:38:12</span> mem.write conv_id=#2</div>','<div class="ev"><span class="t">09:38:13</span> agent2.dispatch → Agent分队</div>','<div class="ev"><span class="t">09:38:13</span> card.created #2</div>'],['<div class="ev"><span class="t">09:42:01</span> human.open chat_id=#2</div>','<div class="ev"><span class="t">09:42:01</span> copilot.channel.create</div>','<div class="ev"><span class="t">09:42:02</span> mode=copilot driver=agent2</div>'],['<div class="ev"><span class="t">09:43:08</span> human.suggest "强调 B 档优惠"</div>','<div class="ev"><span class="t">09:43:09</span> agent2.adopt suggestion</div>','<div class="ev"><span class="t">09:43:10</span> slow.query CRM+KB 8.2s</div>','<div class="ev"><span class="t">09:43:18</span> rewrite.replace placeholder</div>'],['<div class="ev"><span class="t">09:45:00</span> agent2.confidence 0.42<0.6</div>','<div class="ev warn"><span class="t">09:45:00</span> state → HumanRequested</div>','<div class="ev"><span class="t">09:45:01</span> @客服小李 dispatched</div>','<div class="ev"><span class="t">09:45:02</span> SLA timer 180s</div>'],['<div class="ev"><span class="t">09:45:42</span> human.takeover #2</div>','<div class="ev ok"><span class="t">09:45:42</span> ★ takeover_count +1</div>','<div class="ev"><span class="t">09:46:30</span> agent2 → sidebar</div>','<div class="ev"><span class="t">09:48:12</span> conv.close CSAT=5</div>','<div class="ev ok"><span class="t">09:48:12</span> 升级转结案率 89.3% ✓</div>']][step];
+return `<div class="cs-tb"><div class="cs-tb-dots"><span></span><span></span><span></span></div><div class="cs-app">platform.onesync.io / monitor</div></div><div class="cs-main"><div class="cs-card"><div class="cs-ct">◉ 实时 SLA</div>${sla.map(s=>`<div class="cs-row"><span>${s[0]}</span><span style="color:${s[2]==='ok'?'var(--m600)':(s[2]==='warn'?'var(--l700)':'var(--silver)')};font-weight:700">${s[1]}</span></div>`).join('')}</div><div class="cs-card"><div class="cs-ct">📡 事件流</div><div style="line-height:1.7;max-height:130px;overflow-y:auto">${ev.join('')}</div></div>${step>=5?`<div class="cs-pg ${step===6?'ok':'warn'}">${step===6?'✓ 计费已入账 · 接管次数 +1':'⏱ 等待接单 42s / 180s'}</div>`:''}</div>`;
+}
+function ccC(step){
+if(step===0)return webTpl(2);
+if(step===5)return `<div class="web-page"><div class="web-nav"><div class="web-logo">◆ 商户独立站</div><div class="web-nav-links"><span>首页</span><span>产品</span><span>关于</span></div></div><div class="web-hero"><div class="web-hero-title">欢迎光临</div><div class="web-hero-sub">7×24 智能客服为您服务</div></div><div class="web-features"><div class="web-feature-card"><div class="web-feature-card-title">套餐 A</div>基础版,适合个人</div><div class="web-feature-card"><div class="web-feature-card-title">套餐 B</div>进阶版,本月特惠</div></div></div><div class="web-fab-call">📞</div><div class="web-fab">💬</div><div class="web-modal"><div class="web-modal-header"><div class="web-modal-title">智能客服 · 在线</div><div class="web-modal-close">×</div></div><div class="web-modal-body"><div class="web-msg system">第二天 · 客户回访</div><div class="web-msg customer">B 档怎么样?</div><div class="web-msg agent">B 档本月 8 折,特别适合您之前的使用场景</div><div class="web-msg system">↑ 命中夜间沉淀的新经验</div></div><div class="web-modal-input"><div class="web-modal-input-box">输入消息...</div></div></div>`;
+return `<div class="moon">🌙</div><div class="web-page"><div class="web-nav"><div class="web-logo">◆ 商户独立站</div><div class="web-nav-links"><span>首页</span><span>产品</span><span>关于</span></div></div><div class="web-hero"><div class="web-hero-title">夜深 · 客户安静</div><div class="web-hero-sub">系统在背后整理今天的对话</div></div><div class="web-features"><div class="web-feature-card"><div class="web-feature-card-title">套餐 A</div>基础版,适合个人</div><div class="web-feature-card"><div class="web-feature-card-title">套餐 B</div>进阶版,本月特惠</div></div></div><div style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:10px;color:var(--u300);font-style:italic">💤 业务低峰 · QPS 1.2/min</div>`;
+}
+function imC(step){
+const sb=`<div class="im-sidebar"><div class="im-ws-header"><div class="im-ws-title">商户工作区</div><div class="im-ws-user">老陈 · 管理员</div></div><div class="im-section-title">频道</div><div class="im-channel active">管理群${step===5?`<span class="im-channel-badge">3</span>`:''}</div><div class="im-channel">小李的Agent分队</div><div class="im-section-title">直接消息</div><div class="im-channel dm">Dream Engine</div></div>`;
+const M=[
+// step 0: 配置规则
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">14:20 · 规则配置对话</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar human">陈</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">老陈</span><span class="im-msg-time">14:20</span></div><div class="im-msg-text">@Dream Engine 帮我配一下夜间学习的规则</div></div></div><div class="im-card"><div class="im-avatar a1">梦</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">Dream Engine</span><span class="im-msg-bot-tag">DREAM</span><span class="im-msg-time">14:20</span></div><div class="im-msg-text">好的。我需要您确认 4 个参数:</div><div class="im-block highlight"><div class="im-block-title">① 触发时机<span class="im-block-status">低峰</span></div><div class="im-block-meta">当 QPS &lt; 白天均值的 20% 且持续 30min</div></div><div class="im-block"><div class="im-block-title">② 覆盖范围<span class="im-block-status">待定</span></div><div class="im-block-meta">话术 / FAQ / 升级流程 — 是否全开?</div></div><div class="im-block"><div class="im-block-title">③ 风险阈值<span class="im-block-status">待定</span></div><div class="im-block-meta">中风险以上提案是否需要二次确认?</div></div><div class="im-block"><div class="im-block-title">④ 灰度策略<span class="im-block-status">待定</span></div><div class="im-block-meta">5%→25%→100% 或其他?</div></div></div></div><div class="im-card"><div class="im-avatar human">陈</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">老陈</span><span class="im-msg-time">14:23</span></div><div class="im-msg-text">① 默认<br>② 先开话术 + FAQ,升级流程暂不碰<br>③ 中风险需二次确认 ✓<br>④ 5% → 25% → 100%,每阶段观察 24h</div></div></div><div class="im-card"><div class="im-avatar a1">梦</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">Dream Engine</span><span class="im-msg-bot-tag">DREAM</span><span class="im-msg-time">14:23</span></div><div class="im-msg-text">规则已保存 ✓ 今晚开始按此规则运行</div></div></div></div><div class="im-input"><div class="im-input-box">发送消息到 管理群</div></div>`,
+// step 1: 临时记忆池 (原 step 0)
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">17:30 · 下班前</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a1">系</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">系统</span><span class="im-msg-time">17:30</span></div><div class="im-msg-text">今日服务客户 247 人 · 接管 12 次 · CSAT 4.6</div></div></div><div class="im-card"><div class="im-avatar human">陈</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">老陈</span><span class="im-msg-time">17:32</span></div><div class="im-msg-text">辛苦了,明早见 👋</div></div></div><div class="im-system">— 老陈下线 —</div></div><div class="im-input"><div class="im-input-box">发送消息到 管理群</div></div>`,
+// step 2: Dream Engine 启动
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">02:14 · 深夜</div></div><div class="im-feed"><div class="im-empty">💤 群内安静<br>Dream Engine 正在后台工作</div></div><div class="im-input"><div class="im-input-box">发送消息到 管理群</div></div>`,
+// step 3: 回放整理
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">03:42 · 回放进行中</div></div><div class="im-feed"><div class="im-empty">📖 回放今日 247 段对话<br>抽取候选经验中...</div></div><div class="im-input"><div class="im-input-box">发送消息到 管理群</div></div>`,
+// step 4: 沉淀经验
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">05:18 · 沉淀完成</div></div><div class="im-feed"><div class="im-empty">📚 已沉淀 3 条候选经验<br>等待天亮推送给老陈审核</div></div><div class="im-input"><div class="im-input-box">发送消息到 管理群</div></div>`,
+// step 5: 晨起审核
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">08:47 · 晨起推送 · 3 条提案</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a1">梦</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">Dream Engine</span><span class="im-msg-bot-tag">DREAM</span><span class="im-msg-time">08:47</span></div><div class="im-msg-text">早上好老陈,昨夜整理出 3 条提案:</div><div class="im-block highlight"><div class="im-block-title">提案 #1 · 套餐 B 话术优化<span class="im-block-status">低风险</span></div><div class="im-block-meta">来源 23 段对话 · 建议强调首月免费</div></div><div class="im-block"><div class="im-block-title">提案 #2 · 西语 FAQ 补充<span class="im-block-status">低风险</span></div><div class="im-block-meta">墨西哥客户高频问"运费"</div></div></div></div><div class="im-card"><div class="im-avatar human">陈</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">老陈</span><span class="im-msg-time">08:49</span></div><div class="im-msg-text">提案 #1 ✓ 通过<br>提案 #2 ✎ 改一下运费数字</div></div></div><div class="im-system">→ 进入灰度发布</div></div><div class="im-input"><div class="im-input-box">/approve #1  /edit #2  /reject #3</div></div>`,
+// step 6: 灰度上线
+`<div class="im-main-header"><div class="im-main-title">管理群</div><div class="im-main-subtitle">09:30 · 灰度进行中</div></div><div class="im-feed"><div class="im-card"><div class="im-avatar a1">梦</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">Dream Engine</span><span class="im-msg-bot-tag">DREAM</span><span class="im-msg-time">09:30</span></div><div class="im-msg-text">提案 #1 灰度中 · 5% → 25% 已扩量</div><div class="im-block"><div class="im-block-title">指标对比 · 命中 vs 未命中<span class="im-block-status">观察中</span></div><div class="im-block-meta">CSAT: 4.7 vs 4.5 · 升级率: 持平</div></div></div></div><div class="im-card"><div class="im-avatar human">陈</div><div class="im-msg-body"><div class="im-msg-meta"><span class="im-msg-author">老陈</span><span class="im-msg-time">09:32</span></div><div class="im-msg-text">看着不错,继续 ✓</div></div></div><div class="im-driver">⚡ 出问题随时 <span class="im-cmd">/rollback #1</span></div></div><div class="im-input"><div class="im-input-box">/rollback #1 — 一键撤回</div></div>`];
+return `<div class="im-titlebar"><div class="im-titlebar-dots"><span></span><span></span><span></span></div><div class="im-workspace-name">商户客服工作区</div></div><div class="im-body">${sb}<div class="im-main">${M[step]}</div></div>`;
+}
+function pC(step){
+// step 0: 配置规则接收 | 1: 临时记忆池 | 2: 苏醒 | 3: 回放 | 4: 沉淀 | 5: 推送 | 6: 灰度
+const cards=[
+// step 0: 规则已接收
+`<div class="cs-card hl"><div class="cs-ct">⚙️ 学习规则已保存</div><div class="cs-row"><span>租户</span><span style="color:#000">mystore_8f3a</span></div><div class="cs-row"><span>触发时机</span><span style="color:var(--m600);font-weight:700">QPS < 20% · 30min</span></div><div class="cs-row"><span>覆盖范围</span><span style="color:var(--m600);font-weight:700">话术 + FAQ</span></div><div class="cs-row"><span>风险阈值</span><span style="color:var(--m600);font-weight:700">中风险需二次确认</span></div><div class="cs-row"><span>灰度策略</span><span style="color:var(--m600);font-weight:700">5% → 25% → 100%</span></div></div>
+<div class="cs-card"><div class="cs-ct">📋 合规守门规则 (平台预置)</div><div class="cs-row"><span>GDPR 同意声明</span><span class="ck">已下发</span></div><div class="cs-row"><span>CCPA 数据披露</span><span class="ck">已下发</span></div><div class="cs-row"><span>个保法条款</span><span class="ck">已下发</span></div></div><div class="cs-pg">✓ 今晚 02:00 后按此规则运行</div>`,
+// step 1: 临时记忆池
+`<div class="cs-card hl"><div class="cs-ct">🗄️ 临时记忆池 · 写入中</div><div class="cs-row"><span>租户</span><span style="color:#000">mystore_8f3a</span></div><div class="cs-row"><span>容量</span><span style="color:#000">247 段对话</span></div><div class="cs-row"><span>TTL</span><span style="color:#000">7 天滚动</span></div><div class="cs-row"><span>状态</span><span style="color:var(--l700);font-weight:700">未结构化</span></div></div><div class="cs-card"><div class="cs-ct">⏱ 等待苏醒条件</div><div class="cs-row"><span>当前 QPS</span><span style="color:#000">38 / min (白天)</span></div><div class="cs-row"><span>苏醒阈值</span><span style="color:var(--silver)">< 7.6 / min</span></div></div><div class="cs-pg warn">⏳ 等待业务低峰</div>`,
+// step 2: Dream Engine 启动
+`<div class="cs-card hl"><div class="cs-ct">💤 Dream Engine · 苏醒</div><div class="cs-row"><span>触发条件</span><span style="color:#000">QPS 持续 30min < 20%</span></div><div class="cs-row"><span>当前 QPS</span><span style="color:var(--m600);font-weight:700">1.2 / min ✓</span></div><div class="cs-row"><span>资源</span><span style="color:#000">闲置 GPU 池</span></div><div class="cs-row"><span>打断策略</span><span style="color:#000">白天突增可中断</span></div></div><div class="cs-pg">→ 开始回放流水线</div>`,
+// step 3: 回放整理
+`<div class="cs-card hl"><div class="cs-ct">📖 回放整理</div><div class="cs-row"><span>输入</span><span style="color:#000">今日 247 段对话</span></div></div><div class="cs-card"><div class="cs-ct">📊 分析结果</div><div class="cs-mock"><div class="lb">高频问题</div><div class="ai">"B 档优惠?" × 23 次</div></div><div class="cs-mock"><div class="lb">AI 答错</div><div class="ai">西语运费报错 × 5 次</div></div><div class="cs-mock"><div class="lb">客户不满</div><div class="ai">CSAT < 4 × 8 段</div></div></div>`,
+// step 4: 沉淀经验
+`<div class="cs-card hl"><div class="cs-ct">📚 结构化沉淀</div><div class="cs-row"><span>候选经验</span><span style="color:#000">3 条</span></div></div><div class="cs-card"><div class="cs-ct">🏷 候选清单</div><div class="cs-row"><span>① 问→答 · 套餐 B 话术</span><span class="ck">低风险</span></div><div class="cs-row"><span>② FAQ · 西语运费</span><span class="ck">低风险</span></div><div class="cs-row"><span>③ 流程 · 投诉升级</span><span style="color:var(--l700);font-weight:700">中风险</span></div></div><div class="cs-pg">✓ 已通过合规模板预检</div>`,
+// step 5: 推送
+`<div class="cs-card hl"><div class="cs-ct">🌅 推送提案</div><div class="cs-row"><span>通道</span><span style="color:#000">#mystore 管理群</span></div><div class="cs-row"><span>提案数量</span><span style="color:#000">3 条</span></div><div class="cs-row"><span>等待</span><span style="color:var(--l700);font-weight:700">商户管理员拍板</span></div></div><div class="cs-card"><div class="cs-ct">🛡 平台原则</div><div style="font-size:12px;color:var(--charcoal);line-height:1.7">不替商户决策 · 只提供结构化提案与风险评估 · 商户保留最终批准权</div></div>`,
+// step 6: 灰度
+`<div class="cs-card hl"><div class="cs-ct">📈 灰度发布中</div><div class="cs-row"><span>提案 #1</span><span style="color:var(--m600);font-weight:700">5% → 25%</span></div><div class="bar" style="margin-top:6px"><div style="background:var(--m600);flex:1"></div><div style="background:var(--m600);flex:1"></div><div style="background:var(--oat);flex:2"></div></div></div><div class="cs-card"><div class="cs-ct">◉ 监控指标</div><div class="cs-row"><span>CSAT</span><span style="color:var(--m600);font-weight:700">4.7 vs 4.5 ↑</span></div><div class="cs-row"><span>升级转结案率</span><span style="color:#000">持平</span></div><div class="cs-row"><span>熔断</span><span style="color:var(--l700)">指标跌则自动回滚</span></div></div><div class="cs-pg ok">✓ 每天醒来都比昨天聪明</div>`
+];
+const clk=['14:20','17:30','02:14','03:42','05:18','08:47','09:30'][step];
+return `<div class="cs-tb"><div class="cs-tb-dots"><span></span><span></span><span></span></div><div class="cs-app">platform.onesync / dream-engine</div><div style="margin-left:auto;font-family:'Space Mono',monospace;font-size:12px;color:var(--m600);font-weight:700">⏱ ${clk}</div></div><div class="cs-main">${cards[step]}</div>`;
+}
+const A={a1:{s:['注册接入','上传资料','配置权限','虚拟预演','合规预检','沙箱可用'],d:['<b>① 注册接入</b>:商户提交基本信息 — 平台分配独立租户沙箱与初始 IAM','<b>② 上传资料</b>:CI 自动解析公司资料,15 分钟内生成 4 个初版 Agent','<b>③ 配置权限</b>:勾选四类权限 — IM 管理群自动建立,4 个 Agent 入群','<b>④ 虚拟预演</b>:系统生成典型对话 — 商户逐条 ✓ / ✎ 审阅','<b>⑤ 合规预检</b>:按服务地区核对 GDPR / CCPA / 个保法 — <b>不阻塞沙箱</b>','<b>⑥ 沙箱可用</b>:团队内部先用 — 准备好后一键对外开放']},
+a2:{s:['顾客触发','Agent 接洽','对话监管','人工建议','人工提醒','角色翻转'],d:['<b>状态 1 · 顾客触发</b>:顾客在独立站点击右下角浮动按钮 — 商户工作区还看不到任何动静','<b>状态 2 · Agent 接洽</b>:Agent 接入会话,在所属人工的 Agent 分队频道发出实时刷新的对话卡片','<b>状态 3 · 对话监管</b>:人工点开卡片,弹出实时聊天窗进入监管模式 — 顾客无感知','<b>状态 4 · 人工建议</b>:Agent driver,人工只在窗内提建议 — 不会直接回复客户','<b>状态 5 · 人工提醒</b>:可切换两种触发方式 — Agent @请求 或 人工 /hijack','<b>状态 6 · 角色翻转</b>:人工 driver,Agent 退到侧栏继续给建议(副驾驶模式)']},
+a3:{s:['配置规则','临时记忆池','Dream Engine 启动','回放整理','沉淀经验','晨起审核','灰度上线'],d:['<b>① 配置规则</b>:老陈在管理群里和 Dream Engine 对话,约定夜间学习的触发时机、覆盖范围、风险阈值','<b>② 临时记忆池</b>:白天所有对话写入临时记忆池 — 未整理 · 等待消化','<b>③ Dream Engine 启动</b>:业务低峰自动触发 — 不抢白天的 GPU','<b>④ 回放整理</b>:重读今日所有对话 — 抽取经验 · 发现盲区','<b>⑤ 沉淀经验</b>:结构化、可复用 — 候选经验进入待审核队列','<b>⑥ 晨起审核</b>:提案推送至管理群 — <b>商户管理员拍板</b>,平台不干预','<b>⑦ 灰度上线</b>:5% → 25% → 50% → 100% 渐进上线 — /rollback 可立即撤回']}};
+
+// 视图渲染器映射
+const VIEWS={
+  // C 端
+  'a1-c':{label:'C 端客户 · 已上线的独立站',cls:'pn-c',render:s=>s>=5?`<div class="web-canvas">${ccA(s)}</div>`:`<div class="cs-w">${ccA(s)}</div>`},
+  'a2-c':{label:'C 端客户 · 独立站 Web',cls:'pn-c',render:s=>`<div class="web-canvas">${webTpl(s,st.um)}</div>`},
+  'a3-c':{label:'C 端客户 · 独立站 Web (夜)',cls:'pn-c',render:s=>`<div class="web-canvas night">${ccC(s)}</div>`},
+  // 商户
+  'a1-m':{label:'商户控制台 · 上线向导',cls:'pn-m',render:s=>`<div class="cs-w">${csA(s)}</div>`},
+  'a2-m':{label:'商户客服 · IM 工作区',cls:'pn-m',render:s=>`<div class="im-w">${imTpl(s,st.um)}</div>`},
+  'a3-m':{label:'商户管理员 · IM 管理群',cls:'pn-m',render:s=>`<div class="im-w">${imC(s)}</div>`},
+  // 平台
+  'a1-p':{label:'平台 · 租户配置中心',cls:'pn-p',render:s=>`<div class="cs-w">${pA(s)}</div>`},
+  'a2-p':{label:'平台 · 监控控制台',cls:'pn-p',render:s=>`<div class="cs-w">${pB(s)}</div>`},
+  'a3-p':{label:'平台 · 学习沉淀池',cls:'pn-p',render:s=>`<div class="cs-w">${pC(s)}</div>`}
+};
+
+// 每幕的 tab 配置:每个 tab 对应一组 (双) 面板组合
+const TABS={
+  a1:[
+    {id:'config',label:'商户控制台 + 租户配置中心',views:['a1-m','a1-p'],dotCls:['t-m','t-p']},
+    {id:'live',label:'已上线的独立站',views:['a1-c'],dotCls:['t-c'],hint:'仅在沙箱可用后查看',gateStep:5}
+  ],
+  a2:[
+    {id:'frontline',label:'C 端 Web + IM 工作区',views:['a2-c','a2-m'],dotCls:['t-c','t-m']},
+    {id:'platform',label:'平台 · 监控控制台',views:['a2-p'],dotCls:['t-p']}
+  ],
+  a3:[
+    {id:'mgmt',label:'IM 管理群 + 学习沉淀池',views:['a3-m','a3-p'],dotCls:['t-m','t-p']}
+  ]
+};
+
+const st={a1:0,a2:0,a3:0,um:'a',t1:'config',t2:'frontline',t3:'mgmt'};
+
+function bs(id,cur){const arr=A[id].s;return arr.map((n,i)=>`<div class="step ${i===cur?'active':''}" data-i="${i}"><span class="sn">${i+1}</span>${n}</div>${i<arr.length-1?'<div class="sa"></div>':''}`).join('');}
+
+function bt(actId,curStep,curTab){
+  const tabs=TABS[actId];
+  return tabs.map(t=>{
+    const dots=t.dotCls.map(c=>`<span class="dot"></span>`).join('').replace(/dot/g,'dot');
+    const dotsHTML=t.dotCls.map(c=>`<span class="dot ${c.replace('t-','')}" style="background:${c==='t-c'?'var(--s500)':c==='t-m'?'var(--m600)':'var(--u800)'}"></span>`).join('');
+    const disabled=(t.gateStep!==undefined&&curStep<t.gateStep)?'disabled':'';
+    const hint=t.hint&&t.gateStep!==undefined&&curStep<t.gateStep?` <span style="color:var(--silver);font-size:10px;font-style:italic">(${t.hint})</span>`:'';
+    if(disabled)return `<div class="tab" style="opacity:0.4;cursor:not-allowed" data-disabled="1">${dotsHTML}${t.label}${hint}</div>`;
+    return `<button class="tab ${curTab===t.id?'active':''}" data-tab="${t.id}">${dotsHTML}${t.label}</button>`;
+  }).join('')+`<div class="tab-spacer"></div><span class="tab-hint">点击 tab 切换视图组合</span>`;
+}
+
+function buildStage(actId,step,tabId){
+  const tab=TABS[actId].find(t=>t.id===tabId)||TABS[actId][0];
+  // 闸门:如果 tab 被锁,自动回退到第一个 tab
+  if(tab.gateStep!==undefined&&step<tab.gateStep){
+    const fb=TABS[actId][0];
+    return {tab:fb,html:fb.views.map(v=>{const V=VIEWS[v];return `<div class="pn ${V.cls}"><div class="pl"><b>${V.label.split(' · ')[0]}</b> · ${V.label.split(' · ').slice(1).join(' · ')}</div><div class="fr">${V.render(step)}</div></div>`}).join('')};
+  }
+  const html=tab.views.map(v=>{const V=VIEWS[v];return `<div class="pn ${V.cls}"><div class="pl"><b>${V.label.split(' · ')[0]}</b> · ${V.label.split(' · ').slice(1).join(' · ')}</div><div class="fr">${V.render(step)}</div></div>`}).join('');
+  return {tab,html};
+}
+
+function rA(actId){
+  const s=st[actId],tabKey='t'+actId.slice(1);
+  document.getElementById('s'+actId.slice(1)).innerHTML=bs(actId,s);
+  // 若当前 tab 被锁,自动切回第一个
+  const curTab=TABS[actId].find(t=>t.id===st[tabKey]);
+  if(curTab&&curTab.gateStep!==undefined&&s<curTab.gateStep)st[tabKey]=TABS[actId][0].id;
+  document.getElementById('t'+actId.slice(1)).innerHTML=bt(actId,s,st[tabKey]);
+  const stage=buildStage(actId,s,st[tabKey]);
+  const stageEl=document.getElementById('stage'+actId.slice(1));
+  stageEl.className='stage'+(stage.tab.views.length===1?' solo':'');
+  stageEl.innerHTML=stage.html;
+  document.getElementById('d'+actId.slice(1)).innerHTML=A[actId].d[s];
+  document.querySelectorAll('#s'+actId.slice(1)+' .step').forEach(e=>e.onclick=()=>{st[actId]=parseInt(e.dataset.i);rA(actId);});
+  document.querySelectorAll('#t'+actId.slice(1)+' .tab[data-tab]').forEach(e=>e.onclick=()=>{st[tabKey]=e.dataset.tab;rA(actId);});
+  if(actId==='a2')document.querySelectorAll('#stage2 .tg').forEach(e=>e.onclick=()=>{st.um=e.dataset.m;rA('a2');});
+}
+
+rA('a1');rA('a2');rA('a3');
+
+// 键盘导航 ←/→ 切换幕
+(function(){
+  const acts=document.querySelectorAll('.act');
+  function curIdx(){
+    const mid=window.scrollY+window.innerHeight/2;
+    let best=0,bestDist=Infinity;
+    acts.forEach((a,i)=>{const r=a.getBoundingClientRect();const c=window.scrollY+r.top+r.height/2;const d=Math.abs(c-mid);if(d<bestDist){bestDist=d;best=i}});
+    return best;
+  }
+  function go(dir){
+    const i=curIdx();
+    const next=Math.max(0,Math.min(acts.length-1,i+dir));
+    acts[next].scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  document.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();go(1);}
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();go(-1);}
+  });
+})();
+</script></body></html>
