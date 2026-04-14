@@ -1,4 +1,4 @@
-.PHONY: setup run-channel run-web run-server check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto sync-bridge
+.PHONY: setup run-channel run-web run-server check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
 
 # --- Setup ---
 # Create symlinks from .claude/ to top-level dirs, discover plugin skills,
@@ -102,3 +102,9 @@ refine-auto:
 
 sync-bridge:
 	@bash scripts/sync-bridge.sh --last-sync --auto
+
+# Refine pull: scan L3 forks for commits to cherry-pick into L2
+# make refine-pull                          — scan all registered forks
+# make refine-pull REPO=../AutoService-Cinnox  — scan a specific fork
+refine-pull:
+	@bash scripts/refine-pull.sh $(if $(REPO),--repo $(REPO)) $(if $(AUTO),--auto) $(if $(DRY_RUN),--dry-run) $(if $(PR),--pr)
