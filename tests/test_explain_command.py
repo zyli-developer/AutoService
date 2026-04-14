@@ -66,7 +66,7 @@ class TestFlowYAML:
         flows_dir = Path(__file__).parent.parent / ".autoservice" / "flows"
         if not flows_dir.exists():
             pytest.skip("flows/ not yet created")
-        index = yaml.safe_load((flows_dir / "_index.yaml").read_text())
+        index = yaml.safe_load((flows_dir / "_index.yaml").read_text(encoding="utf-8"))
         indexed_ids = {f["id"] for f in index["flows"]}
         flow_files = [f.stem for f in flows_dir.glob("*.yaml") if f.name != "_index.yaml"]
         for fid in flow_files:
@@ -82,7 +82,7 @@ class TestFlowYAML:
         for f in flows_dir.glob("*.yaml"):
             if f.name == "_index.yaml":
                 continue
-            flow = yaml.safe_load(f.read_text())
+            flow = yaml.safe_load(f.read_text(encoding="utf-8"))
             missing = required - set(flow.keys())
             assert not missing, f"{f.name} missing fields: {missing}"
 
@@ -95,7 +95,7 @@ class TestFlowYAML:
         for f in flows_dir.glob("*.yaml"):
             if f.name == "_index.yaml":
                 continue
-            flow = yaml.safe_load(f.read_text())
+            flow = yaml.safe_load(f.read_text(encoding="utf-8"))
             node_ids = {n["id"] for n in flow["nodes"]}
             assert flow["entry"] in node_ids, f"{f.name}: entry '{flow['entry']}' not in nodes"
 
@@ -108,7 +108,7 @@ class TestFlowYAML:
         for f in flows_dir.glob("*.yaml"):
             if f.name == "_index.yaml":
                 continue
-            flow = yaml.safe_load(f.read_text())
+            flow = yaml.safe_load(f.read_text(encoding="utf-8"))
             node_ids = {n["id"] for n in flow["nodes"]}
             for edge in flow["edges"]:
                 assert edge["from"] in node_ids, f"{f.name}: edge from '{edge['from']}' not in nodes"
