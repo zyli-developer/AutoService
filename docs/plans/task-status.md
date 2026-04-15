@@ -6,7 +6,7 @@
 **状态图例**: ⬜ pending · 🟦 in_progress · 🟩 completed · ⚠️ blocked · 🟥 failed(需重做)
 **类型图例**: 🟢 Green(AI 独立) · 🟡 Yellow(AI+人审) · 🔴 Red(人主导)
 
-**最后更新**: 2026-04-15 · **整体进度**: 1/66
+**最后更新**: 2026-04-15 · **整体进度**: 3/66
 
 ## ⚡ AI 快车道时间表
 
@@ -27,9 +27,9 @@
 
 | ID | 名称 | 线 | 类型 | 状态 | Owner | 依赖 | 关联 artifact |
 |---|---|---|---|---|---|---|---|
-| T0.1 | ConversationEngine 抽象设计 | A+B | 🔴 | 🟩 | DevA | — | autoservice/conversation_engine/ |
-| T0.2 | WebSocket schema 冻结 | A+B | 🔴 | ⬜ | — | — | — |
-| T0.3 | 契约测试 suite | A | 🟢 | ⬜ | — | T0.1,T0.2 | — |
+| T0.1 | ConversationEngine 抽象设计 | A+B | 🔴 | 🟩 | DevA+DevB | — | docs/contracts/conversation-engine.md v1.0 · autoservice/conversation_engine/ |
+| T0.2 | WebSocket schema 冻结 | A+B | 🔴 | 🟩 | DevB+DevA | — | docs/contracts/frontend-ws-schema.md v1.0 · test-vectors/events.json |
+| T0.3 | 契约测试 suite | A | 🟢 | 🟩 | DevA | T0.1,T0.2 | tests/contract/ (109 cases, 49 pass / 60 awaiting LocalEngine) |
 | T0.4 | LocalEngine 骨架 | A | 🟢 | ⬜ | — | T0.1 | — |
 | T0.5 | WebSocket 服务端骨架 | A | 🟢 | ⬜ | — | T0.2 | — |
 | T0.6 | 前端 monorepo 骨架 | B | 🟢 | 🟩 | DevB | T0.2 | frontend/ |
@@ -193,13 +193,13 @@
 
 | Phase | 总数 | 待开始 ⬜ | 进行中 🟦 | 完成 🟩 | 阻塞 ⚠️ |
 |---|---|---|---|---|---|
-| P0 | 6 | 5 | 0 | 1 | 0 |
+| P0 | 6 | 3 | 0 | 3 | 0 |
 | P1 | 17 | 17 | 0 | 0 | 0 |
 | P2 | 12 | 12 | 0 | 0 | 0 |
 | P3 | 14 | 14 | 0 | 0 | 0 |
 | P4 | 13 | 13 | 0 | 0 | 0 |
 | P5 | 13 | 13 | 0 | 0 | 0 |
-| **合计** | **66** | **65** | **0** | **1** | **0** |
+| **合计** | **66** | **63** | **0** | **3** | **0** |
 
 **按线**: A 线 43 / B 线 29 / 协作 3
 

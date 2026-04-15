@@ -187,7 +187,7 @@
 4. 读 AutoService-UserStories-v1.1.md 相关 US 的 Gherkin
 5. 运行 skill-4-test-runner 跑端到端
 6. 产出 e2e-report，注册到 .artifacts/registry.json
-7. 全绿 → merge 到 main，改 task-status.md 对应 Phase 任务状态
+7. 全绿 → merge 到 dev（非 main；main 由 release 流程另行管理），改 task-status.md 对应 Phase 任务状态
 8. 有红 → 不 merge；输出失败清单 + 修复建议（分配给对应 Owner）
 ```
 
@@ -210,7 +210,7 @@
    - 更新的 mock 代码
 5. 开 WIP 分支 contract/{简短名称}
 6. 输出一段 prompt，我贴给对方线的 CC 作为 review request
-7. 不要 merge 到 main，等对方线回应
+7. 不要 merge 到 dev 或 main，等对方线回应
 ```
 
 ### 8.2 接收对方契约变更
