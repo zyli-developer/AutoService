@@ -1,20 +1,28 @@
 ---
-version: 0.2-draft
-status: DRAFT (awaiting DevA+DevB decisions)
+version: 1.0
+status: FROZEN
 author: DevA
+reviewer: DevB
 created_at: 2026-04-15
-updated_at: 2026-04-15
-supersedes: 0.1-draft
+frozen_at: 2026-04-15
+supersedes: 0.2-draft
 ---
 
-> **v0.2 变更**（响应 DevB 对齐表 · issue #21）：
-> - 新增 `get_messages(...)` — 消息历史快照（A5/B3 断线重连 + operator_join 拉历史）
-> - 新增 `handle_command(...)` — 收敛 IRC `CommandParser` 与 Bridge `operator_command` 到单一入口
-> - `list_active_conversations` 加 `squad_id` filter（B1）
-> - `subscribe` 加 `squad_id` 参数（B8 分队卡片实时刷新）
-> - 新增 Q9（get_messages 的 visibility 过滤策略）
+> **v1.0 变更**（吸收 DevB 表态 · issue #21）：
+> - Q1–Q9 全部决策落定（见 §10 决策归档）
+> - Q4 附加：非法 mode 转换改为 **no-op + `mode.noop` 事件**（不抛 `IllegalModeTransition`）
+> - Q6 附加：`subscribe` 对外 async iterator，内部 **Queue fan-out**
+> - Q7 附加：Gate 降级不可逆写入 **§7 不变量**
+> - `get_messages` 加 `before_sequence` 参数（向上滚加载老消息；与 `since_sequence` 互斥）
+> - `subscribe(squad_id)` 的 `since_sequence` 语义澄清为 **ULID 字典序**
+> - §6 加 **handle_command 权限矩阵**
+> - `get_conversation` 找不到抛 `ConversationNotFound`（显式声明）
+> - 事件清单加 `mode.noop` / `hook.failed`
 
-# T0.1 · ConversationEngine 契约（草稿）
+**v0.2 → v1.0 历史**：
+- v0.1 → v0.2（响应 DevB 对齐表）：新增 `get_messages` / `handle_command` / `squad_id` filter + scope / Q9
+
+# T0.1 · ConversationEngine 契约（v1.0 frozen）
 
 > **path B 适配层先行**核心契约。决定后续 16 周走向。
 >
@@ -173,7 +181,8 @@ class ConversationEngine(Protocol):
         幂等：相同 (channel, external_id) 已存在且未 closed → 返回现有对象。
         """
 
-    async def get_conversation(self, conversation_id: str) -> Conversation: ...
+    async def get_conversation(self, conversation_id: str) -> Conversation:
+        """找不到时抛 ConversationNotFound（§6），不返回 None。"""
 
     async def list_active_conversations(
         self,
@@ -220,8 +229,9 @@ class ConversationEngine(Protocol):
         triggered_by: str,
         trigger: str,            # "/hijack" | "/release" | "/copilot" | "auto:operator_join"
     ) -> None:
-        """非法转换抛 IllegalModeTransition（见 §6）。
-        决策 Q4：是否允许并发切换（当前草案：串行化锁）。
+        """Q4 决策：串行化锁（asyncio.Lock per conv）。
+        **目标态 == 当前态** → **no-op，发 `mode.noop` 事件**（不抛异常）。
+        其他非法转换（例如 closed 会话切 mode）仍抛 IllegalModeTransition（§6）。
         """
 
     # ------------ Messages ------------
@@ -258,7 +268,8 @@ class ConversationEngine(Protocol):
         self,
         conversation_id: str,
         *,
-        since_sequence: int | None = None,
+        since_sequence: int | None = None,   # 断点重连：返回 seq > since_sequence
+        before_sequence: int | None = None,  # 向上滚：返回 seq < before_sequence
         until: datetime | None = None,
         viewer_role: ParticipantRole | None = None,
         limit: int = 50,
@@ -267,8 +278,10 @@ class ConversationEngine(Protocol):
 
         用途：
         - FE 断线重连（A5）：since_sequence=最后收到的 message.sequence_number
-        - operator_join 拉历史（B3）：since_sequence=None + limit=N
-        viewer_role：决定是否过滤 SIDE 消息（见决策 Q9）。
+        - operator_join 拉历史（B3）：since_sequence=None + limit=N（返回最近 N 条）
+        - chat UI 向上滚（DevB #1）：before_sequence=当前列表顶部 seq + limit=N
+        viewer_role：决定是否过滤 SIDE 消息（Q9 决策：Engine 层过滤）。
+        互斥约束：since_sequence 与 before_sequence 不可同时传；同传抛 ValidationError。
         """
 
     # ------------ Commands (统一入口) ------------
@@ -314,16 +327,24 @@ class ConversationEngine(Protocol):
         conversation_id: str | None = None,
         squad_id: str | None = None,
         event_types: list[str] | None = None,
-        since_sequence: int | None = None,   # reconnect 断点重放
+        since_sequence: int | None = None,   # conv scope: int seq；squad/global scope: event_id ULID 字典序
+        viewer_role: ParticipantRole | None = None,
     ) -> AsyncIterator[Event]:
-        """
-        决策 Q6：sync vs async 订阅 —— 当前草案：async iterator（背压自然，适合 WS 推送）。
-        since_sequence 用于前端 reconnect 从断点回放。
+        """Q6 决策：对外 async iterator（背压自然，WS 推送友好）；
+        内部实现 **Queue fan-out**（单条 Event 多订阅者共享，O(1) per sub）。
 
         scope 选择（三选一）：
         - conversation_id: 单会话事件流（C 端 / operator 进入某对话后）
         - squad_id: 分队级 fanout（B8 分队卡片：新对话、mode 变化、resolved）
         - 都为 None: 全局流（仅 admin / audit 用途）
+
+        since_sequence 断点语义：
+        - conv scope → int，与 Event.sequence_number 比较（per-conv 单调）
+        - squad / global scope → 字符串 event_id（ULID），按字典序比较（天然时间序）
+          前端只需记住最后收到的 event_id 即可续传。
+
+        viewer_role: 与 get_messages 对称，Engine 根据 role 过滤 SIDE 事件对应的
+          message.* 载荷（Q9 决策：读路径统一由 Engine 管）。
         """
 
     async def query_events(
@@ -395,6 +416,7 @@ participant.joined
 participant.left
 
 mode.changed
+mode.noop             # target == current mode（Q4 决策），含 trigger 便于审计
 
 message.sent          # 真正入库后
 message.gated         # visibility 被 Gate 改写
@@ -409,6 +431,8 @@ sla.breach            # 由 timer_expired + sla_* 聚合而来
 
 squad.assigned        # M3 起启用
 squad.reassigned
+
+hook.failed           # PluginHook 抛异常后发此事件（Q8 决策：吞异常 + 通知）
 ```
 
 每个 event 的 `data` 字段在 `test-vectors/events.json`（T0.2 产物）给出正例。
@@ -435,17 +459,38 @@ class ValidationError(EngineError):
     """入参格式错误（score 超范围、content 空字符串等）。"""
 ```
 
-**非异常错误**（如 Gate 降级）通过 event / 返回值里带 flag 表达，不抛异常。
+**非异常错误**（如 Gate 降级、mode no-op）通过 event 表达，不抛异常。
+
+### 6.1 handle_command 权限矩阵
+
+| command | customer | agent | operator | admin | 备注 |
+|---------|----------|-------|----------|-------|------|
+| `/hijack`   | ❌ | ❌ | ✅ | ✅ | auto/copilot → takeover |
+| `/release`  | ❌ | ❌ | ✅ | ✅ | takeover → auto |
+| `/copilot`  | ❌ | ❌ | ✅ | ✅ | auto → copilot |
+| `/resolve`  | ❌ | ❌ | ✅ | ✅ | 标记 RESOLVED |
+| `/abandon`  | ❌ | ❌ | ✅ | ✅ | 标记 ABANDONED |
+| `/status`   | ❌ | ❌ | ✅ | ✅ | 只读 |
+| `/dispatch` | ❌ | ❌ | ❌ | ✅ | 仅 admin（M3 起） |
+| `/assign`   | ❌ | ❌ | ❌ | ✅ | 仅 admin（M3 起） |
+
+- ❌ 对应 actor_id → 抛 `PermissionDenied`
+- 合法 command 但在当前 mode 下是 no-op（如 copilot 发 `/copilot`）→ 按 Q4 约定走 `mode.noop`
 
 ---
 
 ## 7. 生命周期与一致性约定
 
+### 7.1 不变量（invariants · 实现必须满足）
+
 1. **create_conversation 幂等**：相同 (channel, external_id) 且未 closed 返回现有对象。
 2. **close_conversation 幂等**：已 closed 返回现有 Resolution。
-3. **mode 切换原子**：同一 conversation 的 switch_mode 串行化；并发调用后到者看到新 mode 后再决定（决策 Q4）。
-4. **事件顺序**：同一 conversation 的事件按 `sequence_number` 严格递增，前端可按此判断丢失。
-5. **降级不可逆**：一旦 Gate 把 public 降为 side，后续不会升回（决策 Q7）。
+3. **mode 切换原子**：同一 conversation 的 switch_mode 串行化（asyncio.Lock per conv）；目标态 == 当前态 → `mode.noop` 事件，不抛异常（Q4）。
+4. **事件顺序**：同一 conversation 的事件按 `sequence_number` 严格递增，前端可按此判断丢失；跨 conversation / squad / global 订阅按 `event_id`（ULID）字典序单调递增。
+5. **Gate 降级不可逆** ⚓：一旦 visibility 被 Gate 从 PUBLIC 降为 SIDE，后续任何 mode 切换、命令、时间流逝都不会把它升回 PUBLIC。此条是**强不变量**，不再讨论（Q7 决策）。
+6. **读写路径对称**：写路径（`send_message`）由 Gate 决定最终 visibility；读路径（`get_messages` / `subscribe` / `query_events`）由 Engine 根据 `viewer_role` 过滤。App 层不应承担 visibility 授权职责（Q9 决策）。
+7. **Plugin Hook 隔离**：任何 PluginHook 抛出的异常被吞并发 `hook.failed` 事件，不影响核心流程（Q8 决策）。
+8. **最后一个 operator leave 回落**：mode=copilot 且最后一个 OPERATOR role 的 participant leave → 自动切回 auto。对应 mode.changed 事件的 `trigger="auto:last_operator_left"`。
 
 ---
 
@@ -487,66 +532,35 @@ LocalEngine 在 M0-M4 内是 **zchat 的轻量内存实现**；M5 `ZchatEngine` 
 
 ---
 
-## 10. 待决策选择题（§10 交给 DevA+DevB 讨论）
+## 10. 决策归档（Q1–Q9 · v1.0 frozen 2026-04-15）
 
-以下 7 题影响契约细节，需 DevB review 后决策。每题给出**草案方向**和**反方理由**，供对话。
+所有决策 **DevA 提案 + DevB 表态同意**，冻结为 v1.0。后续变更走 RFC 流程。
 
-### Q1. Conversation id / Message id / Event id 格式
-
-- **草案**：conversation_id = `{channel}_{external_id}`（例：`feishu_oc_abc123` / `web_sess_xyz`）；message_id + event_id = **ULID**（单调时间前缀，全局唯一）。
-- **反方**：zchat 原语 §7 使用 UUID；前端不关心格式，ULID 对客户端排序更友好，但要求所有实现都支持 ULID 库。
-- **可逆性**：选 ULID 后可降级到 UUID（客户端只按字典序排）；反向需全库迁移，较贵。
-
-### Q2. Timer 粒度：ms vs s
-
-- **草案**：内部 **ms**（`duration_ms: int`），对外 UI 显示转 s。
-- **反方**：SLA 场景（1s/3s）ms 过度精确；s 足够，简化类型。
-- **可逆性**：高（仅字段名+除 1000）。
-
-### Q3. sequence_number：全局 vs per-conversation
-
-- **草案**：**per-conversation 单调**（event 和 message 各自一套），便于前端 reconnect 按 conv 续传。
-- **反方**：全局序列号便于跨 conversation 的全局审计，但前端复杂。
-- **可逆性**：中（前端若绑定全局序号重构成本高）。
-
-### Q4. Mode 切换并发策略
-
-- **草案**：同一 conversation 的 switch_mode 串行化（asyncio.Lock per conv）；并发调用 FIFO；每次切换内部做合法性校验。
-- **反方**：严格禁止并发（第二个调用直接抛 ConcurrentModification），让前端显式处理。
-- **可逆性**：高。
-
-### Q5. Gate 的 requested_visibility 是否可被提升
-
-- **草案**：**只降不升**（requested=PUBLIC 可能降 SIDE；requested=SIDE 永远保持 SIDE）。与 zchat 原语 §5 一致。
-- **反方**：某些场景 operator 想发 public 但被降级后想"撤回 gate"；当前无此场景。
-- **可逆性**：高。
-
-### Q6. Event 订阅：sync 回调 vs async iterator vs pub/sub queue
-
-- **草案**：**async iterator**（`subscribe()` 返回 AsyncIterator[Event]）；背压自然，WS 推送友好；Hook 仍用 async 回调。
-- **反方**：多订阅者场景下 async iterator 要自己 fan-out；pub/sub queue (asyncio.Queue per sub) 更灵活但额外抽象。
-- **可逆性**：中（一旦前端大量使用 iterator 语义，切回调需重写消费侧）。
-
-### Q7. Gate 降级是否可逆
-
-- **草案**：**不可逆**。一旦 PUBLIC → SIDE，后续无方式升回；与 zchat 不变量 5 一致。
-- **反方**：前端 UX 希望「/release 后，takeover 期间被降级的 agent 消息重新公开」——但这破坏时序一致性（客户会突然看到过去的消息）。
-- **可逆性**：**不可逆本身不可逆**（一旦允许升级，审计链就复杂）。**强烈建议草案**。
-
-### Q9. `get_messages` 的 visibility 过滤策略（v0.2 新增）
-
-- **草案**：Engine 根据 `viewer_role` 参数过滤 —— `CUSTOMER` 只能看 PUBLIC；`OPERATOR`/`AGENT` 看 PUBLIC+SIDE；`viewer_role=None` 不过滤（仅 admin/audit）。
-- **反方**：Engine 不该承担授权职责，应由 App 层（channel handler）根据调用上下文过滤。
-- **可逆性**：中（若交给 App 层后要收回到 Engine，所有 channel 都得改；反向只是 App 层多一步过滤）。
-- **连带**：同样的过滤语义应否用到 `subscribe` / `query_events`？草案：是，保持一致。
-
-### Q8. 额外边界（open）
-
-- 错误处理：抛异常 vs Result 类型？— 草案：**抛异常**（Pythonic，前端 WS 层捕获统一转 error 消息）。反方：Result 对测试更友好。
-- 同一 conversation 多 operator 参与：允许同时 N 个 operator？草案：允许，mode 由 join 顺序决定。
-- ZchatEngine 实现时，本契约的 Timer 粒度能否映射到 channel-server 的 timer（后者是 s）？— 若 Q2 选 ms，ZchatEngine 做除法转换。
-- Plugin Hook 抛异常的行为：吞掉 + log，还是中断流程？草案：**吞掉 + 发 `hook.failed` 事件**，避免业务错误影响核心流程。
+| # | 决策 | 理由 / 附加条件 |
+|---|---|---|
+| Q1 | conversation_id = `{channel}_{external_id}`；message_id / event_id = **ULID** | 字典序天然时间序；对 reactivate 幂等友好 |
+| Q2 | Timer 内部 **ms**（`duration_ms: int`），UI 转 s | 预留亚秒精度（typing / placeholder 500ms）；UI 转换零成本 |
+| Q3 | `Message.sequence_number` / `Event.sequence_number` = **per-conversation 单调** | 前端 reconnect 按会话续传自然 |
+| Q4 | `switch_mode` 串行化（asyncio.Lock per conv）；**目标态 == 当前态 → `mode.noop` 事件**（不抛异常） | operator 双击 / join+hijack 竞态在生产常见，no-op 对前端更友好 |
+| Q5 | Gate **只降不升** | 与 zchat §5 一致 |
+| Q6 | `subscribe` 对外 **async iterator**；内部 **Queue fan-out** | 多订阅者共享单条 Event，O(1) per sub |
+| Q7 | Gate 降级 **不可逆**（写入 §7.1 不变量 #5） | 避免 /release 后历史消息"重新公开"破坏时序一致性 |
+| Q8a | 错误处理：**抛异常**（非 Result） | Pythonic；FE WS 层捕获统一转 error |
+| Q8b | 同 conv 允许多 operator | mode 切换由**首个 operator join** 触发；**最后一个 leave** 回落 auto（§7.1 不变量 #8） |
+| Q8c | Plugin Hook 抛异常 → **吞掉 + `hook.failed` 事件**（§7.1 不变量 #7） | 业务插件错误不炸核心 |
+| Q8d | ZchatEngine（M5）Timer 粒度映射：ms → s 除法 | M5 再处理，契约不受影响 |
+| Q9 | `get_messages` / `subscribe` / `query_events` 的 visibility 过滤由 **Engine 根据 `viewer_role`** 负责 | 与 Gate 写路径对称；避免"某个 channel 忘过滤"的安全漏洞 |
 
 ---
 
-*End of T0.1 draft v0.2 — 等 DevA+DevB 决策后更新为 v1.0 frozen。*
+## 11. 变更历史
+
+| 版本 | 日期 | 变更 | 作者 |
+|---|---|---|---|
+| 0.1-draft | 2026-04-15 | 初稿：16 方法 Protocol + 7+1 决策题 | DevA |
+| 0.2-draft | 2026-04-15 | +`get_messages` / `handle_command` / squad filter / Q9（响应 DevB 对齐表） | DevA |
+| **1.0** | **2026-04-15** | **FROZEN**：Q1–Q9 定案；+`before_sequence`；+§6.1 权限矩阵；+§7.1 不变量 8 条；+`mode.noop` / `hook.failed` 事件 | DevA + DevB |
+
+---
+
+*End of T0.1 ConversationEngine Contract v1.0 · FROZEN 2026-04-15.*
