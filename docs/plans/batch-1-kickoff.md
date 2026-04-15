@@ -11,14 +11,29 @@
 
 ## 0. 前置条件（M0 必须通过）
 
-开始 Batch 1 前确认：
+开始 Batch 1 前确认（直接验证 dev 分支文件，不依赖 task-status 行状态）：
 
-- [ ] `docs/contracts/conversation-engine.md` 存在，frontmatter `version: 1.0` 已签
-- [ ] `docs/contracts/frontend-ws-schema.md` 存在，`version: 1.0` 已签
-- [ ] `docs/contracts/test-vectors/` 有示例数据
-- [ ] `tests/contract/` 可跑通 `pytest -v` 全绿
-- [ ] `docs/plans/task-status.md` 中 T0.1/T0.2/T0.3 均为 🟩
-- [ ] PR #18 已合并（或相应 PR 已合并到 dev/main）
+```bash
+# A. Protocol 包已落地
+ls autoservice/conversation_engine/__init__.py \
+   autoservice/conversation_engine/protocol.py \
+   autoservice/conversation_engine/types.py \
+   autoservice/conversation_engine/events.py \
+   autoservice/conversation_engine/errors.py
+
+# B. 契约文档齐全
+ls docs/contracts/conversation-engine.md \
+   docs/contracts/frontend-ws-schema.md \
+   docs/contracts/test-vectors/events.json
+
+# C. 契约测试全绿
+pytest tests/contract/ -v
+```
+
+三项均通过 = M0 达成。
+
+**task-status.md 滞后修正（DevA 开工前第一件事）**：
+当前 task-status.md 中 T0.2/T0.3 可能仍标 ⬜，但实际交付已完成。DevA 用 Edit 把 T0.2 和 T0.3 改为 🟩 并填 Owner（若之前已有 owner 保留；否则填 DevA），然后 commit `task: T0.2/T0.3 → completed (status catch-up)`。**不改 T0.4/T0.5/T0.6**（那是下面要做的新任务）。
 
 未通过则回到 `batch-0-kickoff.md` 补完。
 
@@ -26,10 +41,13 @@
 
 ## 1. 任务分配
 
+> **路径约定**（与 M0 实际交付对齐）：LocalEngine 与 Protocol 同包，不新建 `autoservice/engine/`。
+> T0.4 只在 `autoservice/conversation_engine/` 里**新增 `local_engine.py`**，复用现有 `protocol.py` / `types.py` / `events.py` / `errors.py`。
+
 | 任务 | Owner | 类型 | 依赖 | 预期产出 |
 |---|---|---|---|---|
-| T0.4 LocalEngine 骨架 | **DevA** | 🟢 Green | T0.1 | `autoservice/engine/` 目录 + 空方法实现 |
-| T0.5 WebSocket 服务端骨架 | **DevA** | 🟢 Green | T0.2 | `autoservice/web_gateway.py` FastAPI + WS |
+| T0.4 LocalEngine 骨架 | **DevA** | 🟢 Green | T0.1 | `autoservice/conversation_engine/local_engine.py` (单文件，含 Protocol 合规空壳) |
+| T0.5 WebSocket 服务端骨架 | **DevA** | 🟢 Green | T0.2 | `autoservice/web_gateway.py` FastAPI + WS + `autoservice/gateway/` |
 | T0.6 前端 monorepo 骨架 | **DevB** | 🟢 Green | T0.2 | `frontend/` pnpm workspace + 3 app stub |
 
 **并行策略**: 
@@ -46,27 +64,35 @@
 ```
 启动任务 T0.4 LocalEngine 骨架（🟢 Green，A 线）。
 
-**前置检查**:
-1. 读 docs/plans/task-status.md 确认 T0.4 是 ⬜ 且 T0.1/T0.2/T0.3 均 🟩
-2. 若条件不满足，停住报告
+**前置检查**（验证 M0 实际交付）:
+1. 确认 autoservice/conversation_engine/ 下已有 protocol.py / types.py / events.py / errors.py / __init__.py
+2. 确认 docs/contracts/ 下已有 conversation-engine.md / frontend-ws-schema.md / test-vectors/
+3. 跑 pytest tests/contract/ -v 全绿
+4. 任一不满足 → 停住报告（说明 M0 尚未完整交付）
 
 **步骤**:
 1. Edit task-status.md T0.4 → 🟦，Owner 改为 DevA，commit "task: T0.4 → in_progress (DevA)"
-2. 读 docs/contracts/conversation-engine.md（T0.1 产物）完整 Protocol 签名
-3. 进入 dev-loop:
+2. 读 autoservice/conversation_engine/protocol.py 了解完整 ConversationEngine 接口签名
+3. 读 autoservice/conversation_engine/types.py / events.py / errors.py 了解已定义的枚举和异常
+4. 读 docs/contracts/conversation-engine.md 作为语义参考
+5. 进入 dev-loop:
    a. skill-5-feature-eval simulate 模式：起草 eval-doc
-      - 模拟场景：Engine 被初始化 → create_conversation → send_reply → switch_mode → resolve 的完整流程
+      - 模拟场景：LocalEngine 被初始化 → create_conversation → send_reply → switch_mode → resolve 的完整流程
       - 产出 .artifacts/eval-docs/eval-T0.4-local-engine-skeleton.md
       - 注册到 registry
    b. 停住等我 review eval-doc
 
-**特别约束**:
-- 本任务只搭骨架，方法体全部 raise NotImplementedError("T1A.x: ...")
-- 每个 NotImplementedError 带上对应的 T1A.x 任务 ID 作为 hint
-- 目录结构: autoservice/engine/{__init__.py, conversation_engine.py, local_engine.py, types.py}
-- types.py 含 Mode / Visibility / TimerType / EventType 枚举（从 Protocol 提取）
-- local_engine.py 实现 ConversationEngine Protocol；每方法空实现
-- __init__.py 导出 LocalEngine 和枚举
+**特别约束（关键 · 避免与 T0.1 已有文件冲突）**:
+- **只新增一个文件**: autoservice/conversation_engine/local_engine.py
+- **不要动**: __init__.py / protocol.py / types.py / events.py / errors.py（M0 已产出，改动视为契约漂移）
+- local_engine.py 含:
+  - `class LocalEngine:` 实现 protocol.ConversationEngine（Protocol 或 ABC 按 T0.1 定义而定）
+  - 每方法体 `raise NotImplementedError("T1A.x: <简述>")`，用对应的 T1A.x 任务 ID 作为 hint
+  - 直接 `from .types import Mode, Visibility, TimerType` 等（复用 T0.1 枚举，不要重复定义）
+  - 直接 `from .events import Event, EventType` 等
+  - 直接 `from .errors import ...`
+- 最后在 autoservice/conversation_engine/__init__.py 末尾追加一行 `from .local_engine import LocalEngine`（保持 T0.1 已有 export 不动）
+- 不新建 autoservice/engine/ 目录
 
 每步汇报，不跳步。
 ```
@@ -86,11 +112,11 @@
 ```
 继续 T0.4:
 1. skill-3-test-code-writer 基于 test-plan 写单测
-   - 放 tests/engine/test_local_engine_skeleton.py
-2. 写 autoservice/engine/ 下 4 个文件（types.py / conversation_engine.py / local_engine.py / __init__.py）
-3. skill-4-test-runner 跑 pytest tests/engine/
+   - 放 tests/conversation_engine/test_local_engine.py（新建 tests/conversation_engine/ 目录 + __init__.py）
+2. 创建 autoservice/conversation_engine/local_engine.py 并在 __init__.py 追加 export
+3. skill-4-test-runner 跑 pytest tests/conversation_engine/ 和 tests/contract/（确保 T0.3 测试仍然全绿，未因 __init__.py 改动受影响）
 4. 全绿 → 归档（§3 归档模板）
-5. 红 → 定位原因并修复
+5. 红 → 定位原因并修复；若 tests/contract/ 回归失败，优先回退 __init__.py 的改动
 ```
 
 **归档：**
@@ -119,22 +145,27 @@ T0.4 完成后继续在同一 worktree 贴：
 
 **步骤**:
 1. 读 docs/contracts/frontend-ws-schema.md (T0.2 产物) 所有消息类型
-2. 读 autoservice/engine/local_engine.py (T0.4 产物) 了解 Engine 接口
-3. 进入 dev-loop:
-   a. skill-5-feature-eval simulate: 模拟前端 WS 连接 → 发 client_hello → 收 welcome → 发 customer_message → 收 agent_reply 的握手流程
+2. 读 autoservice/conversation_engine/protocol.py (T0.1 产物) 了解 Engine 接口签名
+3. 读 autoservice/conversation_engine/local_engine.py (T0.4 产物) 确认可实例化
+4. 读 docs/contracts/test-vectors/events.json 作为入消息样本
+5. 进入 dev-loop:
+   a. skill-5-feature-eval simulate: 模拟前端 WS 连接 → 发 client_hello → 收 welcome → 发 customer_message → 收 agent_reply（或 not_implemented error）的握手流程
    b. 停住等 review
 
 **产出文件**:
 - autoservice/web_gateway.py: FastAPI app + 3 路 WebSocket 端点（/ws/customer, /ws/operator, /ws/admin）
-- autoservice/gateway/message_router.py: 按 T0.2 schema 分发消息到 Engine 方法
 - autoservice/gateway/__init__.py
+- autoservice/gateway/message_router.py: 按 T0.2 schema 分发消息到 Engine 方法
+- autoservice/gateway/connection.py: 维护 session_id → conversation_id 映射
 
 **特别约束**:
-- Engine 引用统一走 ConversationEngine Protocol（而非 LocalEngine 具体类），方便 M5 切换
+- 引用 Engine 统一走 `from autoservice.conversation_engine import ConversationEngine`（Protocol/ABC），而非具体 LocalEngine，方便 M5 切换 ZchatEngine
+- 启动时注入：`engine: ConversationEngine = LocalEngine()`（可配置）
 - 每条入消息过 schema 校验（用 T0.3 的 test-vectors 作为参考 validator）
-- Engine 方法抛 NotImplementedError 时，gateway 返回标准 error 消息（不崩）
+- Engine 方法抛 NotImplementedError 时，gateway 返回标准 error 消息（按 T0.2 schema 的 error 消息类型），不崩
 - 心跳：客户端 ping → 服务端 pong（按 schema）
 - 连接管理：维护 session_id → conversation_id 映射（内存 dict 即可，M5 再考虑持久化）
+- CORS：默认允许 localhost:5173-5175（T0.6 的 3 个 app 端口）
 
 每步汇报。
 ```
@@ -275,8 +306,8 @@ frontend/
 
 Batch 1 完成标准：
 
-- [ ] task-status.md 中 T0.4/T0.5/T0.6 均为 🟩
-- [ ] `pytest tests/engine/ tests/gateway/` 全绿
+- [ ] task-status.md 中 T0.2/T0.3/T0.4/T0.5/T0.6 均为 🟩（T0.1 已在 M0 标完）
+- [ ] `pytest tests/contract/ tests/conversation_engine/ tests/gateway/` 全绿（注意 tests/contract/ 必须仍全绿）
 - [ ] `pnpm --filter "./apps/*" test` 全绿
 - [ ] 跨线联调（§5）：WS 握手成功
 - [ ] 所有 artifact 注册到 `.artifacts/registry.json`
@@ -313,9 +344,11 @@ Phase 0 全绿后，按 `cc-prompt-templates §12.1` "我该做什么？" 询问
 
 1. 停下所有 Batch 1 工作
 2. 走契约漂移流程（`cc-prompt-templates §8.1`）
-3. 在 PR 中开子分支修 contract/
-4. 双方同意后更新契约 → 更新 test-vectors → 更新 T0.3 测试
+3. 在 PR 中开子分支修 `autoservice/conversation_engine/protocol.py` 或 `docs/contracts/frontend-ws-schema.md`
+4. 双方同意后更新契约 → 更新 test-vectors → 更新 tests/contract/ 下对应用例 → pytest tests/contract/ 必须仍全绿
 5. Batch 1 从头或从被影响点继续
+
+**关键约束**：`autoservice/conversation_engine/` 下 T0.1 已产出的 4 个文件（protocol/types/events/errors）视为 M0 冻结契约，任何改动都走漂移流程，不得在 Batch 1 中顺手改。唯一允许的动作是在 `__init__.py` 末尾追加 `LocalEngine` export。
 
 ---
 
