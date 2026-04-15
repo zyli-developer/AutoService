@@ -3,6 +3,28 @@
 > 2026-04-15 · A/B 两线并行开发的操作手册
 > 入职必读 · 配合 [`task-status.md`](task-status.md) + [`2026-04-15-prd-gap-tasks-v3.md`](2026-04-15-prd-gap-tasks-v3.md) + [`2026-04-15-task-execution-plan.md`](2026-04-15-task-execution-plan.md) 使用
 
+## ⚡ AI 快车道时间表（2026-04-15 调整）
+
+全程 AI 执行，目标 **2026-04-17（Fri）前完成 M5**。本 playbook 中"周 X"、"Milestone 时长"等时间引用按以下表换算：
+
+| 里程碑 | 档期 | 时长 |
+|---|---|---|
+| **M0** 契约 | Wed 04-15 AM | 半天 |
+| **M1** 客户端端到端 | Wed 04-15 PM | 半天 |
+| **M2** 工作台 | Thu 04-16 AM | 半天 |
+| **M3** 管理+合规 | Thu 04-16 PM | 半天 |
+| **M4** Dream+计费 | Fri 04-17 AM | 半天 |
+| **M5** zchat 切换+验收 | Fri 04-17 PM | 半天 |
+
+**节奏调整**:
+- 周同步 → **每 Milestone 结束时 5 分钟同步**（而非每周一次）
+- Red 决策响应 → **30 分钟内**（而非 48 小时）
+- Yellow 评审 → **30 分钟内**（而非 3 天）
+- 里程碑联调 → **压缩到 30 分钟 smoke test**（而非 2-3 天）
+- Red 前置启动 → 合规 T3A.4-6 在 Wed PM 启动；zchat T5A.1 在 Thu AM 启动
+
+---
+
 ---
 
 ## 0. 谁读这份文档
@@ -64,9 +86,9 @@
 - `task-status.md` 改动行不同，合并冲突概率接近零
 - 通过 **WebSocket schema**（`docs/contracts/frontend-ws-schema.md`）交互，不共享代码
 
-### Layer 2 · 周同步（每周 1 次，30 分钟）
+### Layer 2 · Milestone 同步（每 M 结束 5 分钟）
 
-**时机**：每周一早或周五下午（双方定）
+**时机**：每个 Milestone（M0/M0.5/M1/M2/M3/M4）完成后立即 5 分钟；**不再按周**
 
 **异步亦可**：GitHub Issue / Slack 线程，不强制视频
 
@@ -74,23 +96,23 @@
 
 | # | 议题 | 产出 |
 |---|---|---|
-| 1 | 进度对齐（看 task-status.md 进度汇总）| 是否有落后 Phase？ |
-| 2 | 契约漂移预警（本周是否需改 WS schema？）| 若是，立即约 pair 改 |
-| 3 | 下周批次预告（各自启动哪些任务、有无跨线依赖）| 确认 handoff 时间 |
-| 4 | Yellow 评审排期（本周有哪些 🟡 需对方/用户审？）| 排 3 天评审窗口 |
+| 1 | 进度对齐（看 task-status.md 进度汇总）| 是否有落后任务？ |
+| 2 | 契约漂移预警（本 M 是否需改 WS schema？）| 若是，立即 30 分钟内 pair 改 |
+| 3 | 下一 Milestone 批次预告（各自启动哪些任务）| 确认 handoff 时间 |
+| 4 | Yellow 评审排期（有哪些 🟡 需对方/用户审？）| 约 30 分钟评审窗口 |
 
-**30 分钟硬上限**。超时说明需要单独拉联调会议。
+**5 分钟硬上限**。超时 → 列问题单，单独 30 分钟短会处理。
 
-### Layer 3 · 里程碑联调（6 次，每次 2-3 天）
+### Layer 3 · 里程碑联调（6 次，每次 30 分钟 smoke test）
 
-| 里程碑 | 周 | 时长 | 联调内容 | 产出 |
+| 里程碑 | 档期 | 时长 | 联调内容 | 产出 |
 |---|---|---|---|---|
-| **M0** | 1 | 2 天 | T0.1 ConversationEngine + T0.2 WS schema 冻结 | `docs/contracts/*` + 签字 |
-| **M1** | 5 | 2 天 | customer-chat × LocalEngine：US-2.1 问候 / US-2.2 占位续写 / CSAT | e2e-report |
-| **M2** | 8 | 2 天 | operator-console × 协议命令：Copilot / /hijack / 角色翻转 | e2e-report |
-| **M3** | 11 | 2 天 | admin-portal × 合规 / soul 生成 / 预演 | e2e-report |
-| **M4** | 14 | 2 天 | 提案 UI × Dream Engine 闭环：灰度 / 回滚 / 账单 | e2e-report |
-| **M5** | 17 | 3 天 | ZchatEngine 切换 × AB 测试 × 17 story E2E | e2e-report + 切换决策 |
+| **M0** | Wed 11:30-12:00 | 30 min | T0.1 ConversationEngine + T0.2 WS schema 冻结 | `docs/contracts/*` + 签字 |
+| **M1** | Wed EOD | 30 min | customer-chat × LocalEngine：US-2.1 问候 / US-2.2 占位续写 / CSAT | e2e-report |
+| **M2** | Thu 13:00 | 30 min | operator-console × 协议命令：Copilot / /hijack / 角色翻转 | e2e-report |
+| **M3** | Thu EOD | 30 min | admin-portal × 合规 / soul 生成 / 预演 | e2e-report |
+| **M4** | Fri 14:00 | 30 min | 提案 UI × Dream Engine 闭环：灰度 / 回滚 / 账单 | e2e-report |
+| **M5** | Fri EOD | 60 min | ZchatEngine 切换 × AB 测试 × 17 story E2E | e2e-report + 切换决策 |
 
 **联调期工作方式**：
 - 两人坐一起（或长 pair 视频）
@@ -147,7 +169,7 @@ git worktree add ../AutoService-T1A.4 -b task/T1A.4
 | 2 | 改状态用 **Edit 单行**，**禁止整表重写** | 会导致合并冲突爆炸 |
 | 3 | Owner 字段只在 🟦 `in_progress` 时填，`🟩 completed` 后可选保留 | 保持视觉干净 |
 | 4 | 关联 artifact 字段只填 skill-6 registry 里的合法 ID | 便于交叉引用 |
-| 5 | 卡住超过 1 天必须改 ⚠️ `blocked` 并在"依赖"列写原因 | 周同步会议才能发现阻塞 |
+| 5 | 卡住超过 1 天必须改 ⚠️ `blocked` 并在"依赖"列写原因 | Milestone 同步才能发现阻塞 |
 | 6 | 改 WS schema = 改 T0.2 产物 → **必须双方同意** | 否则 revert 并回滚 |
 
 ---
@@ -185,24 +207,24 @@ docs/contracts/
 **触发条件**: 任何 🔴 任务即将启动时
 
 **流程**:
-1. Owner 提前 3 天在 GitHub Issue 贴方案草稿
+1. Owner 提前 15 分钟在 GitHub Issue 贴方案草稿（含 3 个选项 + 利弊）
 2. @另一方 + @Lead 审阅
-3. 48 小时内达成共识（异步 OK）
-4. 若分歧 → 30 分钟短会议解决
+3. **30 分钟内**达成共识（异步 OK）
+4. 若分歧 → 立即 15 分钟短会议解决
 5. 共识达成 → Owner 继续实施
 
 **Red 任务清单**:
-- T0.1 / T0.2（周 0，两人必到）
-- T3A.4 / T3A.5 / T3A.6（**周 8 Day 1 前置启动**，法务周期）
-- T5A.1 / T5B.2（**周 14 Day 1 前置启动**，zchat 协议）
+- T0.1 / T0.2（Wed 09:00-10:30 M0 期间，两人必到）
+- T3A.4 / T3A.5 / T3A.6（**Wed PM 启动，与 M1 并行**，法务并行处理）
+- T5A.1 / T5B.2（**Thu AM 启动，与 M2 并行**，zchat 协议对齐）
 
 ### Yellow 任务（14 个）
 
 **流程**:
 1. Owner 产出草稿 → 改状态 🟡 + 加 `REVIEW-PENDING` tag
-2. 另一方 / 用户 3 天内评审
+2. 另一方 / 用户 **30 分钟内**评审
 3. 通过 → 改 🟩，继续
-4. 不通过 → 改 🟥 `failed`，3 天内重做
+4. 不通过 → 改 🟥 `failed`，**30 分钟内**重做
 5. 两次失败 → 升级到 Lead / 用户决策
 
 **Yellow 任务清单**（14）: T1A.4 / T1A.5 / T1A.11 / T2A.2 / T2A.5 / T3A.1 / T3A.2 / T3A.7 / T4A.4 / T5A.5 / T5A.7
@@ -240,9 +262,9 @@ eval-doc-XXX → test-plan-XXX → test-diff-XXX → e2e-report-XXX
 | 我想改对方线的文件（紧急 bug） | 1) 先在 task-status.md 把对方 🟩 任务标注 `⚠️ hotfix-requested`；2) 开 Issue 通知对方；3) 对方接手 or 授权你改 |
 | task-status.md 合并冲突 | 因为你没有用 Edit 单行。用 `git checkout --theirs task-status.md` 拿 main 的，然后重新 Edit 你的那行 |
 | 我的任务依赖对方的任务没完成 | 1) 检查是否可用 mock 解耦；2) 若不行，改 ⚠️ blocked 注明 `WAITING: Tx.x`；3) 挑另一个独立任务做 |
-| dev-loop 一直跑不通 | 1) 看是不是 Red 决策缺失；2) 看是不是契约过时（`docs/contracts/`）；3) 降级到手动实现 + 手测，周同步报告 |
+| dev-loop 一直跑不通 | 1) 看是不是 Red 决策缺失；2) 看是不是契约过时（`docs/contracts/`）；3) 降级到手动实现 + 手测，Milestone 同步报告 |
 | WS schema 临时改了一个字段 | 立即开 Issue 告知对方，同步更新 mock + test-vectors；改完立刻 commit `contract: ...` |
-| 我发现任务粒度太粗 / 太细 | 周同步会议提；达成一致后更新 `2026-04-15-prd-gap-tasks-v3.md` 和 `task-status.md` 同步拆分/合并 |
+| 我发现任务粒度太粗 / 太细 | Milestone 同步提；达成一致后更新 `2026-04-15-prd-gap-tasks-v3.md` 和 `task-status.md` 同步拆分/合并 |
 | Milestone 没按期完成 | 1) 不能跳过；2) 约加急联调；3) 考虑降级未完成任务到下个 Milestone（需用户批准）|
 
 ---
@@ -268,7 +290,7 @@ eval-doc-XXX → test-plan-XXX → test-diff-XXX → e2e-report-XXX
 - [ ] 跑通 `make setup` 和 `make check`
 - [ ] 读完自己线的 tasks-v3 章节（30 分钟）
 - [ ] 读一遍 `zchat-plan/01-protocol-primitives.md`（了解协议语义）
-- [ ] 加入周同步会议
+- [ ] 加入Milestone 同步
 - [ ] 约 Lead 15 分钟 onboard QA
 - [ ] 认领第一个 ⬜ 任务（建议 Green 类型作为 warm-up）
 
@@ -277,8 +299,8 @@ eval-doc-XXX → test-plan-XXX → test-diff-XXX → e2e-report-XXX
 - [ ] 确认 Owner 命名（DevA / DevB / 真名？）
 - [ ] 确认 commit 前缀格式（已建议，可调整）
 - [ ] 决定 T0.1 + T0.2 协作方式（pair vs 草稿 + 审）
-- [ ] 约定周同步时间（默认周一早）
-- [ ] 约定 Milestone 联调时长（默认 2 天，M5 是 3 天）
+- [ ] 确认 Milestone 同步 5 分钟窗口时间（每 M 末立即同步）
+- [ ] 确认 Milestone 联调 smoke test 时长（默认 30 min，M5 是 60 min）
 - [ ] 交换紧急联系方式
 
 ---
@@ -291,7 +313,7 @@ eval-doc-XXX → test-plan-XXX → test-diff-XXX → e2e-report-XXX
 | **M0-M5** | 6 个里程碑（契约 / 客户端 / 工作台 / 管理台 / Dream / 切换） |
 | **LocalEngine / ZchatEngine** | 对话引擎的两个实现（先 Local 后 Zchat） |
 | **Green / Yellow / Red** | 任务可 AI 独立度分级 |
-| **Red 前置** | Red 决策任务必须在依赖 Phase 启动前 1 周开始（法务 / zchat 对齐） |
+| **Red 前置** | Red 决策任务与前一 Phase 并行启动（合规 Wed PM / zchat Thu AM） |
 | **dev-loop** | skill-5/2/3/4/6 的标准任务执行流水线 |
 | **artifact** | dev-loop 产出物（eval-doc / test-plan / e2e-report 等），由 skill-6 管理 |
 | **契约漂移** | WS schema 或 ConversationEngine 接口事后变更 |

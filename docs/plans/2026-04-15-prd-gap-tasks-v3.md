@@ -7,6 +7,31 @@
 
 ---
 
+## ⚡ 时间快车道（2026-04-15 调整）
+
+由于全程 AI 执行，原"17 周"时间线压缩为 **3 个工作日冲刺**，目标 **2026-04-17（周五）前完成 M5**。
+
+| 原规划 | 实际档期（AI 快车道）| 对应日期 | 里程碑 |
+|---|---|---|---|
+| 周 0-1 · Phase 0 契约+骨架 | **第 1 日上午** | **Wed 04-15 AM** | M0 + M0.5 |
+| 周 1-5 · Phase 1 核心对话 | **第 1 日下午** | **Wed 04-15 PM** | M1 |
+| 周 5-8 · Phase 2 工作台+SLA | **第 2 日上午** | **Thu 04-16 AM** | M2 |
+| 周 8-11 · Phase 3 管理+合规 | **第 2 日下午** | **Thu 04-16 PM** | M3 |
+| 周 11-14 · Phase 4 Dream+计费 | **第 3 日上午** | **Fri 04-17 AM** | M4 |
+| 周 14-17 · Phase 5 zchat 切换 | **第 3 日下午** | **Fri 04-17 PM** | M5 验收 |
+
+**以下章节所有"周 X"、"X 周"、"Week X" 引用请按本表换算**。甘特图仅保留作结构参考，不代表实际节奏。
+
+**关键节奏**：
+- 每半天推完一个 Phase（AI 并发批次 + 人审窗口收紧到分钟级）
+- Red 决策点要求 **30 分钟内响应**（T0.1/T0.2 在 M0；T3A.4-6 合规 / T5A.1 zchat 对齐并行处理）
+- Yellow 评审窗口 **30 分钟**（不再是 3 天）
+- 每 Phase 结束立即跑 dev-loop 回归，不累积到周末
+
+---
+
+---
+
 ## 〇、策略与分线原则
 
 ### 1. 路径 B 核心思想
@@ -210,7 +235,7 @@
 | T5B.4 | **端到端自动化 E2E** | 🧪 | M5 验收 | 17 story 的 Gherkin 自动化（Playwright）|
 | T5B.5 | **浮窗 SDK npm 发布** | 📝+🔧 | β4 | 发布到 npm；商户独立站一行引入 |
 
-**→ M5 联调**（~3 天）: A 的 ZchatEngine + zchat 真实实例；B 的 E2E 自动化；AB 对比无回归 → 切换默认 engine=zchat。
+**→ M5 联调**（60 min smoke test）: A 的 ZchatEngine + zchat 真实实例；B 的 E2E 自动化；AB 对比无回归 → 切换默认 engine=zchat。
 
 ---
 
@@ -234,7 +259,7 @@
 |---|---|---|
 | P0 契约设计 | ⚠️ 需协作 | 3 任务 A+B 共同产出 |
 | P1-P4 日常开发 | ✅ 高度独立 | 仅通过 WebSocket schema 交互，可各自 mock |
-| 每个里程碑联调 | ⚠️ 2-3 天共同时间 | 按 M1-M4 对齐 |
+| 每个里程碑联调 | ⚠️ 30 min smoke test | 按 M1-M4 对齐 |
 | P5 zchat 切换 | ⚠️ A 主导 | B 配合做部署 + E2E，前端无需改代码 |
 
 ### 7.3 按承接关系的任务链
@@ -270,7 +295,7 @@ T0.2 WS schema
 - T0.2 WebSocket 消息 schema 冻结
 - T0.3 契约测试 suite
 
-**🤝 联调任务（每个 Milestone 2-3 天，5 次）**:
+**🤝 联调任务（每个 Milestone 30 min smoke test，5 次；M5 60 min）**:
 - M1 customer-chat × LocalEngine
 - M2 operator-console × 协议命令
 - M3 admin-portal × 合规+soul 生成
@@ -284,8 +309,8 @@ T0.2 WS schema
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | zchat v0.3 延期 | Phase 5 延期 | 路径 B 保证 LocalEngine 可独立交付；Phase 1-4 不受影响 |
-| WS schema 设计不完整 | M1-M4 多次返工 | T0.1-0.3 花 3 天做透；先手写 10 个典型场景跑通 |
-| A/B 分线步调不齐 | 联调窗口浪费 | 每周 1 次 30 分钟对齐会 + 共享 mock |
+| WS schema 设计不完整 | M1-M4 多次返工 | T0.1-0.3 花 1.5h 做透；先手写 10 个典型场景跑通 |
+| A/B 分线步调不齐 | 联调窗口浪费 | 每 Milestone 末 5 分钟对齐 + 共享 mock |
 | LocalEngine Mode/Gate 与 zchat 语义漂移 | M5 切换时发现业务不匹配 | T0.1 设计时参考 zchat-plan/01-primitives；LocalEngine 每个方法对齐 zchat 命名 |
 | 延迟监控缺失 → M5 切换后 SLA 劣化未发现 | 高 | T5A.6 埋点必须在 AB 测试前到位 |
 | cc-pool key 迁移 bug | 中 | T5A.5 做双跑对照；conv_id ↔ chat_id 映射表保留 30 天 |
