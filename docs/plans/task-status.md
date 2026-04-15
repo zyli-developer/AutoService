@@ -32,7 +32,7 @@
 | T0.3 | 契约测试 suite | A | 🟢 | ⬜ | — | T0.1,T0.2 | — |
 | T0.4 | LocalEngine 骨架 | A | 🟢 | ⬜ | — | T0.1 | — |
 | T0.5 | WebSocket 服务端骨架 | A | 🟢 | ⬜ | — | T0.2 | — |
-| T0.6 | 前端 monorepo 骨架 | B | 🟢 | 🟦 | DevB | T0.2 | frontend/ |
+| T0.6 | 前端 monorepo 骨架 | B | 🟢 | 🟩 | DevB | T0.2 | frontend/ |
 
 ---
 
