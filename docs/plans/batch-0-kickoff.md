@@ -52,19 +52,18 @@ claude  # 启动 CC 会话
 
 ---
 
-## 1. Session 结构（2 天）
+## 1. Session 结构（3 小时冲刺）
 
 | 时段 | 活动 | 主导 |
 |---|---|---|
-| Day 1 上午 | T0.1 ConversationEngine 设计 | DevA driver |
-| Day 1 下午 | T0.1 决策讨论 + 确定 | 双方 |
-| Day 2 上午 | T0.2 WS schema 起草 | DevB driver |
-| Day 2 下午 | T0.2 决策讨论 + T0.3 契约测试 | 双方 |
-| Day 2 末 | M0 验收 + commit + push | 双方 |
+| Wed 09:00-10:00 | T0.1 ConversationEngine 设计（DevA 起草 + DevB 并行准备能力表） | DevA driver |
+| Wed 10:00-10:30 | T0.1 决策讨论 + 终稿 | 双方 |
+| Wed 10:30-11:30 | T0.2 WS schema 起草（DevB 起草 + DevA 并行准备映射表） | DevB driver |
+| Wed 11:30-12:00 | T0.2 决策 + T0.3 契约测试 + M0 验收 commit+push | 双方 |
 
 ---
 
-## 2. Day 1 上午 · T0.1 启动
+## 2. Wed 09:00-10:00 · T0.1 启动
 
 ### DevA（Driver）在自己的 CC 会话贴：
 
@@ -73,7 +72,7 @@ claude  # 启动 CC 会话
 
 **背景**:
 - 我是 DevA，正在和 DevB 做 pair session
-- 这是 path B 适配层先行策略的核心契约，决定后续 16 周走向
+- 这是 path B 适配层先行策略的核心契约，决定后续 3 日冲刺走向
 - 输出必须同时满足 LocalEngine（现阶段）和 ZchatEngine（M5 切换）两种实现
 
 **任务**:
@@ -133,7 +132,7 @@ DevA 正在起草 ConversationEngine 抽象。在他完成前，请我并行做�
 
 ---
 
-## 3. Day 1 下午 · T0.1 决策讨论
+## 3. Wed 10:00-10:30 · T0.1 决策讨论
 
 ### 双方把各自产出贴在一起对照
 
@@ -204,7 +203,7 @@ DevA 已完成 T0.1 ConversationEngine 终稿。请 review：
 
 ---
 
-## 4. Day 2 上午 · T0.2 启动
+## 4. Wed 10:30-11:30 · T0.2 启动
 
 ### DevB（Driver）在自己的 CC 会话贴：
 
@@ -268,7 +267,7 @@ DevB 正在起草 WS schema。在他完成前请我并行做准备：
 
 ---
 
-## 5. Day 2 下午 · T0.2 决策 + T0.3 契约测试
+## 5. Wed 11:30-12:00 · T0.2 决策 + T0.3 契约测试
 
 ### T0.2 决策讨论
 
@@ -365,29 +364,31 @@ grep "🟩" docs/plans/task-status.md | grep "T0\." | wc -l  # 应 = 6（P0 全�
 ## 下一步
 - DevA: 启动 T0.4 LocalEngine 骨架（用 §1 启动任务模板）
 - DevB: 启动 T0.6 前端 monorepo 骨架（用 §1 启动任务模板）
-- 首次周同步: 下周一早 30 分钟
+- 首次 Milestone 同步: M1 完成后（Wed EOD 前）5 分钟
 ```
 
 ---
 
 ## 7. 替代方案：如果两人不能同时在线
 
-### 异步 pair 流程（Day 1-3 延长到 3 天）
+### 异步 pair 流程（压缩版，总耗时 ~4h）
 
-**Day 1**:
-- DevA 自己跑 T0.1 前置研究（读文档 + 起草 Protocol）
-- 产出发到 GitHub Issue "Batch 0 Kickoff"
+适用于 A/B 有 1-2h 时差但都能响应 GitHub Issue 的场景。
 
-**Day 2**:
-- DevB 24 小时内 review + 回复映射表 + 决策意见
+**步骤 1**（DevA 主导，~1h）:
+- DevA 跑 T0.1 前置研究 + 起草 Protocol
+- 产出发到 GitHub Issue "Batch 0 Kickoff"；@DevB
+
+**步骤 2**（DevB 响应，30 min）:
+- DevB 30 分钟内 review + 回复映射表 + 决策意见
 - DevA 根据反馈更新终稿
 
-**Day 3**:
+**步骤 3**（DevB 主导，~1h）:
 - DevB 主 drive T0.2，重复同步
 - DevA 做 T0.3 契约测试
 - 最终 push
 
-**代价**：多 1 天，但不需同步时间，适合时差团队。
+**代价**：比同屏多 ~1h，但不要求实时同步。
 
 ---
 
@@ -403,7 +404,7 @@ T0.1 选择题 3「Gate 降级是否可逆」分歧严重：
 操作：
 1. 两人各自起草 300 字方案 + 影响分析
 2. 贴到 Issue，@Lead / @用户
-3. 48 小时内要求决策
+3. 30 分钟内要求决策
 4. 期间 T0.1 状态 ⚠️ blocked "HUMAN-REQUIRED: Gate 可逆性决策"
 5. 双方转做无依赖任务（DevA 可提前启动 T0.4 LocalEngine 骨架，基于暂定方案；DevB 可提前做 T0.6 frontend monorepo）
 ```
@@ -428,13 +429,11 @@ M0 通过后：
 | 时间段 | 总时长 | 主要产物 |
 |---|---|---|
 | 会前 15 min | — | worktree / CC 启动 / 协作频道就绪 |
-| Day 1 AM (3h) | — | T0.1 草稿 + DevB 能力表 |
-| Day 1 lunch | 1h | 休息 + 各自消化 |
-| Day 1 PM (2h) | — | T0.1 决策讨论 + 终稿 |
-| Day 2 AM (3h) | — | T0.2 草稿 + DevA 映射表 |
-| Day 2 lunch | 1h | 休息 |
-| Day 2 PM (3h) | — | T0.2 决策 + T0.3 测试 + push |
-| **合计** | **~12h 有效** | M0 验收 |
+| Wed 09:00-10:00 | 1h | T0.1 草稿 + DevB 能力表 |
+| Wed 10:00-10:30 | 30m | T0.1 决策讨论 + 终稿 |
+| Wed 10:30-11:30 | 1h | T0.2 草稿 + DevA 映射表 |
+| Wed 11:30-12:00 | 30m | T0.2 决策 + T0.3 测试 + push |
+| **合计** | **3h 同屏** | M0 验收（Wed 12:00 前）|
 
 ---
 

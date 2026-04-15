@@ -235,7 +235,7 @@
 | T5B.4 | **端到端自动化 E2E** | 🧪 | M5 验收 | 17 story 的 Gherkin 自动化（Playwright）|
 | T5B.5 | **浮窗 SDK npm 发布** | 📝+🔧 | β4 | 发布到 npm；商户独立站一行引入 |
 
-**→ M5 联调**（~3 天）: A 的 ZchatEngine + zchat 真实实例；B 的 E2E 自动化；AB 对比无回归 → 切换默认 engine=zchat。
+**→ M5 联调**（60 min smoke test）: A 的 ZchatEngine + zchat 真实实例；B 的 E2E 自动化；AB 对比无回归 → 切换默认 engine=zchat。
 
 ---
 
@@ -259,7 +259,7 @@
 |---|---|---|
 | P0 契约设计 | ⚠️ 需协作 | 3 任务 A+B 共同产出 |
 | P1-P4 日常开发 | ✅ 高度独立 | 仅通过 WebSocket schema 交互，可各自 mock |
-| 每个里程碑联调 | ⚠️ 2-3 天共同时间 | 按 M1-M4 对齐 |
+| 每个里程碑联调 | ⚠️ 30 min smoke test | 按 M1-M4 对齐 |
 | P5 zchat 切换 | ⚠️ A 主导 | B 配合做部署 + E2E，前端无需改代码 |
 
 ### 7.3 按承接关系的任务链
@@ -295,7 +295,7 @@ T0.2 WS schema
 - T0.2 WebSocket 消息 schema 冻结
 - T0.3 契约测试 suite
 
-**🤝 联调任务（每个 Milestone 2-3 天，5 次）**:
+**🤝 联调任务（每个 Milestone 30 min smoke test，5 次；M5 60 min）**:
 - M1 customer-chat × LocalEngine
 - M2 operator-console × 协议命令
 - M3 admin-portal × 合规+soul 生成
@@ -309,8 +309,8 @@ T0.2 WS schema
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | zchat v0.3 延期 | Phase 5 延期 | 路径 B 保证 LocalEngine 可独立交付；Phase 1-4 不受影响 |
-| WS schema 设计不完整 | M1-M4 多次返工 | T0.1-0.3 花 3 天做透；先手写 10 个典型场景跑通 |
-| A/B 分线步调不齐 | 联调窗口浪费 | 每周 1 次 30 分钟对齐会 + 共享 mock |
+| WS schema 设计不完整 | M1-M4 多次返工 | T0.1-0.3 花 1.5h 做透；先手写 10 个典型场景跑通 |
+| A/B 分线步调不齐 | 联调窗口浪费 | 每 Milestone 末 5 分钟对齐 + 共享 mock |
 | LocalEngine Mode/Gate 与 zchat 语义漂移 | M5 切换时发现业务不匹配 | T0.1 设计时参考 zchat-plan/01-primitives；LocalEngine 每个方法对齐 zchat 命名 |
 | 延迟监控缺失 → M5 切换后 SLA 劣化未发现 | 高 | T5A.6 埋点必须在 AB 测试前到位 |
 | cc-pool key 迁移 bug | 中 | T5A.5 做双跑对照；conv_id ↔ chat_id 映射表保留 30 天 |

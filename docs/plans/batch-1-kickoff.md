@@ -35,7 +35,7 @@
 **并行策略**: 
 - DevA 串行做 T0.4 → T0.5（同一技术栈可复用上下文）
 - DevB 独立做 T0.6
-- 两人**不需要同屏**；只需各自 commit + push，周末同步
+- 两人**不需要同屏**；各自 commit + push，尾段 30 分钟联调对齐
 
 ---
 
@@ -235,7 +235,7 @@ frontend/
 
 ---
 
-## 5. 两人联调检查点（Day 1 末 / Day 2）
+## 5. 两人联调检查点（Wed 14:00-14:30）
 
 ### 验证跨线能连通
 
@@ -303,7 +303,7 @@ Phase 0 全绿后，按 `cc-prompt-templates §12.1` "我该做什么？" 询问
 - T1B.1 customer-chat SPA 骨架（基于 T0.6 已有 stub）
 - T1B.6 多语言 UI 框架（与 T1B.1 并行）
 
-之后进入常态开发节奏（用 `cc-prompt-templates §1` 启动模板），周同步机制生效。
+之后进入常态开发节奏（用 `cc-prompt-templates §1` 启动模板），Milestone-end 5 分钟同步机制生效。
 
 ---
 

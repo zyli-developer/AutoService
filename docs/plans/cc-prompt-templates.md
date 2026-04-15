@@ -132,7 +132,7 @@
 4. 输出 review checklist：我要检查的 {N} 个关键点（如 prompt 质量、边界情况、与现有代码一致性）
 5. 不要 commit；等我审查
 6. 我说 "approved {Tx.x}" 后 → commit + 改 🟩
-7. 我说 "rejected {Tx.x}: {原因}" → 改 🟥 failed，3 天内重做
+7. 我说 "rejected {Tx.x}: {原因}" → 改 🟥 failed，30 分钟内重做
 ```
 
 **T1A.4 具体版**:
@@ -159,7 +159,7 @@
 1. 当前整体进度（x/66，各 Phase 明细百分比）
 2. 进行中任务（🟦 + Owner 列表）
 3. 阻塞任务（⚠️ + 阻塞原因）
-4. 本周应启动的 Red 任务（未来 7 天内，基于 task-execution-plan Batch 表）
+4. 本 Milestone 应启动的 Red 任务（基于 task-execution-plan Batch 表）
 5. 下一批可并发启动的 ⬜ 任务（依赖已满足 + 一次最多 5 个）
 6. 风险提示（落后于 task-execution-plan §八 里程碑日期的任务）
 ```
@@ -338,13 +338,13 @@
 ### 12.2 "Red 决策还差多少？"
 
 ```
-列出未来 2 周内即将需要 Red 决策的任务：
+列出当前 Milestone 及下一 Milestone 即将需要 Red 决策的任务：
 
 1. 读 task-execution-plan.md §五
 2. 对照 task-status.md 当前进度
 3. 标注每个 Red 任务的：
    - 预计启动时间
-   - 是否已前置启动（如合规 T3A.4-6 需周 8、zchat T5A.1 需周 14）
+   - 是否已前置启动（如合规 T3A.4-6 需 Wed PM、zchat T5A.1 需 Thu AM）
    - 缺失的决策人 / 资料
 4. 输出提醒清单
 ```
