@@ -121,6 +121,8 @@ class PoolConfig(_BasePoolConfig):
     permission_mode: str = "bypassPermissions"
     model: str | None = None
     cli_path: str | None = None
+    # Enable partial/delta streaming events for progressive UI updates.
+    include_partial_messages: bool = False
 
 
 def load_pool_config(cwd: str | None = None) -> PoolConfig:
@@ -208,6 +210,7 @@ async def create_cc_client(
         permission_mode=config.permission_mode,
         model=config.model,
         cli_path=config.cli_path,
+        include_partial_messages=config.include_partial_messages,
     )
 
     if mcp_servers:

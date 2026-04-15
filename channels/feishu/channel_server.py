@@ -48,6 +48,50 @@ class Instance:
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+def _extract_partial_text(json_buf: str) -> str | None:
+    """Best-effort extract the 'text' field value from incomplete JSON.
+
+    Handles standard JSON escapes (\\n, \\t, \\", \\\\, \\uXXXX).
+    Returns None if the 'text' key hasn't appeared yet.
+    Returns partial decoded text even before the closing quote.
+    """
+    import re
+    m = re.search(r'"text"\s*:\s*"', json_buf)
+    if not m:
+        return None
+    start = m.end()
+    out = []
+    i = start
+    n = len(json_buf)
+    while i < n:
+        c = json_buf[i]
+        if c == '"':
+            break  # end of text value
+        if c == '\\':
+            if i + 1 >= n:
+                break  # incomplete escape — stop here (next delta will complete)
+            nc = json_buf[i + 1]
+            simple = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f'}
+            if nc in simple:
+                out.append(simple[nc])
+                i += 2
+            elif nc == 'u':
+                if i + 6 > n:
+                    break  # incomplete unicode escape
+                try:
+                    out.append(chr(int(json_buf[i + 2:i + 6], 16)))
+                    i += 6
+                except ValueError:
+                    break
+            else:
+                out.append(nc)
+                i += 2
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
+
+
 @dataclass
 class PoolRoute:
     """Virtual route backed by a CC Pool sticky session."""
@@ -98,6 +142,10 @@ class ChannelServer:
 
         # Pool virtual routes (pool_mode only)
         self.pool_routes: dict[str, PoolRoute] = {}   # chat_id -> PoolRoute
+
+        # Streaming state per chat_id (pool_mode + streaming)
+        # keys: msg_id, last_sent, buffer, last_edit_ts, current_index
+        self._stream_states: dict[str, dict] = {}
 
         # ws -> Instance reverse lookup (for disconnect cleanup)
         self._ws_to_instance: dict[ServerConnection, Instance] = {}
@@ -225,8 +273,98 @@ class ChannelServer:
         log.info("CC Pool started in pool_mode (min=%d, max=%d)",
                  config.min_size, config.max_size)
 
+    async def _handle_stream_event(self, chat_id: str, msg) -> None:
+        """Process an Anthropic stream event for progressive Feishu updates.
+
+        Watches `content_block_delta` events carrying `input_json_delta` chunks
+        of the `reply` tool call, extracts the progressively-building `text`
+        field, and edits the Feishu message in place (throttled).
+        """
+        state = self._stream_states.get(chat_id)
+        if state is None:
+            return
+
+        event = getattr(msg, "event", None)
+        if not event or not isinstance(event, dict):
+            return
+
+        etype = event.get("type")
+
+        if etype == "content_block_start":
+            block = event.get("content_block", {}) or {}
+            index = event.get("index")
+            if block.get("type") == "tool_use" and (block.get("name") or "").endswith("reply"):
+                # Start tracking reply tool streaming
+                state["current_index"] = index
+                state["buffer"] = ""
+                state["last_sent"] = ""
+                state["msg_id"] = None
+                state["last_edit_ts"] = 0.0
+            return
+
+        if etype == "content_block_delta":
+            if state.get("current_index") is None or event.get("index") != state["current_index"]:
+                return
+            delta = event.get("delta", {}) or {}
+            if delta.get("type") != "input_json_delta":
+                return
+            partial = delta.get("partial_json") or ""
+            if not partial:
+                return
+            state["buffer"] += partial
+
+            text = _extract_partial_text(state["buffer"])
+            if not text or text == state["last_sent"]:
+                return
+
+            now = time.monotonic()
+            # Minimum chars before first emit (avoid sending "" or "你")
+            if state["msg_id"] is None and len(text) < 4:
+                return
+            # Throttle: at least 500ms between edits
+            if state["msg_id"] is not None and (now - state["last_edit_ts"]) < 0.5:
+                return
+
+            if state["msg_id"] is None:
+                # First emit: create Feishu message
+                msg_id = await self._reply_feishu_sync(chat_id, text)
+                if msg_id:
+                    state["msg_id"] = msg_id
+                    state["last_sent"] = text
+                    state["last_edit_ts"] = now
+            else:
+                # Edit existing message
+                ok = await self._edit_feishu_message(state["msg_id"], text)
+                if ok:
+                    state["last_sent"] = text
+                    state["last_edit_ts"] = now
+            return
+
+        if etype == "content_block_stop":
+            if state.get("current_index") is not None and event.get("index") == state["current_index"]:
+                # Final flush will be done by _pool_reply_callback when the tool call commits
+                state["current_index"] = None
+            return
+
     async def _pool_reply_callback(self, chat_id: str, text: str) -> None:
         """Callback for pool-managed instances: route reply back to Feishu/web."""
+        # If streaming already created/edited the message for this turn,
+        # do a final edit with the authoritative text and suppress duplicate send.
+        stream_state = self._stream_states.get(chat_id) if hasattr(self, "_stream_states") else None
+        if stream_state and stream_state.get("msg_id"):
+            msg_id = stream_state["msg_id"]
+            # Only finalize if the streamed text differs from final text
+            if stream_state.get("last_sent") != text:
+                ok = await self._edit_feishu_message(msg_id, text)
+                if not ok:
+                    # Edit failed (e.g. rate-limited) — send as new message
+                    await self._reply_feishu(chat_id, text)
+            # Mark this turn's streaming done so next reply call gets a fresh message
+            stream_state["msg_id"] = None
+            stream_state["last_sent"] = ""
+            stream_state["buffer"] = ""
+            return
+
         if chat_id.startswith("oc_"):
             await self._reply_feishu(chat_id, text)
         elif chat_id.startswith("web_"):
@@ -280,9 +418,29 @@ class ChannelServer:
             log.info("Pool routing: chat_id=%s user=%s text=%.40s",
                      chat_id, user, text)
 
+            # Initialize streaming state for this chat (Feishu only)
+            stream_enabled = chat_id.startswith("oc_") and self._feishu_client is not None
+            if stream_enabled:
+                self._stream_states[chat_id] = {
+                    "msg_id": None,           # Feishu message_id for current streaming reply
+                    "last_sent": "",          # last text pushed to Feishu
+                    "buffer": "",             # accumulated input_json_delta JSON
+                    "last_edit_ts": 0.0,      # throttle timestamp
+                    "current_index": None,    # content block index currently streaming
+                }
+
             async for msg in self._pool.session_query(chat_id, prompt):
-                # Responses are handled by the reply_callback in the MCP tools
-                pass
+                cls = type(msg).__name__
+
+                if cls == "StreamEvent" and stream_enabled:
+                    try:
+                        await self._handle_stream_event(chat_id, msg)
+                    except Exception as e:
+                        log.debug("stream event handling error: %s", e)
+                    continue
+
+                log.info("[pool msg] chat_id=%s type=%s content=%.200r",
+                         chat_id, cls, msg)
 
         except Exception as e:
             log.error("Pool message handling failed for chat_id=%s: %s", chat_id, e)
@@ -675,6 +833,58 @@ class ChannelServer:
                 log.warning("_reply_feishu error: %s", e)
 
         threading.Thread(target=_do_send, daemon=True).start()
+
+    async def _reply_feishu_sync(self, chat_id: str, text: str) -> str | None:
+        """Send a text message and return the created message_id (for streaming edits)."""
+        if self._feishu_client is None:
+            return None
+
+        def _do_send():
+            try:
+                from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+                body = (
+                    CreateMessageRequestBody.builder()
+                    .receive_id(chat_id)
+                    .msg_type("text")
+                    .content(json.dumps({"text": text}))
+                    .build()
+                )
+                req = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(body).build()
+                resp = self._feishu_client.im.v1.message.create(req)
+                if resp.success() and resp.data and resp.data.message_id:
+                    self._recent_sent.add(resp.data.message_id)
+                    self._msg_counter["sent"] += 1
+                    return resp.data.message_id
+            except Exception as e:
+                log.warning("_reply_feishu_sync error: %s", e)
+            return None
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_send)
+
+    async def _edit_feishu_message(self, message_id: str, text: str) -> bool:
+        """Edit an existing Feishu text message. Best-effort; returns success flag."""
+        if self._feishu_client is None or not message_id:
+            return False
+
+        def _do_edit():
+            try:
+                from lark_oapi.api.im.v1 import UpdateMessageRequest, UpdateMessageRequestBody
+                body = (
+                    UpdateMessageRequestBody.builder()
+                    .msg_type("text")
+                    .content(json.dumps({"text": text}))
+                    .build()
+                )
+                req = UpdateMessageRequest.builder().message_id(message_id).request_body(body).build()
+                resp = self._feishu_client.im.v1.message.update(req)
+                return bool(resp.success())
+            except Exception as e:
+                log.debug("_edit_feishu_message exception: %s", e)
+                return False
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_edit)
 
     # -- Main Feishu loop -----------------------------------------------
 
@@ -1469,7 +1679,12 @@ async def _async_main() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler in asyncio.
+            # Fall back to signal.signal() — less graceful but functional.
+            signal.signal(sig, lambda *_: asyncio.create_task(server.stop()))
 
     await server.start()
 
