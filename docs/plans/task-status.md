@@ -212,3 +212,8 @@
 3. **关联 artifact 字段**随 dev-loop 推进填充（格式 `eval-doc-003, test-plan-005`）
 4. **每次修改** commit message 格式: `task: T0.1 → in_progress (DevA)` 或 `task: T0.1 → completed`
 5. **冲突规避**: 改自己任务行时用 Edit 精确替换单行，避免整表重写
+6. **双人并行约定**（轻量同步方案）:
+   - DevA 只改 A 线任务行（含 `T?A.*`）；DevB 只改 B 线任务行（含 `T?B.*`）
+   - 协作任务（T0.1 / T0.2 / T5A.1）改动需在 PR 中 review，不直接 push
+   - **禁止任何人手改**「最后更新」和「进度汇总」两块 —— 由 DevA 每日 EOD 统一刷新
+   - `.gitattributes` 已对本文件启用 `merge=union`：合并时保留两边新增行，避免 3-way 冲突；代价是汇总区可能出现重复行，由 EOD 刷新时清理
