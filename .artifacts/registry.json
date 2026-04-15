@@ -37,11 +37,23 @@
       "type": "eval-doc",
       "status": "draft",
       "producer": "skill-5",
-      "consumers": [],
+      "consumers": ["test-plan-001"],
       "path": ".artifacts/eval-docs/eval-T0.4-local-engine-skeleton.md",
       "created_at": "2026-04-15T10:45:00Z",
-      "updated_at": "2026-04-15T10:45:00Z",
+      "updated_at": "2026-04-15T11:10:00Z",
       "related_ids": []
+    },
+    {
+      "id": "test-plan-001",
+      "name": "T0.4 LocalEngine skeleton test-plan",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [],
+      "path": ".artifacts/test-plans/test-plan-T0.4-local-engine-skeleton.md",
+      "created_at": "2026-04-15T11:10:00Z",
+      "updated_at": "2026-04-15T11:10:00Z",
+      "related_ids": ["eval-doc-001"]
     }
   ]
 }
