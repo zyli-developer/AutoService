@@ -289,7 +289,7 @@
     },
     {
       "type": "timer.set",
-      "$comment": "duration_ms 与 T0.1 Q2 决策一致；on_expire 是结构化动作描述",
+      "$comment": "duration_ms 与 T0.1 Q2 决策一致；on_expire.type 字面量取自 T0.1 §3 set_timer 签名（mode_change | system_message | callback），是动作类型而非 mode.changed 事件，注意区分",
       "example": {
         "id": "01HX7ZGQ8K3N5T6V8W9X0Y1Z2P",
         "type": "timer.set",

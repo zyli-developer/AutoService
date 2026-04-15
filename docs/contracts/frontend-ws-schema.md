@@ -1,14 +1,28 @@
 ---
-version: 0.1-draft
-status: DRAFT (awaiting DevA review)
+version: 0.2-draft
+status: DRAFT (awaiting DevA second pass)
 author: DevB
 reviewer: DevA
 created_at: 2026-04-15
 updated_at: 2026-04-15
+supersedes: 0.1-draft
 upstream: docs/contracts/conversation-engine.md v1.0
 ---
 
-# T0.2 · Frontend WebSocket Schema (v0.1 草案)
+> **v0.2 变更**（吸收 DevA review · issue #21）：
+> - §1 修正 admin actor 模型：admin 通过 `actor_id` + Engine §6.1 admin 列识别，**不**借 OPERATOR/SYSTEM 身份
+> - §3.4 `4500` → `4499`（避免与 HTTP 5xx 视觉混淆）
+> - §4 F6 `subscribe.scope` 加 `global: bool`（DevA #1）
+> - §4 F13 `history_request` 明示 `since_sequence` / `before_sequence` 互斥（DevA #6）
+> - §5 S5 加 `source_display: {id, role, name?}`，与 `Message.source` 字符串解耦（DevA #3）
+> - §5 S8 `event` 帧明确走 `viewer_role` 过滤；`hook.failed` / `message.gated` / `sla.breach` 仅推 OPERATOR/ADMIN（DevA #4）
+> - §5 S11 与 §6 加 `command_response{ok:false}` vs `error` 帧边界规则（DevA #2）
+> - §5 S13 `since_sequence` 标 `int | string` 联合类型（DevA #5）
+> - §3.2 / §6 明确 `ping`/`pong`/`ack`/`error` 自身不再 ack（DevA D6 附加）
+> - §3.3 `4041_REPLAY_GAP` 明确 ring buffer 是 **per-subscription**（DevA D3 附加）
+> - §7 映射表加 `admin_command` 的 `actor_id` 列（DevA #7）
+
+# T0.2 · Frontend WebSocket Schema (v0.2 草案)
 
 > 前后端唯一外部接口面。所有 Web 前端（C 端聊天 / Operator 工作台 / Admin 控制台）通过本契约消费 ConversationEngine。
 >
@@ -26,7 +40,7 @@ upstream: docs/contracts/conversation-engine.md v1.0
 | `/ws/operator` | `OPERATOR` | OAuth/SSO bearer | 显式 `subscribe` 加入 N 个 conv + squad fanout |
 | `/ws/admin` | `ADMIN`（内部，非 Engine 枚举） | OAuth/SSO bearer + RBAC | 隐式订阅全局事件流 |
 
-> ADMIN 不在 ConversationEngine 的 `ParticipantRole` 中——它是端点级权限标签；调用 Engine 时仍以 OPERATOR/SYSTEM 身份做。
+> ADMIN 不在 `ParticipantRole` 枚举中（T0.1 §2.1 仅 customer/agent/operator/observer）。Admin 通过 `/ws/admin` 接入后，调用 `handle_command` 时传入自己的 admin user_id 作为 `actor_id`，由 Engine §6.1 权限矩阵的 **admin 列**识别（实现侧维护 admin id allowlist 或委托外部 IAM）。Admin **不**直接 `join` conversation，因此 `participant.joined` 等需要 `Participant` 对象的事件中不出现 admin 角色。
 
 `viewer_role` 由端点决定，注入到 `subscribe(viewer_role=...)` / `get_messages(viewer_role=...)`，后端 Engine 据此过滤 SIDE 消息（T0.1 Q9 + 不变量 #6）。
 
@@ -74,6 +88,7 @@ BE → FE: server_hello { session_id, protocol_version, server_time, viewer_role
 - FE 每 20s 发 `ping`；BE 立即回 `pong`
 - BE 60s 内未收到 `ping` → 主动 close（code 4408 idle）
 - `ping`/`pong` payload 仅 `{server_time?}`
+- **不参与 ack 链**：`ping` / `pong` / `ack` / `error` 自身不再触发 ack（避免递归）；`pong` 已是 `ping` 的天然回执
 
 ### 3.3 重连与回放 (reconnect & replay)
 
@@ -91,10 +106,12 @@ BE → FE: server_hello { session_id, protocol_version, server_time, viewer_role
 
 服务端处理（与 T0.1 Q3/不变量 #4 对齐）：
 - **conv scope**：对每个 `conversation_id`，调用 `get_messages(since_sequence=msg)` + `query_events(since_sequence=evt)`，按序补发为 `message` / `event` 帧
-- **squad/global scope**：用 `global_event_id` ULID 字典序，从 ring buffer 重放（保留窗口见决策 D5）
+- **squad/global scope**：用 `global_event_id` ULID 字典序，从 **per-subscription** ring buffer 重放（保留窗口见决策 D3）
 - 回放完成后发 `replay_complete { conversation_id?, count }`，FE 据此切换"实时"UI 状态
 
-如果 `last_seen` 落在保留窗口外 → BE 发 `error { code: "REPLAY_GAP", recoverable: true }`，FE 应做"全量重拉"（`history_request` + 重新 subscribe）。
+> Ring buffer 是 **per-subscription** 的（每个 `subscribe()` 调用一份独立窗口），防止单条 hot conv 挤占其他 squad 订阅的事件窗。
+
+如果 `last_seen` 落在保留窗口外 → BE 发 `error { code: "4041_REPLAY_GAP", recoverable: true }`，FE 应做"全量重拉"（`history_request` + 重新 subscribe）。
 
 ### 3.4 关闭码 (close codes)
 
@@ -105,7 +122,7 @@ BE → FE: server_hello { session_id, protocol_version, server_time, viewer_role
 | 4003 | PERMISSION_REVOKED | 提示用户，不自动重连 |
 | 4408 | IDLE_TIMEOUT | 立即重连 |
 | 4409 | CONFLICT（同 session 多连接） | 不自动重连 |
-| 4500 | SERVER_ERROR | 指数退避重连 |
+| 4499 | SERVER_ERROR | 指数退避重连 |
 | 4503 | OVERLOAD | 按 `retry_after` 重连 |
 
 ---
@@ -121,14 +138,14 @@ BE → FE: server_hello { session_id, protocol_version, server_time, viewer_role
 | F3 | `client_ack` | all | `event_id` (ULID) | 标记前端已消费，BE 用于推进 per-sub cursor |
 | F4 | `customer_message` | customer | `conversation_id, content, client_msg_id?, metadata?` | `send_message(source=<customer_pid>, content, requested_visibility=PUBLIC)` |
 | F5 | `csat_response` | customer | `conversation_id, score (1-5)` | `set_csat(conversation_id, score)` |
-| F6 | `subscribe` | operator/admin | `scope: {conversation_id?, squad_id?}, event_types?, since_sequence?` | `subscribe(...)` 新建一个内部订阅 |
+| F6 | `subscribe` | operator/admin | `scope: {conversation_id?, squad_id?, global?: bool}, event_types?, since_sequence?` | `subscribe(...)` 新建一个内部订阅；`scope.global=true` 仅 `/ws/admin` 接受 |
 | F7 | `unsubscribe` | operator/admin | `subscription_id` | 关闭对应 async iterator |
 | F8 | `operator_join` | operator | `conversation_id, operator: {id, name, metadata?}` | `join(conversation_id, Participant(role=OPERATOR, ...))` |
 | F9 | `operator_leave` | operator | `conversation_id, operator_id` | `leave(conversation_id, operator_id)` |
 | F10 | `operator_message` | operator | `conversation_id, operator_id, content, requested_visibility?` (默认 PUBLIC，Gate 在 copilot 下降级) | `send_message(source=<operator_pid>, content, requested_visibility)` |
 | F11 | `operator_command` | operator | `conversation_id, operator_id, command (/hijack \| /release \| /copilot \| /resolve \| /abandon \| /status), args?` | `handle_command(conversation_id, actor_id, command, args)` |
 | F12 | `admin_command` | admin | `command (/status \| /dispatch \| /assign \| ...), args` | `handle_command(<global>, actor_id, command, args)` 或方法分派 |
-| F13 | `history_request` | customer/operator | `conversation_id, since_sequence?, before_sequence?, limit?` | `get_messages(conversation_id, since_sequence?, before_sequence?, viewer_role)` |
+| F13 | `history_request` | customer/operator | `conversation_id, since_sequence?, before_sequence?, limit?` | `get_messages(conversation_id, since_sequence?, before_sequence?, viewer_role)`；**`since_sequence` 与 `before_sequence` 互斥**（同传 → `4012_VALIDATION`） |
 | F14 | `edit_request` | operator | `conversation_id, message_id, new_content` | `edit_message(...)` |
 | F15 | `delete_request` | operator | `conversation_id, message_id` | `delete_message(...)` |
 
@@ -189,15 +206,15 @@ BE→FE 分两类：
 | S2 | `pong` | `server_time` | ping 应答 |
 | S3 | `ack` | `ref` | 任一 FE→BE 帧成功落地 |
 | S4 | `error` | `code, message, recoverable, retry_after?, details?, ref?` | 任一失败 |
-| S5 | `message` | `conversation_id, message: Message`（id, source, content, visibility, sequence_number, timestamp, edit_of?, metadata） | Engine emit `message.sent` 后，根据 visibility + viewer_role 路由 |
+| S5 | `message` | `conversation_id, message: Message`（id, source, content, visibility, sequence_number, timestamp, edit_of?, metadata）, `source_display: {id, role, name?, avatar_url?}` | Engine emit `message.sent` 后，根据 visibility + viewer_role 路由；`source_display` 由 WS 层根据 `source` participant_id 查 ParticipantRegistry 注入，与 Engine `Message` 类型解耦 |
 | S6 | `message_edited` | `conversation_id, message_id, new_content, edited_by, sequence_number` | Engine emit `message.edited` |
 | S7 | `message_deleted` | `conversation_id, message_id, deleted_by` | Engine emit `message.deleted` |
 | S8 | `event` | `event: Event`（id, type, conversation_id, data, timestamp, sequence_number） | 通用 Event 推送（mode.* / participant.* / conversation.* / timer.* / sla.* / squad.* / hook.failed / mode.noop / message.gated） |
 | S9 | `history_snapshot` | `conversation_id, messages: Message[], has_more, next_before_sequence?` | history_request 应答 |
 | S10 | `csat_request` | `conversation_id, prompt?, options: [1..5]` | conversation.resolved 后服务端主动推 |
-| S11 | `command_response` | `command, ok, result?, ref` | operator_command / admin_command 应答（如 /status 的列表） |
+| S11 | `command_response` | `command, ok, result?, error_code?, error_message?, ref` | operator_command / admin_command 应答（如 /status 的列表）。**`ok=false` 时仅含命令级业务失败（含 EngineError 子类）；协议/鉴权失败走 S4 `error` 帧** |
 | S12 | `replay_complete` | `conversation_id?, count, until_sequence` | reconnect 回放完成 |
-| S13 | `subscription_added` | `subscription_id, scope, since_sequence` | subscribe 应答 |
+| S13 | `subscription_added` | `subscription_id, scope, since_sequence: int \| string` | subscribe 应答；`since_sequence` 类型随 scope：conv = `int`，squad/global = `string`（ULID） |
 | S14 | `subscription_removed` | `subscription_id, reason` | unsubscribe 或服务端 evict |
 
 ### 5.1 设计：为什么 `event` 是单一类型而不是 22 个独立 type
@@ -207,6 +224,20 @@ BE→FE 分两类：
 - **`message` / `message_edited` / `message_deleted` 例外抽出**：因为它们携带"chat 内容载荷"且 FE UI 渲染路径强烈不同（聊天气泡 vs 状态变化提示），独立帧类型有利于压缩消息处理逻辑。`message.sent` Event 仍在 `event` 流中作为审计副本，但内容信息以 `message` 帧为准（**双发**，FE 可只取 `message` 帧）。
 
 > **决策点 D8**：`message.sent` 是否双发（`message` 帧 + `event` 帧）？草案：是，便于 squad 监控只订阅 events 也能看到消息计数。详见 §8。
+
+### 5.2 `event` 帧的 viewer_role 过滤（v0.2 新增）
+
+`event` 帧亦走 Engine `subscribe(viewer_role=...)` 过滤（T0.1 不变量 #6）。除"按 visibility 过滤 `message.*` 载荷"外，**以下事件类型仅推 OPERATOR / ADMIN，不推 CUSTOMER**：
+
+| 事件类型 | 原因 |
+|---|---|
+| `message.gated` | 暴露 Gate 内部规则；客户不应得知"operator 试图发 public 被降为 side" |
+| `hook.failed` | 含插件类名 / 异常 trace 等内部信息 |
+| `sla.breach` | 内部运维信号，客户不应自行判断"客服超时" |
+| `timer.set` / `timer.expired` / `timer.cancelled` | 内部计时器；客户只感知最终结果（如"已转人工"系统消息），不感知 timer 本体 |
+| `squad.assigned` / `squad.reassigned` | 分队路由元数据 |
+
+`message` / `message_edited` / `message_deleted` 帧本身已按 `Message.visibility` 过滤（CUSTOMER 只看 PUBLIC）。`message.sent` 双发的 `event` 帧载荷遵循同一过滤规则。
 
 ### 5.2 Schema 示例
 
@@ -297,7 +328,17 @@ BE→FE 分两类：
 | `5000_INTERNAL` | 服务端 bug | true | yes | 指数退避 |
 | `5003_OVERLOAD` | 服务端过载 | true | yes | 按 retry_after |
 
-> Engine 的 `EngineError` 子类 → WS error code 映射在 §6.1 Bridge handler 实现表中给出（待 LocalEngine 实现）。
+> Engine 的 `EngineError` 子类 → WS error code 映射在 §6.2 Bridge handler 实现表中给出（待 LocalEngine 实现）。
+
+### 6.1 `error` 帧 vs `command_response{ok:false}` 边界（v0.2 新增）
+
+| 失败类别 | 走哪条 | 例 |
+|---|---|---|
+| **协议 / 鉴权失败**（payload 格式错、帧 v 不兼容、token 过期、限流、重连游标失效） | **S4 `error` 帧**（带 `ref` 关联失败的 FE 帧） | `4001_AUTH_FAILED`、`4012_VALIDATION`、`4029_RATE_LIMIT`、`4041_REPLAY_GAP` |
+| **命令级业务失败**（Engine 返回异常被 handle_command 吞下后转 `ok=false`） | **S11 `command_response{ok:false}`**（`error_code` + `error_message`） | `/hijack` `PermissionDenied`、`/dispatch` `ConversationNotFound`、`/resolve` `ConversationAlreadyClosed`、`switch_mode` `IllegalModeTransition` |
+| **非命令的 Engine 调用失败**（`customer_message` 被 `ValidationError` / `send_message` 时 conv 不存在） | **S4 `error` 帧** | `4012_VALIDATION`、`4004_NOT_FOUND` |
+
+判定法：**有命令语义的 → command_response；没有的 → error**。这样 FE 可以把"命令按钮的红色提示"和"全局 toast 错误"用两套 UI 通道区分。
 
 ---
 
@@ -317,7 +358,7 @@ BE→FE 分两类：
 | `edit_message` | `edit_request` | `ack` | `message_edited` 帧 + `message.edited` event |
 | `delete_message` | `delete_request` | `ack` | `message_deleted` 帧 + `message.deleted` event |
 | `get_messages` | `history_request` | `history_snapshot` | — |
-| `handle_command` | `operator_command` / `admin_command` | `command_response` | 因命令而异 |
+| `handle_command` | `operator_command`（actor_id = operator_id） / `admin_command`（actor_id = admin_user_id；Engine §6.1 admin 列识别） | `command_response` | 因命令而异 |
 | `set_timer` / `cancel_timer` | (内部) | — | `timer.set` / `timer.cancelled` / `timer.expired` |
 | `subscribe` | `subscribe` | `subscription_added` | `event` 帧流 |
 | `query_events` | (audit/admin only, 计划走 HTTP) | — | — |
@@ -397,7 +438,8 @@ BE→FE 分两类：
 - [ ] error 语义：✅ §6
 - [ ] Engine 方法 → WS 消息映射：✅ §7
 - [ ] 决策题：✅ D1-D8
-- [ ] DevA review 回复：⏳ 待 issue #21 表态
+- [x] DevA review 第一轮回复：D1–D8 全过 + 7 条修订（v0.2 已吸收）
+- [ ] DevA second-pass：⏳ 待 issue #21 表态
 - [ ] 终稿 frontmatter 标 FROZEN
 
 ---
@@ -407,7 +449,8 @@ BE→FE 分两类：
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | 0.1-draft | 2026-04-15 | 初稿：3 端点 + 信封 + 握手/重连/版本协商 + FE→BE 15 类 + BE→FE 14 类 + 错误码 + 8 决策题 | DevB |
+| 0.2-draft | 2026-04-15 | 吸收 DevA review 7 条修订 + 2 小疵：admin actor 模型修正 / 4500→4499 / F6 +`global` / F13 互斥 / S5 +`source_display` / §5.2 event 过滤表 / §6.1 error vs command_response 边界 / S13 联合类型 / `ping`-`pong` 不再 ack / ring buffer per-sub | DevB |
 
 ---
 
-*End of T0.2 Frontend WS Schema v0.1 — awaiting DevA review on issue #21.*
+*End of T0.2 Frontend WS Schema v0.2 — awaiting DevA second-pass review on issue #21.*
