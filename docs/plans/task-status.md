@@ -217,3 +217,9 @@
    - 协作任务（T0.1 / T0.2 / T5A.1）改动需在 PR 中 review，不直接 push
    - **禁止任何人手改**「最后更新」和「进度汇总」两块 —— 由 DevA 每日 EOD 统一刷新
    - `.gitattributes` 已对本文件启用 `merge=union`：合并时保留两边新增行，避免 3-way 冲突；代价是汇总区可能出现重复行，由 EOD 刷新时清理
+
+7. **契约产物同步策略**（T0.1 / T0.2 / T5A.1 等 A+B 协作任务）:
+   - 契约任务在各自 dev-a / dev-b 分支完成并冻结（freeze commit）后，**合入公共 `dev` 分支**（不进 main）
+   - 合入时机：**等两条线都 ready** 后一起 PR → dev（同一次集成，避免单方先合导致对方 rebase）
+   - 合入后 DevA/DevB 执行 `git fetch origin && git merge origin/dev` 把共享契约拉回各自分支，开工下游依赖任务
+   - `main` 留给 M5 验收后的整体发布，不承接中间契约
