@@ -1,8 +1,17 @@
 # Batch 0 Kickoff · Pair Session Runbook
 
-> 2026-04-15 · Day 0 / Day 1 启动 · 两人共 2 天
+> 2026-04-15 · **AI 快车道：目标半天完成**（Wed AM · 09:00-12:00）
 > 目标: 完成 M0 —— T0.1 ConversationEngine + T0.2 WS schema + T0.3 契约测试
 > 执行方式: DevA + DevB **pair programming**（同屏或 tmux share）；两个 Claude Code 会话分别跑在 A/B 两台机器 / 两个 worktree
+>
+> **时间说明**：原计划 2 天，因 AI 并发执行压缩为 **3 小时**。§1 Session 结构为原文保留作参考节点，实际节奏见下：
+>
+> | 时段 | 实际档期 | 主要产出 |
+> |---|---|---|
+> | 09:00-10:00 | T0.1 起草 + DevB 并行准备能力表 | Protocol 草稿 + 能力映射 |
+> | 10:00-10:30 | T0.1 决策讨论 + 终稿 | conversation-engine.md v1.0 |
+> | 10:30-11:30 | T0.2 起草 + DevA 并行准备映射表 | WS schema 草稿 |
+> | 11:30-12:00 | T0.2 决策 + T0.3 契约测试 + push | M0 验收 |
 
 ---
 
