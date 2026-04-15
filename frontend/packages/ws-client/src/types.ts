@@ -40,10 +40,26 @@ export const BE_TO_FE_TYPES = [
 ] as const;
 export type BeToFeType = (typeof BE_TO_FE_TYPES)[number];
 
+/**
+ * ViewerRole (WS 层) · 见 frontend-ws-schema.md §1
+ * 大写。ADMIN 不是 ParticipantRole 一员，仅在 WS 层使用。
+ */
 export type ViewerRole = 'CUSTOMER' | 'OPERATOR' | 'ADMIN';
-export type Visibility = 'PUBLIC' | 'SIDE';
-export type Mode = 'auto' | 'copilot' | 'manual' | 'paused' | 'resolved';
-export type ParticipantRole = 'CUSTOMER' | 'AGENT' | 'OPERATOR';
+
+/** 对齐 autoservice.conversation_engine.types.MessageVisibility */
+export type Visibility = 'public' | 'side' | 'system';
+
+/** 对齐 autoservice.conversation_engine.types.ConversationMode */
+export type Mode = 'auto' | 'copilot' | 'takeover';
+
+/** 对齐 autoservice.conversation_engine.types.ParticipantRole */
+export type ParticipantRole = 'customer' | 'agent' | 'operator' | 'observer';
+
+/** 对齐 autoservice.conversation_engine.types.ConversationState */
+export type ConversationState = 'created' | 'active' | 'idle' | 'closed';
+
+/** 对齐 autoservice.conversation_engine.types.Outcome */
+export type Outcome = 'resolved' | 'abandoned' | 'escalated';
 
 export interface Message {
   id: string;
