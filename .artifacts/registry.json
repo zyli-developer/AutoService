@@ -5,26 +5,28 @@
   "artifacts": [
     {
       "id": "coverage-matrix-001",
-      "name": "Initial coverage matrix",
+      "name": "Initial coverage matrix (v1.0 architecture, pre-zchat)",
       "type": "coverage-matrix",
-      "status": "draft",
+      "status": "archived",
       "producer": "skill-0",
       "consumers": [],
       "path": ".artifacts/coverage/coverage-matrix.md",
       "created_at": "2026-04-10T08:36:26Z",
-      "updated_at": "2026-04-10T08:36:26Z",
+      "updated_at": "2026-04-15T10:30:00Z",
+      "archived_reason": "Superseded by PRD v1.1 (zchat + Web-first). Regenerate via skill-0 when Phase 0 契约 frozen.",
       "related_ids": []
     },
     {
       "id": "bootstrap-report-001",
-      "name": "Bootstrap execution report",
+      "name": "Bootstrap execution report (v1.0)",
       "type": "e2e-report",
-      "status": "executed",
+      "status": "archived",
       "producer": "skill-0",
       "consumers": [],
       "path": ".artifacts/bootstrap/bootstrap-report.md",
       "created_at": "2026-04-10T08:48:47Z",
-      "updated_at": "2026-04-10T08:48:47Z",
+      "updated_at": "2026-04-15T10:30:00Z",
+      "archived_reason": "Pre-v1.1 bootstrap; new bootstrap will be produced after M0 contract freeze.",
       "related_ids": [
         "coverage-matrix-001"
       ]
