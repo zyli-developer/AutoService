@@ -30,7 +30,7 @@
 | T0.1 | ConversationEngine 抽象设计 | A+B | 🔴 | 🟩 | DevA+DevB | — | docs/contracts/conversation-engine.md v1.0 · autoservice/conversation_engine/ |
 | T0.2 | WebSocket schema 冻结 | A+B | 🔴 | 🟩 | DevB+DevA | — | docs/contracts/frontend-ws-schema.md v1.0 · test-vectors/events.json |
 | T0.3 | 契约测试 suite | A | 🟢 | 🟩 | DevA | T0.1,T0.2 | tests/contract/ (109 cases, 49 pass / 60 awaiting LocalEngine) |
-| T0.4 | LocalEngine 骨架 | A | 🟢 | 🟦 | DevA | T0.1 | — |
+| T0.4 | LocalEngine 骨架 | A | 🟢 | 🟩 | DevA | T0.1 | eval-doc-001, test-plan-001, test-diff-001, e2e-report-001 |
 | T0.5 | WebSocket 服务端骨架 | A | 🟢 | ⬜ | — | T0.2,T0.4 | — |
 | T0.6 | 前端 monorepo 骨架 | B | 🟢 | ⬜ | — | T0.2 | — |
 
