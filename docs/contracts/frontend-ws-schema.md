@@ -1,14 +1,18 @@
 ---
-version: 0.2-draft
-status: DRAFT (awaiting DevA second pass)
+version: 1.0
+status: FROZEN
 author: DevB
 reviewer: DevA
 created_at: 2026-04-15
-updated_at: 2026-04-15
-supersedes: 0.1-draft
+frozen_at: 2026-04-15
+supersedes: 0.2-draft
 upstream: docs/contracts/conversation-engine.md v1.0
 ---
 
+> **v1.0 变更**（DevA second-pass sign off · issue #21）：
+> - §5 标题编号修正：原 "5.2 Schema 示例" → §5.3（v0.2 新增的 "5.2 event 帧 viewer_role 过滤" 占用了 5.2）
+> - frontmatter bump：0.2-draft → 1.0 FROZEN
+>
 > **v0.2 变更**（吸收 DevA review · issue #21）：
 > - §1 修正 admin actor 模型：admin 通过 `actor_id` + Engine §6.1 admin 列识别，**不**借 OPERATOR/SYSTEM 身份
 > - §3.4 `4500` → `4499`（避免与 HTTP 5xx 视觉混淆）
@@ -22,7 +26,7 @@ upstream: docs/contracts/conversation-engine.md v1.0
 > - §3.3 `4041_REPLAY_GAP` 明确 ring buffer 是 **per-subscription**（DevA D3 附加）
 > - §7 映射表加 `admin_command` 的 `actor_id` 列（DevA #7）
 
-# T0.2 · Frontend WebSocket Schema (v0.2 草案)
+# T0.2 · Frontend WebSocket Schema (v1.0 FROZEN)
 
 > 前后端唯一外部接口面。所有 Web 前端（C 端聊天 / Operator 工作台 / Admin 控制台）通过本契约消费 ConversationEngine。
 >
@@ -239,7 +243,7 @@ BE→FE 分两类：
 
 `message` / `message_edited` / `message_deleted` 帧本身已按 `Message.visibility` 过滤（CUSTOMER 只看 PUBLIC）。`message.sent` 双发的 `event` 帧载荷遵循同一过滤规则。
 
-### 5.2 Schema 示例
+### 5.3 Schema 示例
 
 **S5 message**（push to customer）：
 ```json
@@ -439,8 +443,8 @@ BE→FE 分两类：
 - [ ] Engine 方法 → WS 消息映射：✅ §7
 - [ ] 决策题：✅ D1-D8
 - [x] DevA review 第一轮回复：D1–D8 全过 + 7 条修订（v0.2 已吸收）
-- [ ] DevA second-pass：⏳ 待 issue #21 表态
-- [ ] 终稿 frontmatter 标 FROZEN
+- [x] DevA second-pass：✅ SIGN OFF（issue #21 / 2026-04-15）
+- [x] 终稿 frontmatter 标 FROZEN
 
 ---
 
@@ -450,7 +454,8 @@ BE→FE 分两类：
 |---|---|---|---|
 | 0.1-draft | 2026-04-15 | 初稿：3 端点 + 信封 + 握手/重连/版本协商 + FE→BE 15 类 + BE→FE 14 类 + 错误码 + 8 决策题 | DevB |
 | 0.2-draft | 2026-04-15 | 吸收 DevA review 7 条修订 + 2 小疵：admin actor 模型修正 / 4500→4499 / F6 +`global` / F13 互斥 / S5 +`source_display` / §5.2 event 过滤表 / §6.1 error vs command_response 边界 / S13 联合类型 / `ping`-`pong` 不再 ack / ring buffer per-sub | DevB |
+| **1.0** | **2026-04-15** | **FROZEN**：DevA second-pass sign off；§5 章节编号修正（5.2 event 过滤 / 5.3 Schema 示例） | DevB + DevA |
 
 ---
 
-*End of T0.2 Frontend WS Schema v0.2 — awaiting DevA second-pass review on issue #21.*
+*End of T0.2 Frontend WS Schema v1.0 · FROZEN 2026-04-15.*
