@@ -334,11 +334,12 @@ T0.3 由 DevA 主做，请我并行完成 M0 收尾：
 
 ```bash
 # 双方在各自的 worktree 都 commit 后，其中一方（通常 Lead）做联合 push:
+# 注意：契约批次合入公共 `dev` 分支，**不直接进 main**（见 task-status.md §6）
 
-git checkout main
+git checkout dev
 git merge --no-ff dev-a  # A 线改动（T0.1 + T0.3 + part of T0.2 review）
 git merge --no-ff dev-b  # B 线改动（T0.2 + README）
-git push origin main
+git push origin dev
 
 # 验收清单
 pytest tests/contract/ -v                # 契约测试全绿

@@ -69,7 +69,7 @@
     },
     {
       "type": "conversation.reactivated",
-      "$comment": "老客户复连，idle → active；context_loaded 提示业务层做"上次聊到哪"恢复",
+      "$comment": "老客户复连，idle → active；context_loaded 提示业务层做\"上次聊到哪\"恢复",
       "example": {
         "id": "01HX7Z4Q8K3N5T6V8W9X0Y1Z2D",
         "type": "conversation.reactivated",
@@ -235,7 +235,7 @@
     },
     {
       "type": "message.gated",
-      "$comment": "Gate 把 requested_visibility 改写后发；与对应 message.sent 同 message_id（前端用以高亮"已降为 side"提示）",
+      "$comment": "Gate 把 requested_visibility 改写后发；与对应 message.sent 同 message_id（前端用以高亮\"已降为 side\"提示）",
       "example": {
         "id": "01HX7ZDQ8K3N5T6V8W9X0Y1Z2M",
         "type": "message.gated",
