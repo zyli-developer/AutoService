@@ -68,6 +68,54 @@
       "related_ids": ["test-plan-001", "eval-doc-001"]
     },
     {
+      "id": "eval-doc-002",
+      "name": "T0.5 WS gateway skeleton (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": ["test-plan-002"],
+      "path": ".artifacts/eval-docs/eval-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:00:00Z",
+      "updated_at": "2026-04-15T12:00:00Z",
+      "related_ids": ["eval-doc-001"]
+    },
+    {
+      "id": "test-plan-002",
+      "name": "T0.5 WS gateway skeleton test-plan",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-002", "e2e-report-002"],
+      "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:15:00Z",
+      "updated_at": "2026-04-15T12:15:00Z",
+      "related_ids": ["eval-doc-002"]
+    },
+    {
+      "id": "test-diff-002",
+      "name": "T0.5 WS gateway skeleton code + tests",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "skill-3",
+      "consumers": ["e2e-report-002"],
+      "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:30:00Z",
+      "updated_at": "2026-04-15T12:40:00Z",
+      "related_ids": ["test-plan-002", "eval-doc-002"]
+    },
+    {
+      "id": "e2e-report-002",
+      "name": "T0.5 WS gateway skeleton e2e-report (all green)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:40:00Z",
+      "updated_at": "2026-04-15T12:40:00Z",
+      "related_ids": ["test-diff-002", "test-plan-002", "eval-doc-002"]
+    },
+    {
       "id": "e2e-report-001",
       "name": "T0.4 LocalEngine skeleton e2e-report (all green)",
       "type": "e2e-report",
