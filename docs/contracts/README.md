@@ -7,7 +7,7 @@
 | 契约 | 版本 | 状态 | 负责人 | 文档 |
 |---|---|---|---|---|
 | T0.1 ConversationEngine | 1.0 | ✅ FROZEN (2026-04-15) | DevA (author) / DevB (reviewer) | [conversation-engine.md](./conversation-engine.md) |
-| T0.2 Frontend WS Schema | — | ⏳ Day 2 AM | DevB (author) / DevA (reviewer) | `frontend-ws-schema.md` (待起) |
+| T0.2 Frontend WS Schema | 1.0 | ✅ FROZEN (2026-04-15) | DevB (author) / DevA (reviewer) | [frontend-ws-schema.md](./frontend-ws-schema.md) · [test-vectors/](./test-vectors/) |
 | T0.3 Contract Tests | — | ⏳ Day 2 PM | DevA (author) / DevB (reviewer) | `../../tests/contract/` (待起) |
 
 ## 变更流程

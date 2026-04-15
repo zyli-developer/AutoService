@@ -1,0 +1,422 @@
+{
+  "$schema_version": "0.1-draft",
+  "$source": "docs/contracts/conversation-engine.md v1.0 §5 + frontend-ws-schema.md v0.1 §5.1",
+  "$description": "ConversationEngine Event 类型的 data 字段正例。每条向量是一个完整 Event 对象（id/type/conversation_id/data/timestamp/sequence_number），可直接用于 T0.3 契约测试的 schema 校验和 LocalEngine mock 实现。",
+  "$conventions": {
+    "id": "ULID（26 字符），时间前缀 + 随机后缀",
+    "conversation_id": "{channel}_{external_id}，channel ∈ {feishu, web}",
+    "timestamp": "ISO 8601 UTC 毫秒精度",
+    "sequence_number": "per-conversation 单调递增 int（与 Message.sequence_number 各自一套）",
+    "data": "type 决定 schema；下表给出每个 type 的字段约定"
+  },
+  "vectors": [
+    {
+      "type": "conversation.created",
+      "$comment": "新对话首次落库；data 含原始渠道映射 + metadata",
+      "example": {
+        "id": "01HX7Z2Q8K3N5T6V8W9X0Y1Z2A",
+        "type": "conversation.created",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "channel": "feishu",
+          "external_id": "oc_abc123",
+          "initial_state": "created",
+          "initial_mode": "auto",
+          "metadata": {
+            "source": "feishu",
+            "tenant_id": "demo-tenant",
+            "customer_hint": {"id": "feishu_ou_david", "name": "David"}
+          }
+        },
+        "timestamp": "2026-04-15T10:30:00.000Z",
+        "sequence_number": 1
+      }
+    },
+    {
+      "type": "conversation.activated",
+      "$comment": "首条客户消息触发 created → active",
+      "example": {
+        "id": "01HX7Z2Q8K3N5T6V8W9X0Y1Z2B",
+        "type": "conversation.activated",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "from_state": "created",
+          "to_state": "active",
+          "trigger": "first_customer_message",
+          "first_message_id": "01HX7Z2QABCDEF1234567890QR"
+        },
+        "timestamp": "2026-04-15T10:30:00.150Z",
+        "sequence_number": 2
+      }
+    },
+    {
+      "type": "conversation.idled",
+      "$comment": "idle_timeout（默认 300s 无活动）触发",
+      "example": {
+        "id": "01HX7Z3Q8K3N5T6V8W9X0Y1Z2C",
+        "type": "conversation.idled",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "from_state": "active",
+          "to_state": "idle",
+          "trigger": "idle_timeout",
+          "last_activity_at": "2026-04-15T10:25:00.000Z",
+          "timer_name": "idle_timeout"
+        },
+        "timestamp": "2026-04-15T10:30:00.000Z",
+        "sequence_number": 35
+      }
+    },
+    {
+      "type": "conversation.reactivated",
+      "$comment": "老客户复连，idle → active；context_loaded 提示业务层做"上次聊到哪"恢复",
+      "example": {
+        "id": "01HX7Z4Q8K3N5T6V8W9X0Y1Z2D",
+        "type": "conversation.reactivated",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "from_state": "idle",
+          "to_state": "active",
+          "trigger": "customer_reconnect",
+          "context_loaded": true,
+          "loaded_message_count": 12,
+          "idle_duration_ms": 1820000
+        },
+        "timestamp": "2026-04-15T11:00:20.000Z",
+        "sequence_number": 36
+      }
+    },
+    {
+      "type": "conversation.closed",
+      "$comment": "通用关闭事件；resolve 与 abandon 都先发 conversation.resolved 再发 conversation.closed",
+      "example": {
+        "id": "01HX7Z5Q8K3N5T6V8W9X0Y1Z2E",
+        "type": "conversation.closed",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "from_state": "active",
+          "to_state": "closed",
+          "trigger": "/resolve",
+          "closed_by": "xiaoli"
+        },
+        "timestamp": "2026-04-15T10:38:00.000Z",
+        "sequence_number": 50
+      }
+    },
+    {
+      "type": "conversation.resolved",
+      "$comment": "结案；data 含 Resolution 完整字段（csat_score 此时还为 null，由后续 csat_recorded 事件补齐）",
+      "example": {
+        "id": "01HX7Z6Q8K3N5T6V8W9X0Y1Z2F",
+        "type": "conversation.resolved",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "outcome": "resolved",
+          "resolved_by": "xiaoli",
+          "reason": "customer accepted upgrade plan",
+          "csat_score": null
+        },
+        "timestamp": "2026-04-15T10:38:00.000Z",
+        "sequence_number": 49
+      }
+    },
+    {
+      "type": "conversation.csat_recorded",
+      "$comment": "客户回评 1-5 分；与 conversation.resolved 同 conversation_id 关联",
+      "example": {
+        "id": "01HX7Z7Q8K3N5T6V8W9X0Y1Z2G",
+        "type": "conversation.csat_recorded",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "score": 5,
+          "recorded_at": "2026-04-15T10:39:00.000Z",
+          "outcome": "resolved",
+          "is_takeover_resolved": true
+        },
+        "timestamp": "2026-04-15T10:39:00.000Z",
+        "sequence_number": 51
+      }
+    },
+    {
+      "type": "participant.joined",
+      "$comment": "operator 进入；UI 用此事件刷新参与者列表",
+      "example": {
+        "id": "01HX7Z8Q8K3N5T6V8W9X0Y1Z2H",
+        "type": "participant.joined",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "participant": {
+            "id": "xiaoli",
+            "role": "operator",
+            "joined_at": "2026-04-15T10:30:05.000Z",
+            "metadata": {"name": "客服小李", "squad_id": "squad-xiaoli"}
+          },
+          "trigger": "operator_join_frame"
+        },
+        "timestamp": "2026-04-15T10:30:05.000Z",
+        "sequence_number": 5
+      }
+    },
+    {
+      "type": "participant.left",
+      "$comment": "若是最后一个 operator 且 mode=copilot，会紧跟一条 mode.changed(trigger='auto:last_operator_left')",
+      "example": {
+        "id": "01HX7Z9Q8K3N5T6V8W9X0Y1Z2I",
+        "type": "participant.left",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "participant_id": "xiaoli",
+          "role": "operator",
+          "trigger": "operator_leave_frame",
+          "was_last_operator": true
+        },
+        "timestamp": "2026-04-15T10:35:00.000Z",
+        "sequence_number": 20
+      }
+    },
+    {
+      "type": "mode.changed",
+      "$comment": "合法转换；trigger 取自 §3 protocol（/hijack 等）或 'auto:operator_join' / 'auto:last_operator_left' 等系统触发",
+      "example": {
+        "id": "01HX7ZAQ8K3N5T6V8W9X0Y1Z2J",
+        "type": "mode.changed",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "from_mode": "copilot",
+          "to_mode": "takeover",
+          "trigger": "/hijack",
+          "triggered_by": "xiaoli"
+        },
+        "timestamp": "2026-04-15T10:30:15.000Z",
+        "sequence_number": 8
+      }
+    },
+    {
+      "type": "mode.noop",
+      "$comment": "Q4 决策：target_mode == current_mode 时发此事件（不抛异常）",
+      "example": {
+        "id": "01HX7ZBQ8K3N5T6V8W9X0Y1Z2K",
+        "type": "mode.noop",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "current_mode": "takeover",
+          "requested_mode": "takeover",
+          "trigger": "/hijack",
+          "triggered_by": "xiaoli",
+          "reason": "already_in_target_mode"
+        },
+        "timestamp": "2026-04-15T10:30:16.000Z",
+        "sequence_number": 9
+      }
+    },
+    {
+      "type": "message.sent",
+      "$comment": "消息持久化后；data 包含完整 Message 快照便于审计/订阅者无需二次查询",
+      "example": {
+        "id": "01HX7ZCQ8K3N5T6V8W9X0Y1Z2L",
+        "type": "message.sent",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "message": {
+            "id": "01HX7ZC0ABCDEF1234567890QR",
+            "conversation_id": "feishu_oc_abc123",
+            "source": "fast-agent",
+            "content": "B 套餐每月 199 元，本月 8 折优惠...",
+            "visibility": "public",
+            "sequence_number": 2,
+            "timestamp": "2026-04-15T10:30:01.450Z",
+            "edit_of": null,
+            "metadata": {"model": "fast-agent-v2"}
+          }
+        },
+        "timestamp": "2026-04-15T10:30:01.460Z",
+        "sequence_number": 3
+      }
+    },
+    {
+      "type": "message.gated",
+      "$comment": "Gate 把 requested_visibility 改写后发；与对应 message.sent 同 message_id（前端用以高亮"已降为 side"提示）",
+      "example": {
+        "id": "01HX7ZDQ8K3N5T6V8W9X0Y1Z2M",
+        "type": "message.gated",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "message_id": "01HX7ZD0ABCDEF1234567890QR",
+          "source": "xiaoli",
+          "source_role": "operator",
+          "requested_visibility": "public",
+          "final_visibility": "side",
+          "current_mode": "copilot",
+          "rule": "copilot+operator+public→side"
+        },
+        "timestamp": "2026-04-15T10:30:10.000Z",
+        "sequence_number": 7
+      }
+    },
+    {
+      "type": "message.edited",
+      "$comment": "占位 → 续写；前端按 message_id 原地替换",
+      "example": {
+        "id": "01HX7ZEQ8K3N5T6V8W9X0Y1Z2N",
+        "type": "message.edited",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "message_id": "01HX7ZE0ABCDEF1234567890QR",
+          "old_content": "稍等，正在为您查询...",
+          "new_content": "以下是 A/B 套餐对比：\n• A 套餐: 99 元/月\n• B 套餐: 199 元/月",
+          "edited_by": "fast-agent",
+          "message_sequence_number": 4
+        },
+        "timestamp": "2026-04-15T10:30:08.000Z",
+        "sequence_number": 6
+      }
+    },
+    {
+      "type": "message.deleted",
+      "$comment": "目前仅 operator/admin 可调；客户端按 message_id 移除气泡",
+      "example": {
+        "id": "01HX7ZFQ8K3N5T6V8W9X0Y1Z2O",
+        "type": "message.deleted",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "message_id": "01HX7ZF0ABCDEF1234567890QR",
+          "deleted_by": "xiaoli",
+          "reason": "operator_recall"
+        },
+        "timestamp": "2026-04-15T10:32:00.000Z",
+        "sequence_number": 12
+      }
+    },
+    {
+      "type": "timer.set",
+      "$comment": "duration_ms 与 T0.1 Q2 决策一致；on_expire.type 字面量取自 T0.1 §3 set_timer 签名（mode_change | system_message | callback），是动作类型而非 mode.changed 事件，注意区分",
+      "example": {
+        "id": "01HX7ZGQ8K3N5T6V8W9X0Y1Z2P",
+        "type": "timer.set",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "name": "takeover_wait",
+          "duration_ms": 180000,
+          "started_at": "2026-04-15T10:30:01.000Z",
+          "on_expire": {
+            "type": "mode_change",
+            "params": {"target": "auto", "trigger": "auto:takeover_wait_expired"}
+          }
+        },
+        "timestamp": "2026-04-15T10:30:01.000Z",
+        "sequence_number": 4
+      }
+    },
+    {
+      "type": "timer.expired",
+      "$comment": "通用超时；如果触发了进一步动作（mode 切换 / 系统消息），随后会有对应事件",
+      "example": {
+        "id": "01HX7ZHQ8K3N5T6V8W9X0Y1Z2Q",
+        "type": "timer.expired",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "name": "takeover_wait",
+          "duration_ms": 180000,
+          "started_at": "2026-04-15T10:30:01.000Z",
+          "expired_at": "2026-04-15T10:33:01.000Z",
+          "on_expire_executed": {"type": "mode_change", "params": {"target": "auto"}}
+        },
+        "timestamp": "2026-04-15T10:33:01.000Z",
+        "sequence_number": 18
+      }
+    },
+    {
+      "type": "timer.cancelled",
+      "$comment": "operator 在等待期内 /hijack → 取消 takeover_wait",
+      "example": {
+        "id": "01HX7ZIQ8K3N5T6V8W9X0Y1Z2R",
+        "type": "timer.cancelled",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "name": "takeover_wait",
+          "started_at": "2026-04-15T10:30:01.000Z",
+          "cancelled_at": "2026-04-15T10:30:15.000Z",
+          "cancelled_by": "/hijack",
+          "remaining_ms": 165000
+        },
+        "timestamp": "2026-04-15T10:30:15.000Z",
+        "sequence_number": 7
+      }
+    },
+    {
+      "type": "sla.breach",
+      "$comment": "由 timer.expired 在 sla_* 名空间下聚合产生；severity 用于路由告警",
+      "example": {
+        "id": "01HX7ZJQ8K3N5T6V8W9X0Y1Z2S",
+        "type": "sla.breach",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "sla_name": "sla_onboard",
+          "expected_ms": 3000,
+          "actual_ms": 4250,
+          "delta_ms": 1250,
+          "severity": "warning",
+          "us_reference": "US-2.1"
+        },
+        "timestamp": "2026-04-15T10:30:04.250Z",
+        "sequence_number": 3
+      }
+    },
+    {
+      "type": "squad.assigned",
+      "$comment": "M3 起启用；admin /dispatch 或自动路由触发",
+      "example": {
+        "id": "01HX7ZKQ8K3N5T6V8W9X0Y1Z2T",
+        "type": "squad.assigned",
+        "conversation_id": "feishu_oc_def456",
+        "data": {
+          "squad_id": "squad-xiaoli",
+          "agent_id": "deep-agent",
+          "assigned_by": "laochen",
+          "via_command": "/dispatch feishu_oc_def456 deep-agent"
+        },
+        "timestamp": "2026-04-15T10:30:00.000Z",
+        "sequence_number": 1
+      }
+    },
+    {
+      "type": "squad.reassigned",
+      "$comment": "切分队/换 agent；data 同时记录 from/to",
+      "example": {
+        "id": "01HX7ZLQ8K3N5T6V8W9X0Y1Z2U",
+        "type": "squad.reassigned",
+        "conversation_id": "feishu_oc_def456",
+        "data": {
+          "from_squad_id": "squad-xiaoli",
+          "to_squad_id": "squad-laowang",
+          "from_agent_id": "deep-agent",
+          "to_agent_id": "fast-agent",
+          "reason": "operator_offline",
+          "reassigned_by": "system:auto_rebalance"
+        },
+        "timestamp": "2026-04-15T11:00:00.000Z",
+        "sequence_number": 60
+      }
+    },
+    {
+      "type": "hook.failed",
+      "$comment": "Q8c 决策：PluginHook 抛异常被吞掉后发此事件；含异常类与栈摘要供运维定位",
+      "example": {
+        "id": "01HX7ZMQ8K3N5T6V8W9X0Y1Z2V",
+        "type": "hook.failed",
+        "conversation_id": "feishu_oc_abc123",
+        "data": {
+          "hook_class": "autoservice.crm.AuditHook",
+          "callback": "on_event",
+          "triggering_event_id": "01HX7ZCQ8K3N5T6V8W9X0Y1Z2L",
+          "triggering_event_type": "message.sent",
+          "exception_type": "TimeoutError",
+          "exception_message": "CRM upstream timed out after 2000ms",
+          "traceback_summary": "File \"autoservice/crm.py\", line 88, in on_event\n  await self._upstream.post(...)"
+        },
+        "timestamp": "2026-04-15T10:30:01.500Z",
+        "sequence_number": 4
+      }
+    }
+  ]
+}
