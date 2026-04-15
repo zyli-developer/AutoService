@@ -1,10 +1,18 @@
 ---
-version: 0.1-draft
+version: 0.2-draft
 status: DRAFT (awaiting DevA+DevB decisions)
 author: DevA
 created_at: 2026-04-15
-supersedes: none
+updated_at: 2026-04-15
+supersedes: 0.1-draft
 ---
+
+> **v0.2 变更**（响应 DevB 对齐表 · issue #21）：
+> - 新增 `get_messages(...)` — 消息历史快照（A5/B3 断线重连 + operator_join 拉历史）
+> - 新增 `handle_command(...)` — 收敛 IRC `CommandParser` 与 Bridge `operator_command` 到单一入口
+> - `list_active_conversations` 加 `squad_id` filter（B1）
+> - `subscribe` 加 `squad_id` 参数（B8 分队卡片实时刷新）
+> - 新增 Q9（get_messages 的 visibility 过滤策略）
 
 # T0.1 · ConversationEngine 契约（草稿）
 
@@ -168,9 +176,14 @@ class ConversationEngine(Protocol):
     async def get_conversation(self, conversation_id: str) -> Conversation: ...
 
     async def list_active_conversations(
-        self, *, operator_id: str | None = None
+        self,
+        *,
+        operator_id: str | None = None,
+        squad_id: str | None = None,
     ) -> list[Conversation]:
-        """用于 operator dashboard / /status 命令。"""
+        """用于 operator dashboard / /status 命令。
+        operator_id / squad_id 可任意组合；都为 None 返回全部 active。
+        """
 
     async def close_conversation(
         self,
@@ -241,6 +254,44 @@ class ConversationEngine(Protocol):
         self, conversation_id: str, message_id: str, *, deleted_by: str
     ) -> None: ...
 
+    async def get_messages(
+        self,
+        conversation_id: str,
+        *,
+        since_sequence: int | None = None,
+        until: datetime | None = None,
+        viewer_role: ParticipantRole | None = None,
+        limit: int = 50,
+    ) -> list[Message]:
+        """消息历史快照（聊天记录），区别于 query_events（状态流）。
+
+        用途：
+        - FE 断线重连（A5）：since_sequence=最后收到的 message.sequence_number
+        - operator_join 拉历史（B3）：since_sequence=None + limit=N
+        viewer_role：决定是否过滤 SIDE 消息（见决策 Q9）。
+        """
+
+    # ------------ Commands (统一入口) ------------
+
+    async def handle_command(
+        self,
+        conversation_id: str,
+        *,
+        actor_id: str,
+        command: str,            # "/hijack" | "/release" | "/copilot" | "/resolve" | "/abandon" | "/status"
+        args: Mapping[str, Any] | None = None,
+    ) -> None:
+        """收敛 IRC CommandParser 与 Bridge operator_command 为单一 Engine 入口。
+
+        内部派发：
+        - /hijack  → switch_mode(TAKEOVER)
+        - /release → switch_mode(AUTO)
+        - /copilot → switch_mode(COPILOT)
+        - /resolve → close_conversation(outcome=RESOLVED)
+        - /abandon → close_conversation(outcome=ABANDONED)
+        权限校验不通过抛 PermissionDenied（§6）。
+        """
+
     # ------------ Timers ------------
 
     async def set_timer(
@@ -261,12 +312,18 @@ class ConversationEngine(Protocol):
         self,
         *,
         conversation_id: str | None = None,
+        squad_id: str | None = None,
         event_types: list[str] | None = None,
         since_sequence: int | None = None,   # reconnect 断点重放
     ) -> AsyncIterator[Event]:
         """
         决策 Q6：sync vs async 订阅 —— 当前草案：async iterator（背压自然，适合 WS 推送）。
         since_sequence 用于前端 reconnect 从断点回放。
+
+        scope 选择（三选一）：
+        - conversation_id: 单会话事件流（C 端 / operator 进入某对话后）
+        - squad_id: 分队级 fanout（B8 分队卡片：新对话、mode 变化、resolved）
+        - 都为 None: 全局流（仅 admin / audit 用途）
         """
 
     async def query_events(
@@ -407,7 +464,11 @@ class ValidationError(EngineError):
 | 分队卡片刷新 | `list_active_conversations(operator_id=...)` 轮询 + `subscribe(types=[squad.*, mode.*])` | squad.assigned / mode.changed |
 | CSAT 请求 | （实现侧）resolve 后 set_timer(csat_wait) | conversation.resolved → 前端显示评分 |
 | CSAT 响应 | `set_csat(score)` | conversation.csat_recorded |
-| **断线重连** | `subscribe(since_sequence=N)` + `query_events(since_sequence=N)` | 回放未收事件 |
+| **断线重连**（消息快照） | `get_messages(since_sequence=N)` | — (返回列表) |
+| **断线重连**（事件回放） | `subscribe(since_sequence=N)` + `query_events(since_sequence=N)` | 回放未收事件 |
+| **operator_join 拉历史** | `get_messages(conversation_id, limit=N, viewer_role=OPERATOR)` | — |
+| **分队卡片 fanout** | `subscribe(squad_id=..., event_types=["conversation.*", "mode.changed"])` | squad 级事件 |
+| **operator 命令统一入口** | `handle_command(conv_id, actor_id, "/hijack" \| "/release" \| ...)` | mode.changed / conversation.resolved |
 | 占位→续写 | `send_message(placeholder)` → `edit_message(new_content)` | message.sent + message.edited |
 
 ---
@@ -472,6 +533,13 @@ LocalEngine 在 M0-M4 内是 **zchat 的轻量内存实现**；M5 `ZchatEngine` 
 - **反方**：前端 UX 希望「/release 后，takeover 期间被降级的 agent 消息重新公开」——但这破坏时序一致性（客户会突然看到过去的消息）。
 - **可逆性**：**不可逆本身不可逆**（一旦允许升级，审计链就复杂）。**强烈建议草案**。
 
+### Q9. `get_messages` 的 visibility 过滤策略（v0.2 新增）
+
+- **草案**：Engine 根据 `viewer_role` 参数过滤 —— `CUSTOMER` 只能看 PUBLIC；`OPERATOR`/`AGENT` 看 PUBLIC+SIDE；`viewer_role=None` 不过滤（仅 admin/audit）。
+- **反方**：Engine 不该承担授权职责，应由 App 层（channel handler）根据调用上下文过滤。
+- **可逆性**：中（若交给 App 层后要收回到 Engine，所有 channel 都得改；反向只是 App 层多一步过滤）。
+- **连带**：同样的过滤语义应否用到 `subscribe` / `query_events`？草案：是，保持一致。
+
 ### Q8. 额外边界（open）
 
 - 错误处理：抛异常 vs Result 类型？— 草案：**抛异常**（Pythonic，前端 WS 层捕获统一转 error 消息）。反方：Result 对测试更友好。
@@ -481,4 +549,4 @@ LocalEngine 在 M0-M4 内是 **zchat 的轻量内存实现**；M5 `ZchatEngine` 
 
 ---
 
-*End of T0.1 draft v0.1 — 等 DevA+DevB 决策后更新为 v1.0 frozen。*
+*End of T0.1 draft v0.2 — 等 DevA+DevB 决策后更新为 v1.0 frozen。*
