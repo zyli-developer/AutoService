@@ -693,3 +693,87 @@ RESERVED_COMMANDS = {
 3. **指令作用域**: 注册的指令是全局的 (所有群可用) 还是 per-chat？建议全局，简化管理。
 4. **插件版本变更**: 插件更新后 skill 名可能变化，discover 重新扫描即可，但已注册指令若映射到已删除的 skill 需要提示。
 5. **批量注册**: 是否支持 `/discuss create cmd --from dev-loop` 一键注册某插件下所有 skill？v1 可不做，手动逐条注册即可验证。
+
+---
+
+## 12. v3.1 收敛记录 (2026-04-14, dai.ming)
+
+与 huangjiajia 当面对齐后，在原 Draft v3 基础上收敛如下，作为 v2.0 实现依据。huangjiajia 已确认后续不会再动本文档，由 dai.ming 在 PR #2 (`feat/discuss-v1.1`) 内推进实现。
+
+### 12.1 与 v1.1 (PR #2) 的融合关系
+
+v1.1 已落地的**常驻 worktree + session 目录**基础设施作为 v2.0 Meta Command Creator 的**共享工作台**保留，不推翻、不重写：
+
+```
+.discuss-worktree/                         ← v1.1 产物 (branch: discuss/dev)
+├── .claude/skills/                        ← v2.0 用户动态创建的 skill
+├── .autoservice/commands/registry.yaml    ← v2.0 命令注册表 (per-worktree)
+└── .discuss/sessions/{date}-{slug}/       ← v1.1 讨论过程 + 报告
+```
+
+这个 worktree 是"命令族的 playground"：讨论过程、新建命令、注册表、生成的 skill 全部 commit 到 `discuss/dev` 分支，通过 `scripts/refine.sh --pr` cherry-pick 回流到 `dev`。不好的留在 `discuss/dev`，主分支保持干净。
+
+### 12.2 命名约定修订
+
+| 类别 | 语法 | 举例 | 备注 |
+|---|---|---|---|
+| 元指令族本身 | `/discuss` | `/discuss` (默认显示 help) | 与 v1.1 一致 |
+| 元指令子命令 | `/discuss <verb> ...` | `/discuss create cmd /review evaluate "..."`<br>`/discuss list cmd`<br>`/discuss discover` | 沿用 Draft v3 空格分隔语法 |
+| v1.1 深度讨论入口 | `/discuss session <verb>` | `/discuss session start "话题"`<br>`/discuss session end`<br>`/discuss session status` | 从 v1.1 的顶级 `/discuss start/end/status` 迁移到 `session` 子命令空间，避免和元指令动词冲突 |
+| 动态注册的命令 | `/<name>` (**顶级**) | `/review`、`/qa`、`/test-plan` | 不加 `/discuss:` 前缀，用户体验更短 |
+
+**关键澄清：**
+- "冒号命名空间" (`/discuss:xxx`) **不采用**。元指令子命令用空格分隔（和 Draft v3 一致），动态命令直接顶级
+- `/discuss session` 是 v1.1 功能保留的命名空间，内置固定，不走 registry。因为 `session` 逻辑（init_discuss 脚本 + 讨论全生命周期）比"调用一个 skill"复杂得多，不是单纯的命令→skill 映射
+
+### 12.3 registry.yaml 位置修订
+
+**原 Draft v3 §4.1**: `.autoservice/commands/registry.yaml`
+**v3.1 修订为**: `.discuss-worktree/.autoservice/commands/registry.yaml`
+
+原因：动态注册产生的 skill 文件也写在 worktree 内，注册表和 skill 实体要在同一 git 作用域，否则无法通过 `discuss/dev` 分支一起版本化和 PR 回流。
+
+`channel_server.py` 读取路径：
+```python
+registry_path = (PROJECT_ROOT / ".discuss-worktree" /
+                 ".autoservice" / "commands" / "registry.yaml")
+```
+
+若 worktree 尚未创建，registry 为空；首次 `/discuss create cmd` 时由 v1.1 的 `init_discuss.py` 延伸逻辑顺带初始化。
+
+### 12.4 权限模型
+
+沿用 v1.1 已有的 `admin_chat_ids` 白名单（commit `b34ec4f` — ADMIN_CHAT_ID 逗号分隔多群）：
+
+- `/discuss` 及其所有子命令仅在管理群 (admin_chat_ids) 生效
+- 动态注册后的顶级命令（`/review` 等）在**所有群**都可用（已注册指令的使用不受管理群限制，但注册/删除必须在管理群）
+- 普通群发 `/discuss xxx` 走普通消息路由，不触发指令逻辑（与现状一致）
+
+### 12.5 Hot-reload 策略
+
+两层分别处理：
+
+| 层 | 机制 | 重启需要？ |
+|---|---|---|
+| Claude Code skill (`.claude/skills/*/SKILL.md`) | Claude Code 每个 turn 扫描目录发现 skill | ❌ 不需要，下一 turn 生效 |
+| channel_server 的 registry.yaml | 每次匹配未知 `/<cmd>` 时 lazy reload YAML（文件修改时间戳变了就重读） | ❌ 不需要，修改文件即生效 |
+
+→ **用户在 worktree 内自建 skill 并注册后，下一条消息即可使用，整个链路无需重启任何进程。**
+
+### 12.6 与已合并 PR 的协作边界
+
+| 相关 PR | 影响 | v2.0 如何共存 |
+|---|---|---|
+| PR #4 CC Pool | 提供预热 Claude 实例池 | v2.0 不直接集成，pool_mode 开时实例共用 instructions，registry 路由仍在 channel_server 层 |
+| PR #7 三层架构 | `feishu/` → `channels/feishu/` | v2.0 实现放 `channels/feishu/channel_server.py`（L1），registry.yaml 放 worktree 内（L2/L3 作用域） |
+| PR #11 CC Pool Phase 2 | `channel_server.py` 增 `_handle_pool_message` | v2.0 的 `/discuss` 拦截层在 `_handle_admin_message` 内，不与 pool 路径冲突 |
+
+### 12.7 v2.0 MVP 范围（5 项）
+
+1. `channels/feishu/channel_server.py` 内 `_handle_admin_message` 新增 `/discuss create cmd`、`/discuss list cmd`、`/discuss delete cmd`、`/discuss discover` 四个元指令入口
+2. `channel_server` 启动时加载 registry.yaml，运行时 `on_message`（管理群 + 普通群）拦截所有 `/<registered_cmd>` 并按 registry 查找 skill，构造带 `runtime_mode=discuss` + `discuss_meta={skill, args}` 的消息注入队列
+3. `channels/feishu/channel-instructions.md` 新增 `discuss` mode 路由段：按 `discuss_meta.skill` 动态分发
+4. 把现有 v1.1 的 `/discuss "topic"` / `/discuss end` / `/discuss status` 顶级命令迁移到 `/discuss session <verb>` 命名空间下（改现有 `_handle_discuss_command` 的 parser）
+5. `scripts/refine.sh` 的 `--pr` 路径补充文档：说明如何从 `discuss/dev` 分支 cherry-pick 新建 skill 回主线
+
+**v2.1 延后**：per-user-worktree 隔离（需要 CC Pool sticky-by-chat_id + per-instance cwd 支持，依赖项不齐）、thread 监管窗（R-CMD-3）、卡片化报告输出。

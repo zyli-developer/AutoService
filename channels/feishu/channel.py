@@ -98,6 +98,21 @@ class ChannelClient:
             msg = json.loads(raw)
             if msg.get("type") == "message":
                 await self._message_queue.put(msg)
+            elif msg.get("type") == "discuss_idle_reminder":
+                # Convert to a message that Claude Code can process via the skill
+                reminder_msg = {
+                    "type": "message",
+                    "chat_id": msg["chat_id"],
+                    "text": f"[DISCUSS_IDLE_REMINDER] Discussion has been idle for {msg.get('idle_minutes', 15)} minutes.",
+                    "message_id": f"idle_{msg['chat_id']}",
+                    "user": "system",
+                    "user_id": "",
+                    "runtime_mode": "discuss",
+                    "business_mode": "customer_service",
+                    "source": "system",
+                    "ts": datetime.now(tz=timezone.utc).isoformat(),
+                }
+                await self._message_queue.put(reminder_msg)
             elif msg.get("type") == "ping":
                 await ws.send(json.dumps({"type": "pong"}))
             elif msg.get("type") == "error":

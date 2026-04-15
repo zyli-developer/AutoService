@@ -1,0 +1,16 @@
+general:
+  label: "通用讨论"
+  agenda_hint: "根据话题内容，生成 3-5 个讨论维度"
+
+# --- 预留，v1.x 不实现，v2 通过 Meta Command Creator 引入 ---
+# explain:
+#   label: "方案解释"
+#   agenda_hint: "围绕方案目标、关键设计、预期收益、风险点展开"
+#
+# feature-request:
+#   label: "功能需求讨论"
+#   agenda_hint: "围绕用户场景、需求价值、技术可行性、优先级展开"
+#
+# debug:
+#   label: "Bug / 调试讨论"
+#   agenda_hint: "围绕复现步骤、影响范围、根因分析、修复方案展开"

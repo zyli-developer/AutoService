@@ -291,6 +291,9 @@ fi
 
 cd "$SCRIPT_DIR"
 
+# Re-source local overrides inside tmux (env vars don't survive exec tmux)
+[ -f "$SCRIPT_DIR/autoservice.local.sh" ] && source "$SCRIPT_DIR/autoservice.local.sh"
+
 CURRENT_SESSION=$(tmux display-message -p '#S')
 echo "✅ Running in tmux session: $CURRENT_SESSION"
 echo "📂 Working directory: $(pwd)"
