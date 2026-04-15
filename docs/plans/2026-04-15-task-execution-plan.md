@@ -5,6 +5,40 @@
 
 ---
 
+## 〇、当前进展快照（截至 2026-04-15 EOD）
+
+### ✅ 已完成（基础就位 / 复用依赖）
+
+| 能力 | PR | 对应任务 | 说明 |
+|---|---|---|---|
+| CC Pool Phase 1（sticky sessions） | #9, #10 | 支撑 T1A.10 cc_pool plugin | `socialware.pool.AsyncPool` + `acquire_sticky` / `session_query` |
+| CC Pool Phase 2（pool_mode 集成） | #11, #12 | 支撑 T1A.10 + T0.5 | `channel_server.pool_mode` + PoolRoute 虚路由 + channel_tools SDK MCP 注入 |
+| Streaming output to Feishu | #17 | 近似 T1A.6 占位续写 | 渐进式输出 + Windows 兼容 |
+| Fork 同步工具链（正/反向） | #15, #16 | 运维基础（非产品任务） | `sync.sh` / `refine.sh` / `refine-pull.sh` + `fork-registry.yaml` |
+| `/discuss` 命令 | #2 | 额外实验能力（未列入 v3 tasks） | 群讨论主持 |
+
+### 🔄 进行中
+
+| 任务 | PR | 状态 |
+|---|---|---|
+| Batch 1 kickoff runbook（Phase 0 骨架） | #19（open） | 待审 / 合并 |
+
+### ⏳ 未开始（按 Batch 顺序执行）
+
+- **Batch 0**: T0.1 ConversationEngine 设计 / T0.2 WS Schema / T0.3 契约测试（🔴 Red，需人审）
+- **Batch 1**: T0.4 LocalEngine 骨架 / T0.5 WS 服务端 / T0.6 前端 monorepo（🟢）
+- **Batch 2+**: 依次推进
+
+### 已就位基础的复用路径
+
+| 已有组件 | 进入计划的方式 |
+|---|---|
+| `channels/feishu/channel_server.py` + pool_mode | → T0.5 WS 服务端骨架可直接沿用（pool 路由、wildcard、exact/prefix 三态） |
+| `autoservice/cc_pool.py`（含 sticky） | → T1A.10 只需封装为 LocalEngine 插件接口 |
+| `channels/feishu/channel_tools.py`（MCP 工具集） | → T1A.4 souls 定义后，tools 已可通过 SDK 注入 |
+
+---
+
 ## 一、分类总览
 
 | 类型 | 数量 | 占比 | 执行特点 | 失败重试 |
