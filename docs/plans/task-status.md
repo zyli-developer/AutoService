@@ -44,9 +44,9 @@
 |---|---|---|---|---|---|---|
 | T1A.1 | Mode/Gate 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-003, test-plan-003 |
 | T1A.2 | Timer 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-T1A.2, test-plan-T1A.2 |
-| T1A.3 | EventBus 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
+| T1A.3 | EventBus 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-004, test-plan-003, test-diff-003 |
 | T1A.4 | 4 角色 soul.md 定义 | 🟡 | 🟩 | DevA | T0.1 | agents/{customer,translate,lead,triage}/{soul.md,agent.yaml} |
-| T1A.5 | ModelRouter + FastClassifier | 🟡 | 🟦 | DevA | T1A.4 | — |
+| T1A.5 | ModelRouter + FastClassifier | 🟡 | 🟩 | DevA | T1A.4 | autoservice/model_router.py + classify_intent.yaml |
 | T1A.6 | 占位续写流程 | 🟢 | ⬜ | — | T1A.5,T1A.2 | — |
 | T1A.7 | lifecycle plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.8 | metrics plugin | 🟢 | ⬜ | — | T1A.3 | — |
@@ -75,7 +75,7 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T2A.1 | 协议命令实现 | 🟢 | ⬜ | — | T1A.1 | — |
+| T2A.1 | 协议命令实现 | 🟢 | 🟦 | DevA | T1A.1 | — |
 | T2A.2 | 智能分流 Agent 信心模型 | 🟡 | ⬜ | — | T1A.4 | — |
 | T2A.3 | SLAAggregator | 🟢 | ⬜ | — | T1A.3 | — |
 | T2A.4 | alerts.yaml + 告警推送 | 🟢 | ⬜ | — | T2A.3 | — |
