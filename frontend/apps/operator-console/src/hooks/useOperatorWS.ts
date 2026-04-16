@@ -96,13 +96,7 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         // F6: subscribe for each squad
         const currentSquads = useOperatorStore.getState().squads;
         currentSquads.forEach((squadId) => {
-          client.send({
-            v: 1,
-            type: 'subscribe',
-            id: crypto.randomUUID(),
-            ts: new Date().toISOString(),
-            payload: { scope: { squad_id: squadId } },
-          } as Envelope);
+          client.send('subscribe' as any, { scope: { squad_id: squadId } }).catch(() => {});
         });
       },
       onClose: () => {
@@ -216,18 +210,15 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   }, [isLoggedIn, operatorId, url]);
 
   const send = (frame: Envelope) => {
-    clientRef.current?.send(frame);
+    clientRef.current?.send(frame.type as any, frame.payload).catch(() => {});
   };
 
   const fetchHistory = (conversationId: string) => {
     if (!clientRef.current) return;
-    clientRef.current.send({
-      v: 1,
-      type: 'history_request',
-      id: crypto.randomUUID(),
-      ts: new Date().toISOString(),
-      payload: { conversation_id: conversationId, limit: 50 },
-    } as Envelope);
+    clientRef.current.send(
+      'history_request' as any,
+      { conversation_id: conversationId, limit: 50 },
+    ).catch(() => {});
   };
 
   return { send, fetchHistory };
