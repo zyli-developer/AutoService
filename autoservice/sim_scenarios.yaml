@@ -1,0 +1,74 @@
+# Virtual Customer Simulation Scenarios & Personas
+# T3A.2 产出 | 2026-04-16
+# 6 personas + fallback scenarios for empty-KB degradation
+
+personas:
+  - id: angry-refund
+    name_zh: "愤怒退款客户"
+    traits: ["情绪激动", "用词尖锐", "要求立即处理"]
+    communication_style: aggressive
+
+  - id: price-sensitive
+    name_zh: "价格敏感客户"
+    traits: ["反复询问价格", "比较竞品", "要求折扣"]
+    communication_style: cautious
+
+  - id: non-native-speaker
+    name_zh: "非母语客户"
+    traits: ["语法不规范", "用词简单", "偶有拼写错误"]
+    communication_style: hesitant
+
+  - id: tech-illiterate
+    name_zh: "技术小白客户"
+    traits: ["描述模糊", "不懂术语", "需要逐步引导"]
+    communication_style: confused
+
+  - id: repeat-customer
+    name_zh: "老客户"
+    traits: ["熟悉产品", "提及历史订单", "期望优先处理"]
+    communication_style: familiar
+
+  - id: cross-border
+    name_zh: "跨境客户"
+    traits: ["关注物流时效", "询问关税", "时区差异"]
+    communication_style: formal
+
+# Fallback scenarios for empty/sparse KB
+fallback_scenarios:
+  - id: general-greeting
+    name_zh: "通用问候"
+    intent: general_question
+    keywords: ["你好", "在吗"]
+    trap_question: "你们公司在哪个城市？"
+
+  - id: basic-inquiry
+    name_zh: "基本咨询"
+    intent: product_inquiry
+    keywords: ["怎么用", "功能"]
+    trap_question: "你们支持哪些支付方式？"
+
+  - id: complaint-generic
+    name_zh: "通用投诉"
+    intent: complaint
+    keywords: ["投诉", "不满"]
+    trap_question: "我要投诉到消费者协会，你们的投诉热线是多少？"
+
+  - id: purchase-generic
+    name_zh: "通用购买意向"
+    intent: purchase_intent
+    keywords: ["价格", "购买"]
+    trap_question: "你们有没有教育优惠？"
+
+  - id: language-barrier
+    name_zh: "语言障碍"
+    intent: language_barrier
+    keywords: []
+    trap_question: "Can you speak English?"
+
+# Generation constraints
+constraints:
+  min_turns: 3
+  max_turns: 6
+  min_dialogs: 10
+  default_count: 12
+  max_concurrency: 6

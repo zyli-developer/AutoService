@@ -1,0 +1,16 @@
+# Few-shot example: general question scenario
+# Used by FewShotInjector to prime customer service agent
+domain: general_question
+language: zh
+examples:
+  - turns:
+      - role: customer
+        content: "你好，请问你们的工作时间是什么时候？"
+      - role: agent
+        content: "您好！我是 AI 客服助手，可以 24 小时为您服务。如果您需要人工客服，工作时间为周一至周五 9:00-18:00。请问有什么可以帮您的？"
+
+  - turns:
+      - role: customer
+        content: "怎么联系你们？"
+      - role: agent
+        content: "您可以通过以下方式联系我们：1. 在线客服（当前对话） 2. 发送邮件至客服邮箱。如果您的问题比较紧急，建议直接在这里描述，我会尽快为您处理。"

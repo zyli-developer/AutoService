@@ -6,7 +6,7 @@
 **状态图例**: ⬜ pending · 🟦 in_progress · 🟩 completed · ⚠️ blocked · 🟥 failed(需重做)
 **类型图例**: 🟢 Green(AI 独立) · 🟡 Yellow(AI+人审) · 🔴 Red(人主导)
 
-**最后更新**: 2026-04-16 · **整体进度**: 6/66
+**最后更新**: 2026-04-16 · **整体进度**: 32/75
 
 ## ⚡ AI 快车道时间表
 
@@ -103,9 +103,9 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T3A.1 | soul.md 自动生成器 | 🟡 | 🟦 | DevA | T1A.4 | — |
-| T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟦 | DevA | T1A.4 | — |
-| T3A.3 | Few-shot 注入机制 | 🟢 | ⬜ | — | T3A.2 | — |
+| T3A.1 | soul.md 自动生成器 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/soul_generator.py, eval-T3A.1 |
+| T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟩 | DevA | T1A.4 | eval-T3A.2, test-plan-T3A.2, autoservice/sim_customer.py |
+| T3A.3 | Few-shot 注入机制 | 🟢 | 🟩 | DevA | T3A.2 | eval-T3A.3, test-plan-T3A.3, autoservice/fewshot_loader.py |
 | T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
 | T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
 | T3A.6 | 16 条补救指南 md | 🔴 | 🟩 | DevA | T3A.5 | docs/compliance/{eu,us,cn}-*.md (16 files) |
@@ -135,16 +135,16 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T4A.1 | 对话记忆池 memory_pool.db | 🟢 | ⬜ | — | T1A.3 | — |
-| T4A.2 | /rules 后端 + 对话式配置 | 🟢 | ⬜ | — | T2A.1 | — |
-| T4A.3 | 低峰检测调度器 | 🟢 | ⬜ | — | T1A.8 | — |
-| T4A.4 | 提案生成 pipeline | 🟡 | ⬜ | — | T4A.1 | — |
-| T4A.5 | 晨起推送 | 🟢 | ⬜ | — | T4A.4 | — |
-| T4A.6 | canary.py 灰度路由 | 🟢 | ⬜ | — | T4A.4 | — |
-| T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | ⬜ | — | T4A.6,T2A.3 | — |
-| T4A.8 | /rollback 命令 | 🟢 | ⬜ | — | T4A.6 | — |
-| T4A.9 | 三指标统计 | 🟢 | ⬜ | — | T1A.8 | — |
-| T4A.10 | 阶梯计费 billing.py | 🟢 | ⬜ | — | T4A.9 | — |
+| T4A.1 | 对话记忆池 memory_pool.db | 🟢 | 🟩 | DevA | T1A.3 | autoservice/memory_pool.py |
+| T4A.2 | /rules 后端 + 对话式配置 | 🟢 | 🟩 | DevA | T2A.1 | autoservice/rules.py |
+| T4A.3 | 低峰检测调度器 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/low_peak_scheduler.py |
+| T4A.4 | 提案生成 pipeline | 🟡 | 🟩 | DevA | T4A.1 | autoservice/proposal_pipeline.py |
+| T4A.5 | 晨起推送 | 🟢 | 🟩 | DevA | T4A.4 | autoservice/morning_push.py |
+| T4A.6 | canary.py 灰度路由 | 🟢 | 🟩 | DevA | T4A.4 | autoservice/canary.py |
+| T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | 🟩 | DevA | T4A.6,T2A.3 | autoservice/canary_monitor.py |
+| T4A.8 | /rollback 命令 | 🟢 | 🟩 | DevA | T4A.6 | autoservice/rollback_command.py |
+| T4A.9 | 三指标统计 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/billing_metrics.py |
+| T4A.10 | 阶梯计费 billing.py | 🟢 | 🟩 | DevA | T4A.9 | eval-T4A.10, test-plan-T4A.10, autoservice/billing.py |
 
 ### B 线
 
@@ -194,12 +194,12 @@
 | Phase | 总数 | 待开始 ⬜ | 进行中 🟦 | 完成 🟩 | 阻塞 ⚠️ |
 |---|---|---|---|---|---|
 | P0 | 6 | 0 | 0 | 6 | 0 |
-| P1 | 17 | 17 | 0 | 0 | 0 |
-| P2 | 12 | 12 | 0 | 0 | 0 |
-| P3 | 14 | 14 | 0 | 0 | 0 |
+| P1 | 17 | 0 | 0 | 17 | 0 |
+| P2 | 12 | 6 | 1 | 5 | 0 |
+| P3 | 14 | 8 | 2 | 4 | 0 |
 | P4 | 13 | 13 | 0 | 0 | 0 |
 | P5 | 13 | 13 | 0 | 0 | 0 |
-| **合计** | **66** | **60** | **0** | **6** | **0** |
+| **合计** | **75** | **40** | **3** | **32** | **0** |
 
 **按线**: A 线 43 / B 线 29 / 协作 3
 
