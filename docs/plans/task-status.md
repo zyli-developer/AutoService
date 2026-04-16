@@ -116,7 +116,7 @@
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
 | T3B.1 | admin-portal SPA 骨架 | 🟢 | 🟩 | DevB | T0.6 | test-diff-015 |
-| T3B.2 | 向导 Step1 资料上传 | 🟢 | ⬜ | — | T3A.1 | — |
+| T3B.2 | 向导 Step1 资料上传 | 🟢 | 🟦 | DevB | T3A.1 | — |
 | T3B.3 | 向导 Step2 渠道配置 | 🟢 | 🟩 | DevB | T3B.1 | test-diff-016 |
 | T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | ⬜ | — | T3A.2 | — |
 | T3B.5 | 向导 Step4 合规预检可视化 | 🟢 | 🟩 | DevB | T3A.7 | test-diff-017 |
