@@ -108,7 +108,7 @@
 | T3A.3 | Few-shot 注入机制 | 🟢 | ⬜ | — | T3A.2 | — |
 | T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
 | T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
-| T3A.6 | 16 条补救指南 md | 🔴 | 🟦 | DevA | T3A.5 | — |
+| T3A.6 | 16 条补救指南 md | 🔴 | 🟩 | DevA | T3A.5 | docs/compliance/{eu,us,cn}-*.md (16 files) |
 | T3A.7 | compliance.py 预检 + 策略下发 | 🟡 | ⬜ | — | T3A.5 | — |
 
 ### B 线
