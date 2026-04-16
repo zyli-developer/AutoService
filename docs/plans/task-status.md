@@ -85,7 +85,7 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T2B.1 | operator-console SPA 骨架 | 🟢 | ⬜ | — | T0.6 | — |
+| T2B.1 | operator-console SPA 骨架 | 🟢 | 🟦 | DevB | T0.6 | — |
 | T2B.2 | 分队卡片列表 UI | 🟢 | ⬜ | — | T2B.1,T1A.9 | — |
 | T2B.3 | Copilot 侧栏聊天窗 | 🟢 | ⬜ | — | T2A.1 | — |
 | T2B.4 | /hijack + 抢单按钮 | 🟢 | ⬜ | — | T2A.1 | — |
