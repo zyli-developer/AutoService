@@ -52,7 +52,7 @@
 | T1A.8 | metrics plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.9 | squad plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.10 | cc_pool plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | ⬜ | — | T1A.4 | — |
+| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | 🟦 | DevA | T1A.4 | — |
 
 ### B 线
 
