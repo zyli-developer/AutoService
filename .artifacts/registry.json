@@ -233,6 +233,18 @@
         "eval-doc-004"
       ],
       "summary": "22/22 passed, 0 failed. TC-008 act() warning (harmless). Fix: FakeWSClient.connect→no-op + triggerOpen()."
+    },
+    {
+      "id": "eval-doc-005",
+      "name": "T1B.2 消息流 UI (simulate)",
+      "type": "eval-doc",
+      "status": "pending-review",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T1B.2-message-flow-ui.md",
+      "created_at": "2026-04-16T10:00:00Z",
+      "updated_at": "2026-04-16T10:00:00Z",
+      "related_ids": []
     }
   ]
 }
