@@ -73,6 +73,23 @@ export interface ProposalUI {
   compliance_check: { passed: boolean; flags: string[] };
 }
 
+export type CanaryStage = 'disabled' | 'stage_5' | 'stage_25' | 'stage_100';
+
+export interface CanaryMetricUI {
+  name: string;
+  baseline: number;
+  current: number;
+  breached: boolean;
+}
+
+export interface CanaryStateUI {
+  stage: CanaryStage;
+  percentage: number;
+  metrics: CanaryMetricUI[];
+  autoRollback: boolean;
+  rolledBack: boolean;
+}
+
 export interface AdminState {
   tenantId: string | null;
   isLoggedIn: boolean;
@@ -89,6 +106,8 @@ export interface AdminState {
 
   proposals: ProposalUI[];
   proposalsLoading: boolean;
+
+  canaryState: CanaryStateUI | null;
 
   login: (tenantId: string) => void;
   logout: () => void;
@@ -108,6 +127,8 @@ export interface AdminState {
   setProposals: (proposals: ProposalUI[]) => void;
   setProposalsLoading: (v: boolean) => void;
   updateProposalStatus: (proposalId: string, status: ProposalUI['status']) => void;
+
+  setCanaryState: (state: CanaryStateUI | null) => void;
 }
 
 const initialWizardFormData: WizardFormData = {
@@ -132,6 +153,7 @@ export const initialState = {
   rehearsalLoading: false,
   proposals: [] as ProposalUI[],
   proposalsLoading: false,
+  canaryState: null as CanaryStateUI | null,
 };
 
 export const useAdminStore = create<AdminState>((set) => ({
@@ -173,4 +195,6 @@ export const useAdminStore = create<AdminState>((set) => ({
         p.id === proposalId ? { ...p, status } : p
       ),
     })),
+
+  setCanaryState: (canaryState) => set({ canaryState }),
 }));

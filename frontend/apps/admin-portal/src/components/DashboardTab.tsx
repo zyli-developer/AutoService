@@ -1,4 +1,5 @@
 import { Card, Col, Row, Statistic, Tag, Typography } from 'antd';
+import { CanaryProgress } from './CanaryProgress';
 
 interface AgentInfo {
   key: string;
@@ -39,7 +40,7 @@ export function DashboardTab() {
         ))}
       </Row>
 
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {metrics.map((m) => (
           <Col key={m.testId} xs={24} sm={8}>
             <Card data-testid={m.testId}>
@@ -48,6 +49,8 @@ export function DashboardTab() {
           </Col>
         ))}
       </Row>
+
+      <CanaryProgress />
     </div>
   );
 }
