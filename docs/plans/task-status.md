@@ -87,11 +87,11 @@
 |---|---|---|---|---|---|---|
 | T2B.1 | operator-console SPA 骨架 | 🟢 | 🟩 | DevB | T0.6 | eval-doc-009, test-plan-008, test-diff-009 |
 | T2B.2 | 分队卡片列表 UI | 🟢 | 🟩 | DevB | T2B.1,T1A.9 | eval-doc-010, test-plan-009, test-diff-010 |
-| T2B.3 | Copilot 侧栏聊天窗 | 🟢 | ⬜ | — | T2A.1 | — |
-| T2B.4 | /hijack + 抢单按钮 | 🟢 | ⬜ | — | T2A.1 | — |
+| T2B.3 | Copilot 侧栏聊天窗 | 🟢 | 🟦 | DevB | T2A.1 | — |
+| T2B.4 | /hijack + 抢单按钮 | 🟢 | 🟦 | DevB | T2A.1 | — |
 | T2B.5 | Takeover 模式 UI | 🟢 | ⬜ | — | T2B.3 | — |
-| T2B.6 | 并发上限提示 | 🟢 | ⬜ | — | T2B.1 | — |
-| T2B.7 | 未读徽章 + 声音提醒 | 🟢 | ⬜ | — | T2B.1 | — |
+| T2B.6 | 并发上限提示 | 🟢 | 🟦 | DevB | T2B.1 | — |
+| T2B.7 | 未读徽章 + 声音提醒 | 🟢 | 🟦 | DevB | T2B.1 | — |
 
 **🤝 M2 联调**: Thu 13:00，30 min smoke test
 
