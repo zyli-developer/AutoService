@@ -1,12 +1,70 @@
 import { useEffect, useRef } from 'react';
 import { WSClient, type Envelope, type ServerHelloPayload } from '@autoservice/ws-client';
-import { useOperatorStore } from '../store/operatorStore';
+import { useOperatorStore, type Conversation } from '../store/operatorStore';
 
 // 允许测试时注入 fake client
 type WSClientConstructor = new (opts: ConstructorParameters<typeof WSClient>[0]) => WSClient;
 let WSClientImpl: WSClientConstructor = WSClient;
 export function _setWSClientImpl(impl: WSClientConstructor) {
   WSClientImpl = impl;
+}
+
+interface EventPayload {
+  event: {
+    id: string;
+    type: string;
+    conversation_id: string;
+    data: Record<string, any>;
+    timestamp: string;
+  };
+}
+
+export function handleEventFrame(
+  frame: Envelope,
+  addConversation: (conv: Conversation) => void,
+  updateConversation: (id: string, patch: Partial<Conversation>) => void,
+) {
+  const { event } = frame.payload as EventPayload;
+  if (!event?.conversation_id) return;
+  const convId = event.conversation_id;
+  const ts = event.timestamp || new Date().toISOString();
+
+  switch (event.type) {
+    case 'conversation.created': {
+      const d = event.data;
+      addConversation({
+        id: convId,
+        squadId: d.squad_id ?? '',
+        customerId: d.customer_id ?? '',
+        mode: 'auto',
+        state: 'created',
+        lastMessage: '',
+        lastMessageSender: '',
+        lastActivityTs: ts,
+      });
+      break;
+    }
+    case 'mode.changed': {
+      const to = event.data.to as Conversation['mode'];
+      updateConversation(convId, { mode: to, lastActivityTs: ts });
+      break;
+    }
+    case 'conversation.closed':
+    case 'conversation.resolved':
+      updateConversation(convId, { state: 'closed', lastActivityTs: ts });
+      break;
+    case 'message.sent': {
+      const sender = event.data.sender_role === 'customer' ? 'customer' as const : 'agent' as const;
+      const text = (event.data.text ?? event.data.content ?? '') as string;
+      updateConversation(convId, {
+        lastMessage: text,
+        lastMessageSender: sender,
+        lastActivityTs: ts,
+        state: 'active',
+      });
+      break;
+    }
+  }
 }
 
 export function useOperatorWS(url: string): { send: (frame: Envelope) => void } {
@@ -16,6 +74,8 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   const setWsStatus = useOperatorStore((s) => s.setWsStatus);
   const setSessionId = useOperatorStore((s) => s.setSessionId);
   const addSubscription = useOperatorStore((s) => s.addSubscription);
+  const addConversation = useOperatorStore((s) => s.addConversation);
+  const updateConversation = useOperatorStore((s) => s.updateConversation);
 
   const clientRef = useRef<WSClient | null>(null);
 
@@ -54,7 +114,9 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
             addSubscription(p.scope.squad_id, p.subscription_id);
           }
         }
-        // S8 event frames → T2B.2 will handle
+        if (frame.type === 'event') {
+          handleEventFrame(frame, addConversation, updateConversation);
+        }
       },
     });
 
