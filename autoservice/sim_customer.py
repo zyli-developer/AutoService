@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 import yaml
 
+from autoservice.fewshot_loader import FewshotLoader
 from autoservice.i18n.term_loader import TermLoader
 
 # ---------------------------------------------------------------------------
@@ -379,6 +380,7 @@ async def generate_single_dialog(
     language: str = "zh",
     llm_client: Any = None,
     config: SimConfig | None = None,
+    fewshot_loader: FewshotLoader | None = None,
 ) -> SimDialog:
     """Generate a single simulated dialog (customer turns + AI responses)."""
     if llm_client is None:
@@ -423,12 +425,20 @@ async def generate_single_dialog(
         if len(retry_turns) >= min_turns:
             customer_turns = retry_turns[:max_turns]
 
-    # Step 2: Generate AI responses using soul.md
+    # Step 2: Generate AI responses using soul.md + terms + few-shot
     soul_content = _load_soul()
     term_loader = TermLoader()
     term_prefix = term_loader.render_prompt_prefix(language)
+    fewshot_section = ""
+    if fewshot_loader is not None:
+        fewshot_section = fewshot_loader.render_prompt_section(language)
 
-    system_prompt = f"{soul_content}\n\n{term_prefix}" if term_prefix else soul_content
+    parts = [soul_content]
+    if term_prefix:
+        parts.append(term_prefix)
+    if fewshot_section:
+        parts.append(fewshot_section)
+    system_prompt = "\n\n".join(parts)
 
     turns: list[SimTurn] = []
     for ct in customer_turns:
@@ -508,6 +518,7 @@ async def generate_sim_dialogs(
     personas: list[str] | None = None,
     llm_client: Any = None,
     config: SimConfig | None = None,
+    fewshot_path: str | Path | None = None,
 ) -> list[SimDialog]:
     """Generate simulated customer-agent dialogs.
 
@@ -551,6 +562,9 @@ async def generate_sim_dialogs(
     # Build assignment matrix
     assignments = build_assignment_matrix(scenarios, available_personas, count)
 
+    # Set up fewshot loader if path provided
+    fs_loader = FewshotLoader(fewshot_path) if fewshot_path else None
+
     # Generate dialogs concurrently with semaphore
     max_concurrency = config.constraints.get("max_concurrency", 6)
     sem = asyncio.Semaphore(max_concurrency)
@@ -558,7 +572,8 @@ async def generate_sim_dialogs(
     async def _gen(scenario: Scenario, persona: Persona) -> SimDialog:
         async with sem:
             return await generate_single_dialog(
-                scenario, persona, kb_path, language, llm_client, config
+                scenario, persona, kb_path, language, llm_client, config,
+                fewshot_loader=fs_loader,
             )
 
     tasks = [_gen(s, p) for s, p in assignments]
