@@ -305,8 +305,16 @@ async def _call_engine(
         ]
 
     if frame_type == "operator_join":
-        # Skeleton: will call Engine.join; Engine currently raises NotImplementedError
-        await engine.join(payload["conversation_id"], payload.get("operator"))  # type: ignore[arg-type]
+        op_id = payload.get("operator_id") or payload.get("operator") or "operator"
+        if isinstance(op_id, str):
+            now = datetime.now(timezone.utc)
+            participant = Participant(id=op_id, role=ParticipantRole.OPERATOR, joined_at=now)
+        else:
+            participant = op_id  # already a Participant-like object
+        try:
+            await engine.join(payload["conversation_id"], participant)
+        except Exception as exc:
+            logger.warning("operator_join failed: %s", exc)
         return []
 
     if frame_type == "operator_leave":

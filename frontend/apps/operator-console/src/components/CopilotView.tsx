@@ -17,14 +17,27 @@ export function CopilotView({ send }: CopilotViewProps) {
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
+  const operatorId = useOperatorStore((s) => s.operatorId);
+
   const handleHijack = () => {
+    // First join the conversation, then hijack
     send({
       v: 1,
-      type: 'operator_command',
+      type: 'operator_join',
       id: crypto.randomUUID(),
       ts: new Date().toISOString(),
-      payload: { conversation_id: activeCopilotConvId, command: '/hijack' },
+      payload: { conversation_id: activeCopilotConvId, operator_id: operatorId },
     } as Envelope);
+    // Then send hijack command
+    setTimeout(() => {
+      send({
+        v: 1,
+        type: 'operator_command',
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        payload: { conversation_id: activeCopilotConvId, operator_id: operatorId, command: '/hijack' },
+      } as Envelope);
+    }, 500);
   };
 
   return (

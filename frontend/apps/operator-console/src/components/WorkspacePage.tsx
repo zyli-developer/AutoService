@@ -68,6 +68,25 @@ export function WorkspacePage() {
                     ? '请添加 Squad ID'
                     : `${Object.keys(useOperatorStore.getState().conversations).length} 个对话`}
                 </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }} data-testid="add-squad-form">
+                  <input
+                    data-testid="input-squad-id"
+                    placeholder="输入 Squad ID"
+                    value={newSquadId}
+                    onChange={(e) => setNewSquadId(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSquad()}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
+                  />
+                  <button
+                    data-testid="btn-add-squad"
+                    onClick={handleAddSquad}
+                    disabled={!newSquadId.trim()}
+                    className="cs-btn ok"
+                    style={{ padding: '6px 14px', fontSize: 13 }}
+                  >
+                    添加
+                  </button>
+                </div>
               </div>
               <ConversationFeed
                 squadId={null}

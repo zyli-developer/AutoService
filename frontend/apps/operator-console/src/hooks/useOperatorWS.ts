@@ -117,7 +117,7 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
           if (convId && msgs.length > 0) {
             for (const msg of msgs) {
               const src = (msg.source as string) ?? '';
-              const sender = src.includes('customer') ? 'customer' as const
+              const sender = (src.includes('customer') || src.startsWith('cust')) ? 'customer' as const
                 : src.includes('operator') ? 'operator' as const
                 : 'agent' as const;
               addCopilotMessage(convId, {
