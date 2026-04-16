@@ -301,7 +301,9 @@
       "path": ".artifacts/eval-docs/eval-T4A.10-tiered-billing.md",
       "created_at": "2026-04-16T18:00:00Z",
       "updated_at": "2026-04-16T18:00:00Z",
-      "related_ids": ["eval-T3A.3"]
+      "related_ids": [
+        "eval-T3A.3"
+      ]
     },
     {
       "id": "test-plan-T4A.10",
@@ -313,7 +315,9 @@
       "path": ".artifacts/test-plans/plan-T4A.10-tiered-billing.md",
       "created_at": "2026-04-16T18:10:00Z",
       "updated_at": "2026-04-16T18:10:00Z",
-      "related_ids": ["eval-T4A.10"]
+      "related_ids": [
+        "eval-T4A.10"
+      ]
     },
     {
       "id": "eval-T5B.1",
@@ -345,6 +349,22 @@
       "updated_at": "2026-04-16T14:30:00Z",
       "related_ids": [
         "eval-T5B.1"
+      ]
+    },
+    {
+      "id": "eval-T3B.2",
+      "name": "Eval: wizard Step1 material upload (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [
+        "skill-2"
+      ],
+      "path": ".artifacts/eval-docs/eval-T3B.2-wizard-step1-upload.md",
+      "created_at": "2026-04-16T19:00:00Z",
+      "updated_at": "2026-04-16T19:00:00Z",
+      "related_ids": [
+        "T3B.2"
       ]
     }
   ]
