@@ -5,6 +5,7 @@ import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
 import { SquadPane } from './SquadPane';
 import { ConnectionBanner } from './ConnectionBanner';
+import { CopilotSidebar } from './CopilotSidebar';
 
 const { Sider, Content } = Layout;
 
@@ -20,10 +21,11 @@ export function WorkspacePage() {
   const logout = useOperatorStore((s) => s.logout);
   const addSquad = useOperatorStore((s) => s.addSquad);
   const setActiveSquad = useOperatorStore((s) => s.setActiveSquad);
+  const openCopilot = useOperatorStore((s) => s.openCopilot);
 
   const [newSquadId, setNewSquadId] = useState('');
 
-  useOperatorWS(WS_URL);
+  const { send } = useOperatorWS(WS_URL);
 
   const handleAddSquad = () => {
     if (!newSquadId.trim()) return;
@@ -90,12 +92,13 @@ export function WorkspacePage() {
               items={squads.map((sq) => ({
                 key: sq,
                 label: sq,
-                children: <SquadPane squadId={sq} />,
+                children: <SquadPane squadId={sq} onCardClick={openCopilot} />,
               }))}
             />
           )}
         </Content>
       </Layout>
+      <CopilotSidebar send={send} />
     </Layout>
   );
 }

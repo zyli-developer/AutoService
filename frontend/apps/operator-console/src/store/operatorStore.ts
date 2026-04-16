@@ -26,6 +26,13 @@ export function deriveCardStatus(conv: Conversation): CardStatus {
   return 'idle';
 }
 
+export interface CopilotMessage {
+  id: string;
+  text: string;
+  sender: 'operator' | 'agent' | 'customer';
+  ts: string;
+}
+
 export interface OperatorState {
   operatorId: string | null;
   token: string | null;
@@ -36,6 +43,10 @@ export interface OperatorState {
   activeSquadId: string | null;
   subscriptions: Record<string, string>;
   conversations: Record<string, Conversation>;
+  concurrencyLimit: number;
+  unreadCounts: Record<string, number>;
+  activeCopilotConvId: string | null;
+  copilotMessages: Record<string, CopilotMessage[]>;
 
   login: (operatorId: string, token: string) => void;
   logout: () => void;
@@ -47,6 +58,12 @@ export interface OperatorState {
   addConversation: (conv: Conversation) => void;
   updateConversation: (id: string, patch: Partial<Conversation>) => void;
   removeConversation: (id: string) => void;
+  setConcurrencyLimit: (n: number) => void;
+  incrementUnread: (squadId: string) => void;
+  clearUnread: (squadId: string) => void;
+  openCopilot: (convId: string) => void;
+  closeCopilot: () => void;
+  addCopilotMessage: (convId: string, msg: CopilotMessage) => void;
 }
 
 export const initialState = {
@@ -59,6 +76,10 @@ export const initialState = {
   activeSquadId: null,
   subscriptions: {},
   conversations: {} as Record<string, Conversation>,
+  concurrencyLimit: 10,
+  unreadCounts: {} as Record<string, number>,
+  activeCopilotConvId: null,
+  copilotMessages: {} as Record<string, CopilotMessage[]>,
 };
 
 export const useOperatorStore = create<OperatorState>((set) => ({
@@ -107,4 +128,31 @@ export const useOperatorStore = create<OperatorState>((set) => ({
       const { [id]: _, ...rest } = state.conversations;
       return { conversations: rest };
     }),
+
+  setConcurrencyLimit: (n) => set({ concurrencyLimit: n }),
+
+  incrementUnread: (squadId) =>
+    set((state) => ({
+      unreadCounts: {
+        ...state.unreadCounts,
+        [squadId]: (state.unreadCounts[squadId] ?? 0) + 1,
+      },
+    })),
+
+  clearUnread: (squadId) =>
+    set((state) => ({
+      unreadCounts: { ...state.unreadCounts, [squadId]: 0 },
+    })),
+
+  openCopilot: (convId) => set({ activeCopilotConvId: convId }),
+
+  closeCopilot: () => set({ activeCopilotConvId: null }),
+
+  addCopilotMessage: (convId, msg) =>
+    set((state) => ({
+      copilotMessages: {
+        ...state.copilotMessages,
+        [convId]: [...(state.copilotMessages[convId] ?? []), msg],
+      },
+    })),
 }));
