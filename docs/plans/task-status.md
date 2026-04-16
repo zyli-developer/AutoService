@@ -179,9 +179,9 @@
 |---|---|---|---|---|---|---|
 | T5B.1 | docker-compose 多租户模板 | 🟢 | 🟩 | DevB | — | eval-T5B.1, plan-T5B.1, test-diff-020 |
 | T5B.2 | 同主机部署约束落地 | 🔴 | ⬜ | — | — | — |
-| T5B.3 | 租户创建脚本 | 🟢 | 🟦 | DevB | T5B.1 | — |
+| T5B.3 | 租户创建脚本 | 🟢 | 🟩 | DevB | T5B.1 | test-diff-026 |
 | T5B.4 | 端到端 E2E 自动化 | 🟢 | ⬜ | — | T5A.8 | — |
-| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | 🟦 | DevB | T1B.5 | — |
+| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | 🟩 | DevB | T1B.5 | test-diff-027 |
 
 **🤝 M5 联调**: Fri EOD，60 min（含 AB 测试 + 最终切换决策）
 
