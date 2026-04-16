@@ -164,7 +164,7 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T5A.1 | 对齐 zchat Bridge API v0.3 | 🔴 | ⬜ | — | — | — |
+| T5A.1 | 对齐 zchat Bridge API v0.3 | 🔴 | 🟦 | DevA | — | — |
 | T5A.2 | Bridge API Python SDK | 🟢 | ⬜ | — | T5A.1 | — |
 | T5A.3 | ZchatEngine 适配器 | 🟢 | ⬜ | — | T5A.2 | — |
 | T5A.4 | 4 plugin 双实现对齐 | 🟢 | ⬜ | — | T5A.3 | — |
