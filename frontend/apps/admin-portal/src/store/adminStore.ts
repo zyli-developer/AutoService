@@ -59,6 +59,20 @@ export interface SimDialogUI {
   review_status: 'pending' | 'approved' | 'flagged';
 }
 
+export interface ProposalUI {
+  id: string;
+  created_at: string;
+  category: 'response_quality' | 'workflow' | 'knowledge_gap' | 'tone';
+  title: string;
+  description: string;
+  suggestion: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'draft' | 'accepted' | 'rejected' | 'implemented';
+  source_conversations: string[];
+  evidence: string[];
+  compliance_check: { passed: boolean; flags: string[] };
+}
+
 export interface AdminState {
   tenantId: string | null;
   isLoggedIn: boolean;
@@ -72,6 +86,9 @@ export interface AdminState {
 
   rehearsalDialogs: SimDialogUI[];
   rehearsalLoading: boolean;
+
+  proposals: ProposalUI[];
+  proposalsLoading: boolean;
 
   login: (tenantId: string) => void;
   logout: () => void;
@@ -87,6 +104,10 @@ export interface AdminState {
   setRehearsalDialogs: (dialogs: SimDialogUI[]) => void;
   setRehearsalLoading: (v: boolean) => void;
   updateDialogReviewStatus: (dialogId: string, status: SimDialogUI['review_status']) => void;
+
+  setProposals: (proposals: ProposalUI[]) => void;
+  setProposalsLoading: (v: boolean) => void;
+  updateProposalStatus: (proposalId: string, status: ProposalUI['status']) => void;
 }
 
 const initialWizardFormData: WizardFormData = {
@@ -109,6 +130,8 @@ export const initialState = {
   generationResult: null as GenerationResult | null,
   rehearsalDialogs: [] as SimDialogUI[],
   rehearsalLoading: false,
+  proposals: [] as ProposalUI[],
+  proposalsLoading: false,
 };
 
 export const useAdminStore = create<AdminState>((set) => ({
@@ -139,6 +162,15 @@ export const useAdminStore = create<AdminState>((set) => ({
     set((state) => ({
       rehearsalDialogs: state.rehearsalDialogs.map((d) =>
         d.id === dialogId ? { ...d, review_status: status } : d
+      ),
+    })),
+
+  setProposals: (proposals) => set({ proposals }),
+  setProposalsLoading: (proposalsLoading) => set({ proposalsLoading }),
+  updateProposalStatus: (proposalId, status) =>
+    set((state) => ({
+      proposals: state.proposals.map((p) =>
+        p.id === proposalId ? { ...p, status } : p
       ),
     })),
 }));
