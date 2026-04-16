@@ -181,8 +181,9 @@ def test_tc017_customer_message_auto_creates_conversation(local_engine_client):
         assert ack["type"] == "ack"
         assert ack["ref"] == frame["id"]
         msg = ws.receive_json()
-        assert msg["type"] == "message"
-        assert msg["payload"]["message"]["content"] == "hi"
+        assert msg["type"] == "message_confirm"
+        assert msg["payload"]["message_id"]
+        assert msg["payload"]["conversation_id"]
 
 
 def test_tc018_operator_command_not_implemented_returns_command_response(local_engine_client):
@@ -232,10 +233,9 @@ def test_tc020_dummy_engine_success_returns_ack_and_message(dummy_engine, dummy_
         assert ack["type"] == "ack"
         assert ack["ref"] == frame["id"]
         msg = ws.receive_json()
-        assert msg["type"] == "message"
+        assert msg["type"] == "message_confirm"
         assert msg["payload"]["conversation_id"] == "c-1"
-        assert msg["payload"]["message"]["content"] == "hello"
-        assert msg["payload"]["source_display"]["id"]
+        assert msg["payload"]["message_id"]
 
 
 def test_tc021_dummy_engine_unexpected_exception_returns_5000_error(

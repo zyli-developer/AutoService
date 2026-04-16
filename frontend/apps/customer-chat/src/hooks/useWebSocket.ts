@@ -29,6 +29,12 @@ export function useWebSocket(url: string, clientApp: string) {
         if (wasReconnectRef.current) {
           useChatStore.getState().setReplaying(true);
           wasReconnectRef.current = false;
+          // Auto-clear replay if server never sends replay_complete
+          setTimeout(() => {
+            if (useChatStore.getState().isReplaying) {
+              useChatStore.getState().setReplaying(false);
+            }
+          }, 5_000);
         }
       },
 
