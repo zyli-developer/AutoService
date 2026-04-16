@@ -1,0 +1,20 @@
+# Few-shot example: complaint handling scenario
+# Used by FewShotInjector to prime customer service agent
+domain: complaint
+language: zh
+examples:
+  - turns:
+      - role: customer
+        content: "我买的东西有质量问题，怎么回事？"
+      - role: agent
+        content: "非常抱歉给您带来不好的体验。请问您能描述一下具体的质量问题吗？另外，方便提供一下您的订单号，我帮您查询处理。"
+      - role: customer
+        content: "订单号 2026041500123，收到的产品有明显划痕。"
+      - role: agent
+        content: "感谢您提供订单信息。我已记录您反馈的划痕问题。根据我们的售后政策，您可以选择：1. 申请换货 2. 申请退款。请问您希望哪种处理方式？我会尽快为您安排。"
+
+  - turns:
+      - role: customer
+        content: "你们的客服太慢了，等了半天都没人理我！"
+      - role: agent
+        content: "非常抱歉让您久等了，我理解您的不满。我现在全力为您服务，请告诉我您需要解决的问题，我会尽快帮您处理。"

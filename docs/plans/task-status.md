@@ -105,7 +105,7 @@
 |---|---|---|---|---|---|---|
 | T3A.1 | soul.md 自动生成器 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/soul_generator.py, eval-T3A.1 |
 | T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟩 | DevA | T1A.4 | eval-T3A.2, test-plan-T3A.2, autoservice/sim_customer.py |
-| T3A.3 | Few-shot 注入机制 | 🟢 | 🟦 | DevA | T3A.2 | — |
+| T3A.3 | Few-shot 注入机制 | 🟢 | 🟩 | DevA | T3A.2 | autoservice/few_shot.py |
 | T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
 | T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
 | T3A.6 | 16 条补救指南 md | 🔴 | 🟩 | DevA | T3A.5 | docs/compliance/{eu,us,cn}-*.md (16 files) |
@@ -137,7 +137,7 @@
 |---|---|---|---|---|---|---|
 | T4A.1 | 对话记忆池 memory_pool.db | 🟢 | 🟩 | DevA | T1A.3 | autoservice/memory_pool.py |
 | T4A.2 | /rules 后端 + 对话式配置 | 🟢 | 🟩 | DevA | T2A.1 | autoservice/rules.py |
-| T4A.3 | 低峰检测调度器 | 🟢 | 🟦 | DevA | T1A.8 | — |
+| T4A.3 | 低峰检测调度器 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/low_peak_scheduler.py |
 | T4A.4 | 提案生成 pipeline | 🟡 | ⬜ | — | T4A.1 | — |
 | T4A.5 | 晨起推送 | 🟢 | ⬜ | — | T4A.4 | — |
 | T4A.6 | canary.py 灰度路由 | 🟢 | ⬜ | — | T4A.4 | — |
