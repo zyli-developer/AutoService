@@ -366,5 +366,56 @@
       ],
       "summary": "82/82 passed (58 T1B.1+2+3 + 24 new T1B.4). New: lastSeenCursor.ts, isReplaying/replayCount store fields, addMessageDedup, client_ack auto-send, replay_complete, 4041_REPLAY_GAP fallback, ConnectionBanner isReplaying state. act() warning on TC-008/031/051/052/055 harmless."
     }
+  ,
+    {
+      "id": "eval-doc-008",
+      "name": "T1B.5 浮动按钮 SDK (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": ["test-plan-007"],
+      "path": ".artifacts/eval-docs/eval-T1B.5-floating-button-sdk.md",
+      "created_at": "2026-04-16T13:00:00Z",
+      "updated_at": "2026-04-16T13:00:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "test-plan-007",
+      "name": "T1B.5 浮动按钮 SDK test-plan",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-007"],
+      "path": ".artifacts/test-plans/test-plan-T1B.5-floating-button-sdk.md",
+      "created_at": "2026-04-16T13:05:00Z",
+      "updated_at": "2026-04-16T13:10:00Z",
+      "related_ids": ["eval-doc-008"]
+    },
+    {
+      "id": "test-diff-007",
+      "name": "T1B.5 test run: 14/14 passed",
+      "type": "test-diff",
+      "status": "green",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": null,
+      "created_at": "2026-04-16T13:10:00Z",
+      "updated_at": "2026-04-16T13:10:00Z",
+      "related_ids": ["test-plan-007", "eval-doc-008"],
+      "summary": "14/14 passed. New package @autoservice/embed-sdk. iframe 隔离, IIFE 构建, postMessage as:close. TC-071~084 全绿. customer-chat 82 tests unaffected."
+    },
+    {
+      "id": "test-diff-008",
+      "name": "T1B.6 test run: 90/90 passed (customer-chat)",
+      "type": "test-diff",
+      "status": "green",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": null,
+      "created_at": "2026-04-16T13:08:00Z",
+      "updated_at": "2026-04-16T13:08:00Z",
+      "related_ids": [],
+      "summary": "90/90 passed (82 existing + 8 new i18n TC-063~070). zh-CN + en locales with 15+ keys. ConnectionBanner/ChatInput/TypingIndicator/formatTimestamp 全面 i18n 化. initGlobalI18n() for test isolation."
+    }
   ]
 }

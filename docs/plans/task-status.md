@@ -62,8 +62,8 @@
 | T1B.2 | 消息流 UI | 🟢 | 🟩 | DevB | T1B.1 | eval-doc-005, test-plan-004, test-diff-004 |
 | T1B.3 | 占位续写渲染 | 🟢 | 🟩 | DevB | T1B.2 | eval-doc-006, test-plan-005, test-diff-005 |
 | T1B.4 | 断线重连 + 消息回放 | 🟢 | 🟩 | DevB | T1B.1 | eval-doc-007, test-plan-006, test-diff-006 |
-| T1B.5 | 浮动按钮 SDK | 🟢 | 🟦 | DevB | T0.6 | — |
-| T1B.6 | 多语言 UI 框架 | 🟢 | ⬜ | — | T0.6 | — |
+| T1B.5 | 浮动按钮 SDK | 🟢 | 🟩 | DevB | T0.6 | eval-doc-008, test-plan-007, test-diff-007 |
+| T1B.6 | 多语言 UI 框架 | 🟢 | 🟩 | DevB | T0.6 | test-diff-008 |
 
 **🤝 M1 联调**: Wed EOD，30 min smoke test
 
