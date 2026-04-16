@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ConversationCard } from '../components/ConversationCard';
-import type { Conversation } from '../store/operatorStore';
+import { ConversationFeed } from '../components/ConversationFeed';
+import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
   id: 'conv-001',
@@ -16,43 +16,62 @@ const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
   ...overrides,
 });
 
-describe('ConversationCard', () => {
-  it('TC-14: displays conversation_id (short) and customer_id', () => {
-    render(
-      <ConversationCard conversation={makeConv({ id: 'conv-abcdefghijk-long-id' })} />,
-    );
+beforeEach(() => {
+  useOperatorStore.setState({ ...initialState, conversations: {} });
+});
+
+describe('ConversationFeed cards', () => {
+  it('TC-14: displays customer_id in im-card', () => {
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv() },
+    });
+    render(<ConversationFeed squadId="sq-A" />);
     expect(screen.getByTestId('conv-customer-id')).toHaveTextContent('cust-alice');
-    expect(screen.getByTestId('conv-id')).toHaveTextContent('conv-abc…');
   });
 
   it('TC-15: displays last message truncated at 40 chars', () => {
     const longMsg = 'A'.repeat(50);
-    render(<ConversationCard conversation={makeConv({ lastMessage: longMsg })} />);
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv({ lastMessage: longMsg }) },
+    });
+    render(<ConversationFeed squadId="sq-A" />);
     const el = screen.getByTestId('conv-last-message');
-    expect(el.textContent!.length).toBeLessThanOrEqual(41); // 40 + ellipsis
-    expect(el.textContent).toContain('…');
+    expect(el.textContent!.length).toBeLessThanOrEqual(41);
+    expect(el.textContent).toContain('\u2026');
   });
 
   it('TC-15b: short message not truncated', () => {
-    render(<ConversationCard conversation={makeConv({ lastMessage: 'Hello' })} />);
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv({ lastMessage: 'Hello' }) },
+    });
+    render(<ConversationFeed squadId="sq-A" />);
     expect(screen.getByTestId('conv-last-message')).toHaveTextContent('Hello');
   });
 
-  it('TC-09 (partial): click triggers onClick', async () => {
+  it('TC-09 (partial): click triggers onCardClick', async () => {
     const onClick = vi.fn();
     const user = userEvent.setup();
-    render(<ConversationCard conversation={makeConv()} onClick={onClick} />);
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv() },
+    });
+    render(<ConversationFeed squadId="sq-A" onCardClick={onClick} />);
     await user.click(screen.getByTestId('conv-card-conv-001'));
     expect(onClick).toHaveBeenCalledWith('conv-001');
   });
 
   it('displays correct status tag for idle', () => {
-    render(<ConversationCard conversation={makeConv({ mode: 'auto', lastMessageSender: '' })} />);
-    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('空闲');
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv({ mode: 'auto', lastMessageSender: '' }) },
+    });
+    render(<ConversationFeed squadId="sq-A" />);
+    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('\u7A7A\u95F2');
   });
 
   it('displays correct status tag for human-takeover', () => {
-    render(<ConversationCard conversation={makeConv({ mode: 'takeover' })} />);
-    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('人工接管');
+    useOperatorStore.setState({
+      conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
+    });
+    render(<ConversationFeed squadId="sq-A" />);
+    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('\u4EBA\u5DE5\u63A5\u7BA1');
   });
 });

@@ -2,7 +2,7 @@ import '@testing-library/jest-dom';
 import { afterEach, vi } from 'vitest';
 import { initialState, useOperatorStore } from '../store/operatorStore';
 
-// Antd requires matchMedia
+// matchMedia stub for jsdom environment
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({

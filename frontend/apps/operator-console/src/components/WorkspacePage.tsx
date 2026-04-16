@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Button, Input, Layout, Menu, Space, Tabs, Tag, Typography } from 'antd';
-import { LogoutOutlined, PlusOutlined } from '@ant-design/icons';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
-import { SquadPane } from './SquadPane';
-import { ConnectionBanner } from './ConnectionBanner';
-import { CopilotSidebar } from './CopilotSidebar';
-
-const { Sider, Content } = Layout;
+import { IMTitlebar } from './IMTitlebar';
+import { IMSidebar } from './IMSidebar';
+import { ConversationFeed } from './ConversationFeed';
+import { CopilotView } from './CopilotView';
+import { IMInput } from './IMInput';
 
 const WS_URL =
   typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL
@@ -15,13 +13,13 @@ const WS_URL =
     : 'ws://localhost:9999/ws/operator';
 
 export function WorkspacePage() {
-  const squads = useOperatorStore((s) => s.squads);
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
+  const squads = useOperatorStore((s) => s.squads);
   const wsStatus = useOperatorStore((s) => s.wsStatus);
   const logout = useOperatorStore((s) => s.logout);
   const addSquad = useOperatorStore((s) => s.addSquad);
-  const setActiveSquad = useOperatorStore((s) => s.setActiveSquad);
   const openCopilot = useOperatorStore((s) => s.openCopilot);
+  const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
 
   const [newSquadId, setNewSquadId] = useState('');
 
@@ -34,71 +32,75 @@ export function WorkspacePage() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }} data-testid="workspace-page">
-      <Sider width={220} theme="dark">
-        <div style={{ padding: '16px', color: '#fff', fontWeight: 'bold' }}>
-          AutoService 工作台
+    <div className="im-w" data-testid="workspace-page">
+      <IMTitlebar />
+      {wsStatus !== 'open' && wsStatus !== 'idle' && (
+        <div
+          data-testid="connection-banner"
+          className="im-system"
+          style={{
+            background: wsStatus === 'connecting' ? 'var(--l400)' : 'var(--p)',
+            color: wsStatus === 'connecting' ? 'var(--l800)' : '#fff',
+            padding: '6px 16px',
+          }}
+        >
+          {wsStatus === 'connecting' ? '\u8FDE\u63A5\u4E2D...' : '\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u5C1D\u8BD5\u91CD\u8FDE'}
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={activeSquadId ? [activeSquadId] : []}
-          items={squads.map((sq) => ({ key: sq, label: sq }))}
-          onSelect={({ key }) => setActiveSquad(key)}
-        />
-        <div style={{ padding: 16 }}>
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              data-testid="input-squad-id"
-              size="small"
-              placeholder="Squad ID"
-              value={newSquadId}
-              onChange={(e) => setNewSquadId(e.target.value)}
-              onPressEnter={handleAddSquad}
-            />
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              data-testid="btn-add-squad"
-              onClick={handleAddSquad}
-            />
-          </Space.Compact>
-        </div>
-        <div style={{ padding: 16, marginTop: 'auto' }}>
-          <Button
-            icon={<LogoutOutlined />}
-            size="small"
-            type="text"
-            style={{ color: '#ccc' }}
-            data-testid="btn-logout"
-            onClick={logout}
-          >
-            退出
-          </Button>
-        </div>
-      </Sider>
-      <Layout>
-        <ConnectionBanner />
-        <Content style={{ padding: 24 }}>
-          <div style={{ marginBottom: 8 }}>
-            <Tag color={wsStatus === 'open' ? 'green' : 'default'}>WS: {wsStatus}</Tag>
-          </div>
-          {squads.length === 0 ? (
-            <Typography.Text type="secondary">请在左侧添加 Squad ID</Typography.Text>
+      )}
+      <div className="im-body">
+        <IMSidebar onLogout={logout} />
+        <div className="im-main">
+          {activeCopilotConvId ? (
+            <>
+              <CopilotView send={send} />
+              <IMInput send={send} />
+            </>
           ) : (
-            <Tabs
-              activeKey={activeSquadId ?? squads[0]}
-              onChange={setActiveSquad}
-              items={squads.map((sq) => ({
-                key: sq,
-                label: sq,
-                children: <SquadPane squadId={sq} onCardClick={openCopilot} />,
-              }))}
-            />
+            <>
+              <div className="im-main-header">
+                <div className="im-main-title">
+                  {activeSquadId ?? '\u5DE5\u4F5C\u53F0'}
+                </div>
+                <div className="im-main-subtitle">
+                  {squads.length === 0
+                    ? '\u8BF7\u6DFB\u52A0 Squad ID'
+                    : `${Object.keys(useOperatorStore.getState().conversations).length} \u4E2A\u5BF9\u8BDD`}
+                </div>
+              </div>
+              <ConversationFeed
+                squadId={activeSquadId}
+                onCardClick={openCopilot}
+              />
+              <div className="im-input">
+                <div className="im-input-row">
+                  <input
+                    data-testid="input-squad-id"
+                    value={newSquadId}
+                    onChange={(e) => setNewSquadId(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSquad()}
+                    placeholder="Squad ID"
+                    style={{
+                      flex: 1,
+                      border: '1px solid var(--oat)',
+                      borderRadius: 13,
+                      padding: '9px 14px',
+                      fontSize: 12,
+                      fontFamily: 'var(--font-sans)',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    data-testid="btn-add-squad"
+                    onClick={handleAddSquad}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </>
           )}
-        </Content>
-      </Layout>
-      <CopilotSidebar send={send} />
-    </Layout>
+        </div>
+      </div>
+    </div>
   );
 }

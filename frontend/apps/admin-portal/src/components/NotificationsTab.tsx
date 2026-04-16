@@ -1,16 +1,10 @@
 import { useState } from 'react';
-import { List, Tag, Typography, Input, Button, Space, Empty } from 'antd';
-import {
-  BellOutlined,
-  InfoCircleOutlined,
-  CodeOutlined,
-} from '@ant-design/icons';
-import { useAdminStore, Notification } from '../store/adminStore';
+import { useAdminStore, type Notification } from '../store/adminStore';
 
-const typeConfig: Record<Notification['type'], { color: string; label: string; icon: React.ReactNode }> = {
-  alert: { color: 'red', label: '告警', icon: <BellOutlined /> },
-  info: { color: 'blue', label: '信息', icon: <InfoCircleOutlined /> },
-  command: { color: 'green', label: '命令', icon: <CodeOutlined /> },
+const TYPE_STYLES: Record<Notification['type'], { bg: string; color: string; label: string }> = {
+  alert: { bg: 'var(--p)', color: '#fff', label: '\u544A\u8B66' },
+  info: { bg: 'var(--m300)', color: 'var(--m800)', label: '\u4FE1\u606F' },
+  command: { bg: 'var(--m800)', color: '#fff', label: '\u547D\u4EE4' },
 };
 
 function makeId(): string {
@@ -18,9 +12,9 @@ function makeId(): string {
 }
 
 const commandHandlers: Record<string, () => Pick<Notification, 'title' | 'description' | 'type'>> = {
-  '/rules': () => ({ type: 'command', title: '规则配置已更新', description: '已执行 /rules 命令' }),
-  '/status': () => ({ type: 'command', title: '系统状态：正常', description: '已执行 /status 命令' }),
-  '/review': () => ({ type: 'command', title: '审查已启动', description: '已执行 /review 命令' }),
+  '/rules': () => ({ type: 'command', title: '\u89C4\u5219\u914D\u7F6E\u5DF2\u66F4\u65B0', description: '\u5DF2\u6267\u884C /rules \u547D\u4EE4' }),
+  '/status': () => ({ type: 'command', title: '\u7CFB\u7EDF\u72B6\u6001\uFF1A\u6B63\u5E38', description: '\u5DF2\u6267\u884C /status \u547D\u4EE4' }),
+  '/review': () => ({ type: 'command', title: '\u5BA1\u67E5\u5DF2\u542F\u52A8', description: '\u5DF2\u6267\u884C /review \u547D\u4EE4' }),
 };
 
 export function NotificationsTab() {
@@ -45,7 +39,7 @@ export function NotificationsTab() {
         id: makeId(),
         type: 'info',
         title: trimmed,
-        description: '用户输入',
+        description: '\u7528\u6237\u8F93\u5165',
         ts: new Date().toISOString(),
       });
     }
@@ -54,54 +48,65 @@ export function NotificationsTab() {
 
   return (
     <div data-testid="tab-notifications">
-      <Typography.Title level={4}>通知中心</Typography.Title>
-
       <div data-testid="notification-list">
         {notifications.length === 0 ? (
-          <Empty description="暂无通知" />
+          <div className="im-empty">{'\u6682\u65E0\u901A\u77E5'}</div>
         ) : (
-          <List
-            dataSource={notifications}
-            renderItem={(item) => {
-              const cfg = typeConfig[item.type];
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {notifications.map((item) => {
+              const style = TYPE_STYLES[item.type];
               return (
-                <List.Item data-testid={`notification-item-${item.id}`}>
-                  <List.Item.Meta
-                    avatar={cfg.icon}
-                    title={
-                      <Space>
-                        <Tag color={cfg.color}>{cfg.label}</Tag>
-                        <Typography.Text strong>{item.title}</Typography.Text>
-                      </Space>
-                    }
-                    description={
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text type="secondary">{item.description}</Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {item.ts}
-                        </Typography.Text>
-                      </Space>
-                    }
-                  />
-                </List.Item>
+                <div
+                  key={item.id}
+                  className="im-card"
+                  data-testid={`notification-item-${item.id}`}
+                >
+                  <div
+                    className="im-avatar a1"
+                    style={{ background: style.bg, color: style.color, fontSize: 10 }}
+                  >
+                    {style.label.charAt(0)}
+                  </div>
+                  <div className="im-msg-body">
+                    <div className="im-msg-meta">
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          background: style.bg,
+                          color: style.color,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {style.label}
+                      </span>
+                      <span className="im-msg-author">{item.title}</span>
+                      <span className="im-msg-time">{item.ts}</span>
+                    </div>
+                    <div className="im-msg-text" style={{ color: 'var(--charcoal)' }}>
+                      {item.description}
+                    </div>
+                  </div>
+                </div>
               );
-            }}
-          />
+            })}
+          </div>
         )}
       </div>
 
-      <Space.Compact style={{ width: '100%', marginTop: 16 }}>
-        <Input
+      <div className="cs-notification-input">
+        <input
           data-testid="notification-input"
-          placeholder="输入命令：/rules, /status, /review"
+          placeholder="\u8F93\u5165\u547D\u4EE4\uFF1A/rules, /status, /review"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onPressEnter={handleSend}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
         />
-        <Button data-testid="notification-send" type="primary" onClick={handleSend}>
-          发送
-        </Button>
-      </Space.Compact>
+        <button data-testid="notification-send" onClick={handleSend}>
+          {'\u53D1\u9001'}
+        </button>
+      </div>
     </div>
   );
 }

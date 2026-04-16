@@ -1,33 +1,36 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { useOperatorStore } from '../store/operatorStore';
-import { UnreadBadge } from '../components/UnreadBadge';
+import { useOperatorStore, initialState } from '../store/operatorStore';
+import { IMSidebar } from '../components/IMSidebar';
+import { vi } from 'vitest';
 
-describe('UnreadBadge', () => {
+beforeEach(() => {
+  useOperatorStore.setState({ ...initialState });
+});
+
+describe('Unread badges in IMSidebar', () => {
   it('TC-01: badge hidden when unreadCounts is 0', () => {
-    render(
-      <UnreadBadge squadId="sq-A">
-        <span>Squad A</span>
-      </UnreadBadge>,
-    );
-    const wrapper = screen.getByTestId('unread-badge-sq-A');
-    // Ant Design Badge with count=0 does not render .ant-badge-count or renders it hidden
-    const countEl = wrapper.querySelector('.ant-badge-count');
-    expect(countEl === null || countEl.classList.contains('ant-badge-count-hidden') ||
-      getComputedStyle(countEl).display === 'none').toBe(true);
+    useOperatorStore.setState({
+      operatorId: 'op-1',
+      squads: ['sq-A'],
+      activeSquadId: 'sq-A',
+    });
+    render(<IMSidebar onLogout={vi.fn()} />);
+    expect(screen.queryByTestId('unread-badge-sq-A')).toBeNull();
   });
 
   it('TC-02: badge shows count when > 0', () => {
+    useOperatorStore.setState({
+      operatorId: 'op-1',
+      squads: ['sq-A'],
+      activeSquadId: 'sq-A',
+    });
     useOperatorStore.getState().incrementUnread('sq-A');
     useOperatorStore.getState().incrementUnread('sq-A');
     useOperatorStore.getState().incrementUnread('sq-A');
-    render(
-      <UnreadBadge squadId="sq-A">
-        <span>Squad A</span>
-      </UnreadBadge>,
-    );
-    const wrapper = screen.getByTestId('unread-badge-sq-A');
-    expect(wrapper).toHaveTextContent('3');
+    render(<IMSidebar onLogout={vi.fn()} />);
+    const badge = screen.getByTestId('unread-badge-sq-A');
+    expect(badge).toHaveTextContent('3');
   });
 
   it('TC-03: clearUnread resets count', () => {

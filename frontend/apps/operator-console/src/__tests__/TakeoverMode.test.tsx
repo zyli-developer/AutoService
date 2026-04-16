@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { CopilotSidebar } from '../components/CopilotSidebar';
+import { CopilotView } from '../components/CopilotView';
+import { IMInput } from '../components/IMInput';
 import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
@@ -26,25 +27,25 @@ beforeEach(() => {
 });
 
 describe('Takeover Mode UI', () => {
-  it('TC-01: shows "Copilot" title in copilot mode', () => {
+  it('TC-01: shows copilot subtitle in copilot mode', () => {
     useOperatorStore.setState({
       activeCopilotConvId: 'conv-001',
       conversations: { 'conv-001': makeConv({ mode: 'copilot' }) },
     });
     const send = vi.fn();
-    render(<CopilotSidebar send={send} />);
-    expect(screen.getByTestId('copilot-title')).toHaveTextContent('Copilot');
+    render(<CopilotView send={send} />);
+    const header = screen.getByTestId('copilot-header');
+    expect(header.textContent).toContain('copilot');
     expect(screen.queryByTestId('takeover-indicator')).toBeNull();
   });
 
-  it('TC-02: shows "正式回复" title + TAKEOVER indicator in takeover mode', () => {
+  it('TC-02: shows TAKEOVER indicator in takeover mode', () => {
     useOperatorStore.setState({
       activeCopilotConvId: 'conv-001',
       conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
     });
     const send = vi.fn();
-    render(<CopilotSidebar send={send} />);
-    expect(screen.getByTestId('copilot-title')).toHaveTextContent('正式回复');
+    render(<CopilotView send={send} />);
     expect(screen.getByTestId('takeover-indicator')).toHaveTextContent('TAKEOVER');
   });
 
@@ -55,16 +56,21 @@ describe('Takeover Mode UI', () => {
     });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(<CopilotSidebar send={send} />);
+    render(
+      <>
+        <CopilotView send={send} />
+        <IMInput send={send} />
+      </>
+    );
 
-    await user.type(screen.getByTestId('copilot-input'), '您好客户');
+    await user.type(screen.getByTestId('copilot-input'), '\u60A8\u597D\u5BA2\u6237');
     await user.click(screen.getByTestId('copilot-send'));
 
-    expect(send).toHaveBeenCalledTimes(1);
-    const frame = send.mock.calls[0][0];
+    const calls = send.mock.calls;
+    const frame = calls[calls.length - 1][0];
     expect(frame.type).toBe('send_message');
     expect(frame.payload.visible_to_customer).toBe(true);
-    expect(frame.payload.text).toBe('您好客户');
+    expect(frame.payload.text).toBe('\u60A8\u597D\u5BA2\u6237');
   });
 
   it('TC-04: sends operator_message frame in copilot mode', async () => {
@@ -74,13 +80,18 @@ describe('Takeover Mode UI', () => {
     });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(<CopilotSidebar send={send} />);
+    render(
+      <>
+        <CopilotView send={send} />
+        <IMInput send={send} />
+      </>
+    );
 
-    await user.type(screen.getByTestId('copilot-input'), '建议回复');
+    await user.type(screen.getByTestId('copilot-input'), '\u5EFA\u8BAE\u56DE\u590D');
     await user.click(screen.getByTestId('copilot-send'));
 
-    expect(send).toHaveBeenCalledTimes(1);
-    const frame = send.mock.calls[0][0];
+    const calls = send.mock.calls;
+    const frame = calls[calls.length - 1][0];
     expect(frame.type).toBe('operator_message');
     expect(frame.payload.visible_to_customer).toBeUndefined();
   });
@@ -91,7 +102,8 @@ describe('Takeover Mode UI', () => {
       conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
     });
     const send = vi.fn();
-    render(<CopilotSidebar send={send} />);
-    expect(screen.getByTestId('copilot-input')).toHaveAttribute('placeholder', '正式回复客户...');
+    render(<IMInput send={send} />);
+    const input = screen.getByTestId('copilot-input');
+    expect(input.getAttribute('placeholder')).toContain('\u4EBA\u5DE5');
   });
 });

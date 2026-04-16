@@ -1,37 +1,33 @@
 import { useState } from 'react';
-import { Button, Card, Input, Layout, Typography } from 'antd';
 import { useAdminStore } from '../store/adminStore';
 
 export function LoginPage() {
   const [tenantId, setTenantId] = useState('');
   const login = useAdminStore((s) => s.login);
 
-  const handleLogin = () => {
+  const handleLogin = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!tenantId.trim()) return;
     login(tenantId.trim());
   };
 
   return (
-    <Layout style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card title="AutoService 管理后台" style={{ width: 400 }} data-testid="login-card">
-        <Typography.Paragraph type="secondary">请输入租户 ID 登录</Typography.Paragraph>
-        <Input
-          data-testid="input-tenant-id"
-          placeholder="Tenant ID"
-          value={tenantId}
-          onChange={(e) => setTenantId(e.target.value)}
-          onPressEnter={handleLogin}
-          style={{ marginBottom: 16 }}
-        />
-        <Button
-          type="primary"
-          block
-          data-testid="btn-login"
-          onClick={handleLogin}
-        >
-          登录
-        </Button>
-      </Card>
-    </Layout>
+    <div className="cs-login">
+      <div className="cs-login-card" data-testid="login-card">
+        <h2>AutoService {'\u7BA1\u7406\u540E\u53F0'}</h2>
+        <p>{'\u8BF7\u8F93\u5165\u79DF\u6237 ID \u767B\u5F55'}</p>
+        <form onSubmit={handleLogin}>
+          <input
+            data-testid="input-tenant-id"
+            placeholder="Tenant ID"
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
+          />
+          <button type="submit" data-testid="btn-login">
+            {'\u767B\u5F55'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

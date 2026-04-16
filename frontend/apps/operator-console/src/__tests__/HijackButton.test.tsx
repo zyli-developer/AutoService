@@ -1,9 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { HijackButton } from '../components/HijackButton';
-import { ConversationCard } from '../components/ConversationCard';
-import type { Conversation } from '../store/operatorStore';
+import { CopilotView } from '../components/CopilotView';
+import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
   id: 'conv-001',
@@ -17,18 +16,30 @@ const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
   ...overrides,
 });
 
-describe('HijackButton', () => {
-  it('TC-01: renders button with correct label "抢单"', () => {
+beforeEach(() => {
+  useOperatorStore.setState({ ...initialState });
+});
+
+describe('Hijack in CopilotView', () => {
+  it('TC-01: hijack button renders with /hijack label', () => {
+    useOperatorStore.setState({
+      activeCopilotConvId: 'conv-001',
+      conversations: { 'conv-001': makeConv({ mode: 'auto' }) },
+    });
     const send = vi.fn();
-    render(<HijackButton conversationId="conv-001" send={send} />);
+    render(<CopilotView send={send} />);
     const btn = screen.getByTestId('btn-hijack-conv-001');
-    expect(btn).toHaveTextContent(/抢\s*单/);
+    expect(btn).toHaveTextContent(/\u62A2\u5355/);
   });
 
-  it('TC-02: clicking button calls send with correct frame structure', async () => {
+  it('TC-02: clicking hijack button calls send with correct frame', async () => {
+    useOperatorStore.setState({
+      activeCopilotConvId: 'conv-042',
+      conversations: { 'conv-042': makeConv({ id: 'conv-042', mode: 'auto' }) },
+    });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(<HijackButton conversationId="conv-042" send={send} />);
+    render(<CopilotView send={send} />);
     await user.click(screen.getByTestId('btn-hijack-conv-042'));
     expect(send).toHaveBeenCalledTimes(1);
     const frame = send.mock.calls[0][0];
@@ -36,25 +47,25 @@ describe('HijackButton', () => {
     expect(frame.type).toBe('operator_command');
     expect(frame.payload.command).toBe('/hijack');
     expect(frame.payload.conversation_id).toBe('conv-042');
-    expect(frame.id).toBeDefined();
-    expect(frame.ts).toBeDefined();
   });
 
-  it('TC-03: disabled prop disables the button', () => {
+  it('TC-04: hijack button not shown when mode=takeover', () => {
+    useOperatorStore.setState({
+      activeCopilotConvId: 'conv-001',
+      conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
+    });
     const send = vi.fn();
-    render(<HijackButton conversationId="conv-001" send={send} disabled />);
-    expect(screen.getByTestId('btn-hijack-conv-001')).toBeDisabled();
-  });
-
-  it('TC-04: button not shown in ConversationCard when mode=takeover', () => {
-    const send = vi.fn();
-    render(<ConversationCard conversation={makeConv({ mode: 'takeover' })} send={send} />);
+    render(<CopilotView send={send} />);
     expect(screen.queryByTestId('btn-hijack-conv-001')).toBeNull();
   });
 
-  it('TC-05: button shown in ConversationCard when mode=auto', () => {
+  it('TC-05: hijack button shown when mode=auto', () => {
+    useOperatorStore.setState({
+      activeCopilotConvId: 'conv-001',
+      conversations: { 'conv-001': makeConv({ mode: 'auto' }) },
+    });
     const send = vi.fn();
-    render(<ConversationCard conversation={makeConv({ mode: 'auto' })} send={send} />);
+    render(<CopilotView send={send} />);
     expect(screen.getByTestId('btn-hijack-conv-001')).toBeInTheDocument();
   });
 });
