@@ -1,21 +1,44 @@
 import { Steps, Typography } from 'antd';
+import { useAdminStore } from '../store/adminStore';
+import { MaterialUploadStep } from './wizard/MaterialUploadStep';
+import { ChannelConfigStep } from './wizard/ChannelConfigStep';
+import { VirtualRehearsalStep } from './wizard/VirtualRehearsalStep';
+import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
 
 export function WizardTab() {
+  const { tenantId, wizardStep, setWizardStep } = useAdminStore();
+
+  const steps = [
+    { title: '资料上传', description: 'Step 1' },
+    { title: '渠道配置', description: 'Step 2' },
+    { title: '虚拟预演', description: 'Step 3' },
+    { title: '合规预检', description: 'Step 4' },
+  ];
+
   return (
     <div data-testid="tab-wizard">
       <Typography.Title level={4}>设置向导</Typography.Title>
       <Steps
-        current={0}
-        items={[
-          { title: '资料上传', description: 'T3B.2' },
-          { title: '渠道配置', description: 'T3B.3' },
-          { title: '虚拟预演', description: 'T3B.4' },
-          { title: '合规预检', description: 'T3B.5' },
-        ]}
+        current={wizardStep}
+        items={steps}
+        onChange={(step) => setWizardStep(step)}
+        style={{ marginBottom: 24 }}
       />
-      <Typography.Paragraph type="secondary" style={{ marginTop: 24 }}>
-        向导内容 — T3B.2-5 TODO
-      </Typography.Paragraph>
+      {wizardStep === 0 && (
+        <MaterialUploadStep
+          tenantId={tenantId || 'default'}
+          onGenerated={() => setWizardStep(1)}
+        />
+      )}
+      {wizardStep === 1 && (
+        <ChannelConfigStep tenantId={tenantId || 'default'} />
+      )}
+      {wizardStep === 2 && (
+        <VirtualRehearsalStep tenantId={tenantId || 'default'} />
+      )}
+      {wizardStep === 3 && (
+        <ComplianceCheckStep />
+      )}
     </div>
   );
 }
