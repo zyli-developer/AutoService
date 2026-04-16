@@ -1,5 +1,5 @@
 import { parseEnvelope, type Envelope } from './envelope';
-import type { FeToBeType, BeToFeType, ClientHelloPayload, ServerHelloPayload, ErrorPayload } from './types';
+import type { FeToBeType, BeToFeType, ClientHelloPayload, ServerHelloPayload, ErrorPayload, LastSeenCursor } from './types';
 import { ERROR_CODES } from './types';
 
 export interface WSClientOptions {
@@ -10,7 +10,7 @@ export interface WSClientOptions {
   reconnectBaseMs?: number;
   reconnectMaxMs?: number;
   ackTimeoutMs?: number;
-  lastSeen?: string;
+  lastSeen?: LastSeenCursor;
   conversationId?: string;
   operatorId?: string;
   squads?: string[];
@@ -32,8 +32,6 @@ interface PendingAck {
  * - 心跳 ping/pong（默认 15s）
  * - ack 等待（默认 5s 超时后 reject，由上层决策是否重发）
  *
- * TODO(T1B.4): 断线重连时根据 `last_seen` 发 client_hello 做消息回放
- * TODO(T1B.4): per-subscription cursor 推进（收到 event 后主动 client_ack）
  */
 export class WSClient {
   private ws: WebSocket | null = null;

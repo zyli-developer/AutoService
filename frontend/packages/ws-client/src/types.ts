@@ -61,11 +61,17 @@ export type ConversationState = 'created' | 'active' | 'idle' | 'closed';
 /** 对齐 autoservice.conversation_engine.types.Outcome */
 export type Outcome = 'resolved' | 'abandoned' | 'escalated';
 
+/** T1B.4: §3.3 reconnect cursor */
+export interface LastSeenCursor {
+  conv_seq?: Record<string, { msg: number; evt: number }>;
+  global_event_id?: string;  // operator/admin only
+}
+
 /** T0.2 §3.1 client_hello payload */
 export interface ClientHelloPayload {
   protocol_version: number;
   client_app: string;
-  last_seen?: string;
+  last_seen?: LastSeenCursor;   // was: string
   conversation_id?: string;
   operator_id?: string;
   squads?: string[];
