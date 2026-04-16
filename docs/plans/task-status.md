@@ -138,7 +138,7 @@
 | T4A.1 | 对话记忆池 memory_pool.db | 🟢 | 🟩 | DevA | T1A.3 | autoservice/memory_pool.py |
 | T4A.2 | /rules 后端 + 对话式配置 | 🟢 | 🟩 | DevA | T2A.1 | autoservice/rules.py |
 | T4A.3 | 低峰检测调度器 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/low_peak_scheduler.py |
-| T4A.4 | 提案生成 pipeline | 🟡 | ⬜ | — | T4A.1 | — |
+| T4A.4 | 提案生成 pipeline | 🟡 | 🟦 | DevA | T4A.1 | — |
 | T4A.5 | 晨起推送 | 🟢 | ⬜ | — | T4A.4 | — |
 | T4A.6 | canary.py 灰度路由 | 🟢 | ⬜ | — | T4A.4 | — |
 | T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | ⬜ | — | T4A.6,T2A.3 | — |
