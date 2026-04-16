@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { LastSeenCursor } from '@autoservice/ws-client';
 
 export interface ChatMessage {
   id: string;
@@ -27,8 +28,12 @@ interface ChatState {
   conversationId: string | null;
   messages: ChatMessage[];
   isAgentTyping: boolean;
+  isReplaying: boolean;
+  replayCount: number;
+  lastSeenCursor: LastSeenCursor;
   // Actions
   addMessage: (msg: ChatMessage) => void;
+  addMessageDedup: (msg: ChatMessage) => void;
   updateMessage: (messageId: string, content: string) => void;
   clearJustEdited: (messageId: string) => void;
   confirmOptimistic: (clientMsgId: string, serverMsg: Partial<ChatMessage>) => void;
@@ -36,17 +41,34 @@ interface ChatState {
   setSessionId: (id: string) => void;
   setConversationId: (id: string) => void;
   setAgentTyping: (v: boolean) => void;
+  setReplaying: (v: boolean) => void;
+  setReplayCount: (n: number) => void;
+  updateCursor: (cursor: LastSeenCursor) => void;
 }
 
 export const initialState: Omit<
   ChatState,
-  'addMessage' | 'updateMessage' | 'clearJustEdited' | 'confirmOptimistic' | 'setConnectionStatus' | 'setSessionId' | 'setConversationId' | 'setAgentTyping'
+  | 'addMessage'
+  | 'addMessageDedup'
+  | 'updateMessage'
+  | 'clearJustEdited'
+  | 'confirmOptimistic'
+  | 'setConnectionStatus'
+  | 'setSessionId'
+  | 'setConversationId'
+  | 'setAgentTyping'
+  | 'setReplaying'
+  | 'setReplayCount'
+  | 'updateCursor'
 > = {
   connectionStatus: 'idle',
   sessionId: null,
   conversationId: null,
   messages: [],
   isAgentTyping: false,
+  isReplaying: false,
+  replayCount: 0,
+  lastSeenCursor: {},
 };
 
 export const useChatStore = create<ChatState>()((set) => ({
@@ -60,6 +82,18 @@ export const useChatStore = create<ChatState>()((set) => ({
           ? false
           : state.isAgentTyping,
     })),
+
+  addMessageDedup: (msg) =>
+    set((state) => {
+      if (state.messages.some((m) => m.id === msg.id)) return state;
+      return {
+        messages: [...state.messages, msg],
+        isAgentTyping:
+          msg.sourceRole === 'agent' || msg.sourceRole === 'operator'
+            ? false
+            : state.isAgentTyping,
+      };
+    }),
 
   updateMessage: (messageId, content) =>
     set((state) => ({
@@ -93,4 +127,10 @@ export const useChatStore = create<ChatState>()((set) => ({
   setConversationId: (id) => set({ conversationId: id }),
 
   setAgentTyping: (v) => set({ isAgentTyping: v }),
+
+  setReplaying: (v) => set({ isReplaying: v }),
+
+  setReplayCount: (n) => set({ replayCount: n }),
+
+  updateCursor: (cursor) => set({ lastSeenCursor: cursor }),
 }));

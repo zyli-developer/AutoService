@@ -9,7 +9,7 @@ import { ConnectionBanner } from './components/ConnectionBanner';
 
 export function App() {
   const { send } = useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat');
-  const { messages, connectionStatus } = useChatStore();
+  const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSend = async (content: string) => {
@@ -54,7 +54,7 @@ export function App() {
 
   return (
     <>
-      <ConnectionBanner status={connectionStatus} />
+      <ConnectionBanner status={connectionStatus} isReplaying={isReplaying} replayCount={replayCount} />
       <ChatLayout
         header={<ChatHeader status={connectionStatus} />}
         messageList={<MessageList messages={messages} />}

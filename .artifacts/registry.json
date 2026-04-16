@@ -340,15 +340,31 @@
       "id": "test-plan-006",
       "name": "T1B.4 断线重连 + 消息回放 test-plan",
       "type": "test-plan",
-      "status": "confirmed",
+      "status": "executed",
       "producer": "skill-2",
-      "consumers": [],
+      "consumers": ["test-diff-006"],
       "path": ".artifacts/test-plans/test-plan-T1B.4-reconnect-replay.md",
       "created_at": "2026-04-16T11:45:00Z",
-      "updated_at": "2026-04-16T11:45:00Z",
+      "updated_at": "2026-04-16T12:56:00Z",
       "related_ids": [
         "eval-doc-007"
       ]
+    },
+    {
+      "id": "test-diff-006",
+      "name": "T1B.4 test run: 82/82 passed",
+      "type": "test-diff",
+      "status": "green",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": null,
+      "created_at": "2026-04-16T12:56:00Z",
+      "updated_at": "2026-04-16T12:56:00Z",
+      "related_ids": [
+        "test-plan-006",
+        "eval-doc-007"
+      ],
+      "summary": "82/82 passed (58 T1B.1+2+3 + 24 new T1B.4). New: lastSeenCursor.ts, isReplaying/replayCount store fields, addMessageDedup, client_ack auto-send, replay_complete, 4041_REPLAY_GAP fallback, ConnectionBanner isReplaying state. act() warning on TC-008/031/051/052/055 harmless."
     }
   ]
 }

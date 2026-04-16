@@ -140,4 +140,36 @@ describe('chatStore', () => {
     });
     expect(useChatStore.getState().messages[0].isStreaming).toBe(true);
   });
+
+  it('TC-044: addMessageDedup skips duplicate id', () => {
+    const base = { source:'a', sourceRole:'agent' as const, content:'first',
+      visibility:'public' as const, timestamp:new Date().toISOString(), sequenceNumber:1, status:'sent' as const };
+    useChatStore.getState().addMessageDedup({ id: 'dup', ...base });
+    useChatStore.getState().addMessageDedup({ id: 'dup', ...base, content: 'second' });
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe('first');
+  });
+
+  it('TC-045: addMessageDedup appends different ids', () => {
+    const base = { source:'a', sourceRole:'agent' as const, content:'x',
+      visibility:'public' as const, timestamp:new Date().toISOString(), sequenceNumber:1, status:'sent' as const };
+    useChatStore.getState().addMessageDedup({ id: 'a', ...base });
+    useChatStore.getState().addMessageDedup({ id: 'b', ...base });
+    expect(useChatStore.getState().messages).toHaveLength(2);
+  });
+
+  it('TC-046: setReplaying and setReplayCount update store', () => {
+    useChatStore.getState().setReplaying(true);
+    expect(useChatStore.getState().isReplaying).toBe(true);
+    useChatStore.getState().setReplayCount(7);
+    expect(useChatStore.getState().replayCount).toBe(7);
+    useChatStore.getState().setReplaying(false);
+    expect(useChatStore.getState().isReplaying).toBe(false);
+  });
+
+  it('TC-047: updateCursor stores cursor in state', () => {
+    useChatStore.getState().updateCursor({ conv_seq: { cv1: { msg: 3, evt: 9 } } });
+    expect(useChatStore.getState().lastSeenCursor.conv_seq?.cv1?.msg).toBe(3);
+  });
 });

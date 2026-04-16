@@ -7,4 +7,5 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useChatStore.setState(initialState);
+  sessionStorage.clear();  // clear cursor storage between tests
 });

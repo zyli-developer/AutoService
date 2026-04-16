@@ -5,6 +5,7 @@ import type { WSClientOptions } from '@autoservice/ws-client';
 import { useChatStore, initialState } from '../store/chatStore';
 
 let fakeInstance: FakeWSClient | null = null;
+const fakeInstances: FakeWSClient[] = [];
 
 vi.mock('@autoservice/ws-client', async (importActual) => {
   const actual = await importActual<typeof import('@autoservice/ws-client')>();
@@ -13,6 +14,7 @@ vi.mock('@autoservice/ws-client', async (importActual) => {
     WSClient: class {
       constructor(opts: WSClientOptions) {
         const fake = new FakeWSClient(opts);
+        fakeInstances.push(fake);
         fakeInstance = fake;
         // Return fake as the instance (proxy pattern)
         Object.assign(this, {
@@ -33,7 +35,9 @@ const { useWebSocket } = await import('../hooks/useWebSocket');
 describe('useWebSocket', () => {
   beforeEach(() => {
     fakeInstance = null;
+    fakeInstances.length = 0;
     useChatStore.setState(initialState);
+    sessionStorage.clear();
   });
 
   it('TC-006: on mount sets connectionStatus to connecting, then open after connect', async () => {
@@ -66,6 +70,7 @@ describe('useWebSocket', () => {
         id: 'frame-1',
         ts: '2026-04-16T09:00:00.000Z',
         payload: {
+          conversation_id: 'cv1',
           message: {
             id: 'server-msg-1',
             source: 'agent-1',
@@ -208,5 +213,87 @@ describe('useWebSocket', () => {
 
     const msg = useChatStore.getState().messages[0];
     expect(msg.isStreaming === false || msg.isStreaming === undefined).toBe(true);
+  });
+
+  it('TC-051: event frame triggers client_ack send', async () => {
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => {
+      fakeInstance?.pushFrame({
+        v:1, type:'event', id:'f-evt', ts:new Date().toISOString(),
+        payload: { event: { id:'evt-1', type:'conversation.created',
+          conversation_id:'cv1', sequence_number:1, timestamp:new Date().toISOString() } },
+      });
+    });
+    expect(fakeInstance?.sendCalls.some(c => c.type === 'client_ack' && (c.payload as Record<string, unknown>).event_id === 'evt-1')).toBe(true);
+  });
+
+  it('TC-052: message frame updates cursor in sessionStorage', async () => {
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => {
+      fakeInstance?.pushFrame({
+        v:1, type:'message', id:'f-m', ts:new Date().toISOString(),
+        payload: {
+          conversation_id: 'cv1',
+          message: { id:'m1', source:'agent', content:'hi', visibility:'public',
+            sequence_number:5, timestamp:new Date().toISOString() },
+          source_display: { id:'agent', role:'agent' },
+        },
+      });
+    });
+    const stored = JSON.parse(sessionStorage.getItem('as_last_seen') ?? '{}');
+    expect(stored?.conv_seq?.cv1?.msg).toBe(5);
+  });
+
+  it('TC-053: replay_complete sets isReplaying=false and replayCount', async () => {
+    useChatStore.getState().setReplaying(true);
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => {
+      fakeInstance?.pushFrame({ v:1, type:'replay_complete', id:'f-rc',
+        ts:new Date().toISOString(), payload:{ count:7 } });
+    });
+    expect(useChatStore.getState().isReplaying).toBe(false);
+    expect(useChatStore.getState().replayCount).toBe(7);
+  });
+
+  it('TC-054: error 4041_REPLAY_GAP triggers history_request', async () => {
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => {
+      fakeInstance?.pushFrame({ v:1, type:'error', id:'f-err',
+        ts:new Date().toISOString(),
+        payload:{ code:'4041_REPLAY_GAP', recoverable:true } });
+    });
+    expect(fakeInstance?.sendCalls.some(c => c.type === 'history_request'
+      && (c.payload as Record<string, unknown>).since_sequence === 0)).toBe(true);
+  });
+
+  it('TC-055: history_snapshot messages are deduped against existing', async () => {
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    act(() => { fakeInstance?.triggerOpen(); });
+    // Pre-populate store
+    useChatStore.getState().addMessageDedup({
+      id:'m-exist', source:'agent', sourceRole:'agent', content:'existing',
+      visibility:'public', timestamp:new Date().toISOString(), sequenceNumber:1, status:'sent',
+    });
+    act(() => {
+      fakeInstance?.pushFrame({
+        v:1, type:'history_snapshot', id:'f-snap', ts:new Date().toISOString(),
+        payload: { messages: [
+          { id:'m-exist', source:'agent', content:'existing', visibility:'public', sequence_number:1, timestamp:new Date().toISOString() },
+          { id:'m-new', source:'agent', content:'new one', visibility:'public', sequence_number:2, timestamp:new Date().toISOString() },
+        ]},
+      });
+    });
+    expect(useChatStore.getState().messages).toHaveLength(2);
+    expect(useChatStore.getState().messages.some(m => m.id === 'm-new')).toBe(true);
+  });
+
+  it('TC-056: WSClient constructed with lastSeen cursor from sessionStorage', async () => {
+    sessionStorage.setItem('as_last_seen', JSON.stringify({ conv_seq: { cv1: { msg:3, evt:5 } } }));
+    renderHook(() => useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat'));
+    expect(fakeInstance?.opts.lastSeen?.conv_seq?.cv1?.msg).toBe(3);
   });
 });
