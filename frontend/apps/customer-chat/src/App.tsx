@@ -8,7 +8,8 @@ import { ChatInput } from './components/ChatInput';
 import { ConnectionBanner } from './components/ConnectionBanner';
 
 export function App() {
-  const { send } = useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat');
+  const wsUrl = `ws://${window.location.hostname}:8000/ws/customer`;
+  const { send } = useWebSocket(wsUrl, 'customer-chat');
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,7 +41,12 @@ export function App() {
     }, 30_000);
 
     try {
-      await send('customer_message', { content, client_msg_id: clientMsgId });
+      const convId = useChatStore.getState().conversationId;
+      await send('customer_message', {
+        content,
+        client_msg_id: clientMsgId,
+        ...(convId ? { conversation_id: convId } : {}),
+      });
     } catch {
       // Mark as failed on send error
       if (typingTimerRef.current) {

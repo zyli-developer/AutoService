@@ -28,12 +28,33 @@ class DummyEngine:
     def __init__(self) -> None:
         self._send_message_impl: Callable[..., Awaitable[Message]] | None = None
         self._handle_command_impl: Callable[..., Awaitable[None]] | None = None
+        self._known_convs: set[str] = set()
 
     def set_send_message(self, impl: Callable[..., Awaitable[Message]]) -> None:
         self._send_message_impl = impl
 
     def set_handle_command(self, impl: Callable[..., Awaitable[None]]) -> None:
         self._handle_command_impl = impl
+
+    async def get_conversation(self, conversation_id: str) -> Any:
+        """Stub: return minimal conv if in known set, else raise."""
+        from autoservice.conversation_engine.errors import ConversationNotFound
+        if conversation_id in self._known_convs:
+            from types import SimpleNamespace
+            return SimpleNamespace(id=conversation_id)
+        raise ConversationNotFound(conversation_id)
+
+    async def create_conversation(self, **kwargs: Any) -> Any:
+        """Stub: return a minimal object with .id and remember it."""
+        from types import SimpleNamespace
+        ext = kwargs.get("external_id", "customer")
+        channel = kwargs.get("channel", "web")
+        conv_id = f"{channel}_{ext}"
+        self._known_convs.add(conv_id)
+        return SimpleNamespace(id=conv_id)
+
+    async def join(self, *args: Any, **kwargs: Any) -> None:
+        pass
 
     async def send_message(self, *args: Any, **kwargs: Any) -> Message:
         if self._send_message_impl is None:

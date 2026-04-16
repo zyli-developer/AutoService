@@ -168,21 +168,22 @@ def test_tc016_unknown_type(local_engine_client):
 
 # ---------- Group D: engine error mapping ----------
 
-def test_tc017_customer_message_not_implemented_returns_5000_error(local_engine_client):
-    """TC-017: LocalEngine.send_message raises NotImplementedError → 5000_INTERNAL error frame."""
+def test_tc017_customer_message_auto_creates_conversation(local_engine_client):
+    """TC-017: customer_message with unknown conv auto-creates conversation → ack + message."""
     with local_engine_client.websocket_connect("/ws/customer") as ws:
         handshake(ws, viewer_role_expected="customer")
         frame = make_frame(
             "customer_message",
-            {"conversation_id": "c-1", "content": "hi"},
+            {"conversation_id": "nonexistent-conv", "content": "hi"},
         )
         ws.send_json(frame)
-        reply = ws.receive_json()
-        assert reply["type"] == "error"
-        assert reply["payload"]["code"] == "5000_INTERNAL"
-        assert reply.get("ref") == frame["id"]
-        hint = reply["payload"].get("details", {}).get("engine_hint", "")
-        assert HINT_RE.search(hint), f"engine_hint should match T1A.x: {hint!r}"
+        ack = ws.receive_json()
+        assert ack["type"] == "ack"
+        assert ack["ref"] == frame["id"]
+        msg = ws.receive_json()
+        assert msg["type"] == "message_confirm"
+        assert msg["payload"]["message_id"]
+        assert msg["payload"]["conversation_id"]
 
 
 def test_tc018_operator_command_not_implemented_returns_command_response(local_engine_client):
@@ -220,6 +221,7 @@ def test_tc020_dummy_engine_success_returns_ack_and_message(dummy_engine, dummy_
         return make_message(conversation_id=conv_id, source=source, content=content)
 
     dummy_engine.set_send_message(_send)
+    dummy_engine._known_convs.add("c-1")  # pre-register so auto-create is skipped
 
     with dummy_engine_client.websocket_connect("/ws/customer") as ws:
         handshake(ws, viewer_role_expected="customer")
@@ -231,10 +233,9 @@ def test_tc020_dummy_engine_success_returns_ack_and_message(dummy_engine, dummy_
         assert ack["type"] == "ack"
         assert ack["ref"] == frame["id"]
         msg = ws.receive_json()
-        assert msg["type"] == "message"
+        assert msg["type"] == "message_confirm"
         assert msg["payload"]["conversation_id"] == "c-1"
-        assert msg["payload"]["message"]["content"] == "hello"
-        assert msg["payload"]["source_display"]["id"]
+        assert msg["payload"]["message_id"]
 
 
 def test_tc021_dummy_engine_unexpected_exception_returns_5000_error(

@@ -10,15 +10,23 @@ Handles error mapping per T0.2 §6.1:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+from datetime import datetime, timezone
 
 from autoservice.conversation_engine import ConversationEngine
+from autoservice.conversation_engine.errors import ConversationNotFound
+from autoservice.conversation_engine.types import Participant, ParticipantRole
 
 from .connection import build_frame
 from .errors import ERR_INTERNAL, ERR_VALIDATION, make_error_payload
 from .envelope import Envelope
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket
 
 logger = logging.getLogger("autoservice.gateway")
 
@@ -55,6 +63,7 @@ async def dispatch(
     *,
     viewer_role: str,
     engine: ConversationEngine,
+    ws: WebSocket | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch a validated FE envelope; return frames to send back (0..N)."""
     frame_type = env.type
@@ -105,7 +114,7 @@ async def dispatch(
         return await _dispatch_command(env, engine=engine)
 
     # Non-command frames → engine call → ack (+ maybe message frame)
-    return await _dispatch_engine(env, frame_type=frame_type, viewer_role=viewer_role, engine=engine)
+    return await _dispatch_engine(env, frame_type=frame_type, viewer_role=viewer_role, engine=engine, ws=ws)
 
 
 async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> list[dict[str, Any]]:
@@ -165,10 +174,11 @@ async def _dispatch_engine(
     frame_type: str,
     viewer_role: str,
     engine: ConversationEngine,
+    ws: WebSocket | None = None,
 ) -> list[dict[str, Any]]:
     payload = env.payload
     try:
-        result_frames = await _call_engine(engine, frame_type, payload, viewer_role)
+        result_frames = await _call_engine(engine, frame_type, payload, viewer_role, ws=ws)
     except NotImplementedError as exc:
         hint = _extract_hint(exc) or str(exc)
         return [
@@ -206,15 +216,52 @@ async def _call_engine(
     frame_type: str,
     payload: dict[str, Any],
     viewer_role: str,
+    *,
+    ws: WebSocket | None = None,
 ) -> list[dict[str, Any]]:
     """Map a FE frame type to an Engine call; return BE→FE push frames (not including ack)."""
     if frame_type == "customer_message":
+        conv_id = payload.get("conversation_id")
+        source = payload.get("source", "customer")
+        # Auto-create conversation + participant on first message
+        if conv_id:
+            try:
+                await engine.get_conversation(conv_id)
+            except ConversationNotFound:
+                conv_id = None
+        if not conv_id:
+            conv = await engine.create_conversation(
+                channel="web", external_id=source,
+            )
+            conv_id = conv.id
+            now = datetime.now(timezone.utc)
+            await engine.join(
+                conv_id,
+                Participant(id=source, role=ParticipantRole.CUSTOMER, joined_at=now),
+            )
+            await engine.join(
+                conv_id,
+                Participant(id="agent", role=ParticipantRole.AGENT, joined_at=now),
+            )
         msg = await engine.send_message(
-            payload["conversation_id"],
-            source=payload.get("source", "customer"),
-            content=payload["content"],
+            conv_id, source=source, content=payload["content"],
         )
-        return [_message_frame(msg)]
+
+        # Fire-and-forget: trigger agent response via CCPool
+        if ws is not None:
+            asyncio.create_task(
+                _generate_agent_reply(engine, conv_id, payload["content"], ws),
+                name=f"agent-reply-{conv_id}",
+            )
+
+        # Return confirmation data (not full message echo — FE has optimistic msg)
+        return [build_frame("message_confirm", {
+            "conversation_id": conv_id,
+            "message_id": msg.id,
+            "client_msg_id": payload.get("client_msg_id"),
+            "sequence_number": msg.sequence_number,
+            "timestamp": msg.timestamp.isoformat() if hasattr(msg.timestamp, "isoformat") else msg.timestamp,
+        })]
 
     if frame_type == "operator_message":
         msg = await engine.send_message(
@@ -307,3 +354,57 @@ def _message_frame(msg: Any, *, event_type: str = "message") -> dict[str, Any]:
 def _now_iso_ms() -> str:
     from .connection import now_iso_ms
     return now_iso_ms()
+
+
+# ---------------------------------------------------------------------------
+# Agent response pipeline (CCPool integration)
+# ---------------------------------------------------------------------------
+
+async def _generate_agent_reply(
+    engine: ConversationEngine,
+    conv_id: str,
+    customer_text: str,
+    ws: WebSocket,
+) -> None:
+    """Call CCPool to generate an AI reply and push it to the customer via WS.
+
+    Runs as a fire-and-forget task after the customer message is confirmed.
+    Falls back gracefully if pool is unavailable.
+    """
+    try:
+        from autoservice.web_gateway import _get_pool
+        pool = await _get_pool()
+        if pool is None:
+            logger.debug("No CCPool available, skipping agent reply")
+            return
+
+        # Build prompt in channel format (same as Feishu pattern)
+        prompt = f"<channel conv_id={conv_id} source=web>\n{customer_text}\n</channel>"
+
+        # Collect response text from AssistantMessage stream
+        reply_text = ""
+        from claude_agent_sdk.types import AssistantMessage, ResultMessage
+        async for msg in pool.session_query(conv_id, prompt):
+            if isinstance(msg, AssistantMessage) and msg.content:
+                for block in msg.content:
+                    if hasattr(block, "text"):
+                        reply_text += block.text
+            elif isinstance(msg, ResultMessage) and msg.result:
+                # ResultMessage.result is the final text output
+                reply_text = msg.result
+
+        if not reply_text.strip():
+            return
+
+        # Store agent reply in engine
+        agent_msg = await engine.send_message(
+            conv_id, source="agent", content=reply_text.strip(),
+        )
+
+        # Push to client via WebSocket
+        frame = _message_frame(agent_msg)
+        await ws.send_json(frame)
+        logger.info("Agent reply pushed: conv=%s len=%d", conv_id, len(reply_text))
+
+    except Exception:
+        logger.exception("Agent reply generation failed for conv=%s", conv_id)
