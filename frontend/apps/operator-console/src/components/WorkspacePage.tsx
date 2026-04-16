@@ -20,7 +20,12 @@ export function WorkspacePage() {
 
   const [newSquadId, setNewSquadId] = useState('');
 
-  const { send } = useOperatorWS(WS_URL);
+  const { send, fetchHistory } = useOperatorWS(WS_URL);
+
+  const handleOpenCopilot = (convId: string) => {
+    openCopilot(convId);
+    fetchHistory(convId);
+  };
 
   const handleAddSquad = () => {
     if (!newSquadId.trim()) return;
@@ -66,7 +71,7 @@ export function WorkspacePage() {
               </div>
               <ConversationFeed
                 squadId={null}
-                onCardClick={openCopilot}
+                onCardClick={handleOpenCopilot}
               />
               <div className="im-input">
                 <div className="im-input-box">

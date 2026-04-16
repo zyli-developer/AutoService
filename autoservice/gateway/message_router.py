@@ -367,6 +367,27 @@ def _now_iso_ms() -> str:
     return now_iso_ms()
 
 
+async def _collect_operator_suggestions(
+    engine: ConversationEngine, conv_id: str, limit: int = 5,
+) -> str:
+    """Collect recent SIDE-visibility messages as operator suggestions for agent context."""
+    try:
+        msgs = await engine.get_messages(conv_id, viewer_role="operator", limit=20)
+        side_msgs = [
+            m for m in msgs
+            if m.visibility.value == "side" and m.source != "agent"
+        ][-limit:]
+        if not side_msgs:
+            return ""
+        lines = []
+        for m in side_msgs:
+            ts = m.timestamp.strftime('%H:%M') if hasattr(m.timestamp, 'strftime') else ''
+            lines.append(f"[{ts}] {m.source}: {m.content}")
+        return "<operator_suggestions>\n" + "\n".join(lines) + "\n</operator_suggestions>"
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Agent response pipeline (CCPool integration)
 # ---------------------------------------------------------------------------

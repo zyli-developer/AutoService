@@ -109,6 +109,27 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         setWsStatus('closed');
       },
       onFrame: (frame: Envelope) => {
+        // Handle history_snapshot — load messages into copilot
+        if (frame.type === 'history_snapshot') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string;
+          const msgs = (p.messages as Record<string, unknown>[]) ?? [];
+          if (convId && msgs.length > 0) {
+            for (const msg of msgs) {
+              const src = (msg.source as string) ?? '';
+              const sender = src.includes('customer') ? 'customer' as const
+                : src.includes('operator') ? 'operator' as const
+                : 'agent' as const;
+              addCopilotMessage(convId, {
+                id: (msg.id as string) ?? crypto.randomUUID(),
+                text: (msg.content as string) ?? '',
+                sender,
+                ts: (msg.timestamp as string) ?? new Date().toISOString(),
+              });
+            }
+          }
+        }
+
         if (frame.type === 'subscription_added') {
           const p = frame.payload as { subscription_id: string; scope: { squad_id?: string } };
           if (p.scope?.squad_id) {
@@ -198,5 +219,16 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
     clientRef.current?.send(frame);
   };
 
-  return { send };
+  const fetchHistory = (conversationId: string) => {
+    if (!clientRef.current) return;
+    clientRef.current.send({
+      v: 1,
+      type: 'history_request',
+      id: crypto.randomUUID(),
+      ts: new Date().toISOString(),
+      payload: { conversation_id: conversationId, limit: 50 },
+    } as Envelope);
+  };
+
+  return { send, fetchHistory };
 }
