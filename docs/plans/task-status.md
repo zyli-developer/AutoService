@@ -60,7 +60,7 @@
 |---|---|---|---|---|---|---|
 | T1B.1 | customer-chat SPA 骨架 | 🟢 | 🟩 | DevB | T0.6 | eval-doc-004, test-plan-003, test-diff-003 |
 | T1B.2 | 消息流 UI | 🟢 | 🟩 | DevB | T1B.1 | eval-doc-005, test-plan-004, test-diff-004 |
-| T1B.3 | 占位续写渲染 | 🟢 | ⬜ | — | T1B.2 | — |
+| T1B.3 | 占位续写渲染 | 🟢 | 🟦 | DevB | T1B.2 | — |
 | T1B.4 | 断线重连 + 消息回放 | 🟢 | ⬜ | — | T1B.1 | — |
 | T1B.5 | 浮动按钮 SDK | 🟢 | ⬜ | — | T0.6 | — |
 | T1B.6 | 多语言 UI 框架 | 🟢 | ⬜ | — | T0.6 | — |
