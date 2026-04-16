@@ -16,11 +16,14 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
   const closeCopilot = useOperatorStore((s) => s.closeCopilot);
   const addCopilotMessage = useOperatorStore((s) => s.addCopilotMessage);
 
+  const conversations = useOperatorStore((s) => s.conversations);
   const [inputText, setInputText] = useState('');
 
   if (!activeCopilotConvId) return null;
 
   const messages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  const conv = conversations[activeCopilotConvId];
+  const isTakeover = conv?.mode === 'takeover';
 
   const handleSend = () => {
     const text = inputText.trim();
@@ -38,12 +41,13 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
 
     send({
       v: 1,
-      type: 'operator_message',
+      type: isTakeover ? 'send_message' : 'operator_message',
       id,
       ts,
       payload: {
         conversation_id: activeCopilotConvId,
         text,
+        ...(isTakeover ? { visible_to_customer: true } : {}),
       },
     } as Envelope);
 
@@ -58,7 +62,10 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
       style={{ borderLeft: '1px solid #f0f0f0', height: '100vh', display: 'flex', flexDirection: 'column' }}
     >
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f0f0f0' }}>
-        <Typography.Text strong>Copilot</Typography.Text>
+        <Typography.Text strong data-testid="copilot-title">
+          {isTakeover ? '正式回复' : 'Copilot'}
+        </Typography.Text>
+        {isTakeover && <Typography.Text type="danger" style={{ fontSize: 11, marginLeft: 8 }} data-testid="takeover-indicator">TAKEOVER</Typography.Text>}
         <Button
           type="text"
           size="small"
@@ -90,7 +97,7 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onPressEnter={handleSend}
-          placeholder="输入建议..."
+          placeholder={isTakeover ? '正式回复客户...' : '输入建议...'}
         />
         <Button
           type="primary"
