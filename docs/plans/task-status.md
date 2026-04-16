@@ -44,7 +44,7 @@
 |---|---|---|---|---|---|---|
 | T1A.1 | Mode/Gate 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
 | T1A.2 | Timer 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
-| T1A.3 | EventBus 最小实现 | 🟢 | ⬜ | — | T0.4 | — |
+| T1A.3 | EventBus 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
 | T1A.4 | 4 角色 soul.md 定义 | 🟡 | ⬜ | — | T0.1 | — |
 | T1A.5 | ModelRouter + FastClassifier | 🟡 | ⬜ | — | T1A.4 | — |
 | T1A.6 | 占位续写流程 | 🟢 | ⬜ | — | T1A.5,T1A.2 | — |
@@ -107,7 +107,7 @@
 | T3A.2 | 虚拟客户生成 pipeline | 🟡 | ⬜ | — | T1A.4 | — |
 | T3A.3 | Few-shot 注入机制 | 🟢 | ⬜ | — | T3A.2 | — |
 | T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
-| T3A.5 | 16 条预置规则 YAML | 🔴 | 🟦 | DevA | T3A.4 | — |
+| T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
 | T3A.6 | 16 条补救指南 md | 🔴 | ⬜ | — | T3A.5 | — |
 | T3A.7 | compliance.py 预检 + 策略下发 | 🟡 | ⬜ | — | T3A.5 | — |
 
