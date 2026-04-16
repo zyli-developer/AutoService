@@ -52,7 +52,7 @@
 | T1A.8 | metrics plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.9 | squad plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.10 | cc_pool plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | 🟦 | DevA | T1A.4 | — |
+| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | 🟡 | DevA | T1A.4 | REVIEW-PENDING |
 
 ### B 线
 
@@ -75,7 +75,7 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T2A.1 | 协议命令实现 | 🟢 | 🟦 | DevA | T1A.1 | — |
+| T2A.1 | 协议命令实现 | 🟢 | 🟩 | DevA | T1A.1 | eval-doc-T2A.1, test-plan-T2A.1 |
 | T2A.2 | 智能分流 Agent 信心模型 | 🟡 | ⬜ | — | T1A.4 | — |
 | T2A.3 | SLAAggregator | 🟢 | ⬜ | — | T1A.3 | — |
 | T2A.4 | alerts.yaml + 告警推送 | 🟢 | ⬜ | — | T2A.3 | — |

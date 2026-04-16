@@ -3,7 +3,7 @@
 T1A.1: Mode/Gate/lifecycle/participants/messages.
 T1A.2: Timer scheduling (set_timer/cancel_timer/on_expire actions).
 T1A.3: EventBus — in-process pub/sub + SQLite async persistence + plugin hook dispatch.
-T2A.1 (handle_command) remains NotImplementedError.
+T2A.1: handle_command — unified command dispatch with permission matrix.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from autoservice.conversation_engine.errors import (
     ConversationAlreadyClosed,
     ConversationNotFound,
     IllegalModeTransition,
+    PermissionDenied,
     UnknownParticipant,
     ValidationError,
 )
@@ -538,6 +539,12 @@ class LocalEngine:
 
     # ---------- Commands (T2A.1) ----------
 
+    # Commands that require operator or admin role
+    _OPERATOR_COMMANDS = frozenset({
+        "/hijack", "/release", "/copilot",
+        "/resolve", "/abandon", "/status",
+    })
+
     async def handle_command(
         self,
         conversation_id: str,
@@ -546,7 +553,54 @@ class LocalEngine:
         command: str,
         args: Mapping[str, Any] | None = None,
     ) -> None:
-        raise NotImplementedError("T2A.1: command dispatch")
+        # Validate participant exists and get role
+        role = self._role_of(conversation_id, actor_id)
+
+        # Permission check: only operator/admin may execute commands
+        if role not in (ParticipantRole.OPERATOR, ParticipantRole.OBSERVER):
+            raise PermissionDenied(
+                f"Role {role.value} cannot execute {command}"
+            )
+
+        # Validate command is known
+        if command not in self._OPERATOR_COMMANDS:
+            raise ValidationError(f"Unknown command: {command}")
+
+        # Dispatch
+        if command == "/hijack":
+            await self.switch_mode(
+                conversation_id, ConversationMode.TAKEOVER,
+                triggered_by=actor_id, trigger="/hijack",
+            )
+        elif command == "/release":
+            await self.switch_mode(
+                conversation_id, ConversationMode.AUTO,
+                triggered_by=actor_id, trigger="/release",
+            )
+        elif command == "/copilot":
+            await self.switch_mode(
+                conversation_id, ConversationMode.COPILOT,
+                triggered_by=actor_id, trigger="/copilot",
+            )
+        elif command == "/resolve":
+            reason = (args or {}).get("reason")
+            await self.close_conversation(
+                conversation_id,
+                outcome=Outcome.RESOLVED,
+                resolved_by=actor_id,
+                reason=reason,
+            )
+        elif command == "/abandon":
+            reason = (args or {}).get("reason")
+            await self.close_conversation(
+                conversation_id,
+                outcome=Outcome.ABANDONED,
+                resolved_by=actor_id,
+                reason=reason,
+            )
+        elif command == "/status":
+            # Read-only: just validate conversation exists (already done via _role_of)
+            self._get_conv(conversation_id)
 
     # ---------- Timers (T1A.2) ----------
 
