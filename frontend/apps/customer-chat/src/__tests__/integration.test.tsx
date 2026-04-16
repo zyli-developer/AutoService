@@ -71,6 +71,35 @@ describe('Integration', () => {
     expect(fakeInstance?.sendCalls[0].type).toBe('customer_message');
   });
 
+  it('TC-023: typing indicator appears after send, disappears on agent reply', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    await waitFor(() => expect(screen.getByTestId('chat-input')).not.toBeDisabled());
+
+    // Send a message
+    await user.type(screen.getByTestId('chat-input'), 'Hello');
+    await user.click(screen.getByTestId('send-button'));
+
+    // Typing indicator should appear
+    await waitFor(() => expect(screen.getByTestId('typing-indicator')).toBeInTheDocument());
+
+    // Agent replies
+    act(() => {
+      fakeInstance?.pushFrame({
+        v: 1, type: 'message', id: 'f-reply', ts: '2026-04-16T10:00:00.000Z',
+        payload: {
+          conversation_id: 'cv1',
+          message: { id: 'reply-1', source: 'agent-1', content: 'Hi there!', visibility: 'public', sequence_number: 2, timestamp: new Date().toISOString() },
+          source_display: { id: 'agent-1', role: 'agent', name: 'Bot' },
+        },
+      });
+    });
+
+    // Typing indicator should disappear
+    await waitFor(() => expect(screen.queryByTestId('typing-indicator')).not.toBeInTheDocument());
+  });
+
   it('TC-022: receiving a message frame adds it to the UI', async () => {
     render(<App />);
 

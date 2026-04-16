@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
 import { ChatLayout } from './components/ChatLayout';
@@ -9,6 +10,7 @@ import { ConnectionBanner } from './components/ConnectionBanner';
 export function App() {
   const { send } = useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat');
   const { messages, connectionStatus } = useChatStore();
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSend = async (content: string) => {
     const clientMsgId = crypto.randomUUID();
@@ -24,10 +26,28 @@ export function App() {
       sequenceNumber: 0,
       status: 'sending',
     });
+
+    // Show typing indicator while waiting for agent response
+    useChatStore.getState().setAgentTyping(true);
+
+    // Auto-clear after 30s in case no response
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    typingTimerRef.current = setTimeout(() => {
+      useChatStore.getState().setAgentTyping(false);
+      typingTimerRef.current = null;
+    }, 30_000);
+
     try {
       await send('customer_message', { content, client_msg_id: clientMsgId });
     } catch {
       // Mark as failed on send error
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      useChatStore.getState().setAgentTyping(false);
       useChatStore.getState().updateMessage(clientMsgId, content);
     }
   };

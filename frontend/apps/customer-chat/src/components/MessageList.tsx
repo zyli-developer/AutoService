@@ -1,19 +1,52 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import type { ChatMessage } from '../store/chatStore';
-import { MessageBubble } from './MessageBubble';
+import { useChatStore } from '../store/chatStore';
+import { groupMessages, MessageGroup } from './MessageGroup';
+import type { MessageGroupData } from './MessageGroup';
 import { SystemMessage } from './SystemMessage';
+import { TypingIndicator } from './TypingIndicator';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 
 interface MessageListProps {
   messages: ChatMessage[];
 }
 
+type ListItem =
+  | { type: 'system'; id: string; content: string }
+  | { type: 'group'; key: string; group: MessageGroupData };
+
 export function MessageList({ messages }: MessageListProps) {
+  const isAgentTyping = useChatStore((s) => s.isAgentTyping);
   const containerRef = useRef<HTMLDivElement>(null);
   const { isAtBottom, scrollToBottom } = useAutoScroll(
     containerRef as React.RefObject<HTMLElement>,
     [messages.length],
   );
+
+  const items = useMemo((): ListItem[] => {
+    const result: ListItem[] = [];
+    let pending: ChatMessage[] = [];
+
+    const flushPending = () => {
+      if (pending.length === 0) return;
+      const grouped = groupMessages(pending);
+      grouped.forEach((g, i) => {
+        result.push({ type: 'group', key: `${pending[0].id}-${i}`, group: g });
+      });
+      pending = [];
+    };
+
+    for (const msg of messages) {
+      if (msg.visibility === 'system') {
+        flushPending();
+        result.push({ type: 'system', id: msg.id, content: msg.content });
+      } else {
+        pending.push(msg);
+      }
+    }
+    flushPending();
+    return result;
+  }, [messages]);
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -22,13 +55,14 @@ export function MessageList({ messages }: MessageListProps) {
         className="h-full overflow-y-auto flex flex-col py-4"
         data-testid="message-list"
       >
-        {messages.map((message) => {
-          if (message.visibility === 'system') {
-            return <SystemMessage key={message.id} content={message.content} />;
-          }
-          return <MessageBubble key={message.id} message={message} />;
-        })}
-        <div data-testid="typing-indicator-placeholder" />
+        {items.map((item) =>
+          item.type === 'system' ? (
+            <SystemMessage key={item.id} content={item.content} />
+          ) : (
+            <MessageGroup key={item.key} group={item.group} />
+          ),
+        )}
+        <TypingIndicator visible={isAgentTyping} />
       </div>
 
       {!isAtBottom && (

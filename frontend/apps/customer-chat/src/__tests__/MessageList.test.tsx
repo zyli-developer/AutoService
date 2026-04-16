@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { MessageList } from '../components/MessageList';
+import { useChatStore, initialState } from '../store/chatStore';
 import type { ChatMessage } from '../store/chatStore';
 
 // Mock scrollIntoView
@@ -21,13 +22,40 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe('MessageList', () => {
-  it('TC-017: typing-indicator-placeholder is always rendered', () => {
-    render(<MessageList messages={[]} />);
-    expect(screen.getByTestId('typing-indicator-placeholder')).toBeInTheDocument();
+  beforeEach(() => {
+    useChatStore.setState(initialState);
   });
 
-  it('TC-018: new-msg-btn is shown when user is not at bottom and hidden when at bottom', () => {
-    // Simulate container NOT at bottom by setting scroll properties
+  it('TC-017: typing indicator hidden by default (isAgentTyping=false)', () => {
+    render(<MessageList messages={[]} />);
+    // TypingIndicator is not visible when isAgentTyping is false
+    expect(screen.queryByTestId('typing-indicator')).not.toBeInTheDocument();
+  });
+
+  it('TC-018: agent message with avatarUrl renders sender-avatar with img', () => {
+    const messages = [
+      makeMessage({
+        id: 'msg-a1',
+        source: 'agent-1',
+        sourceRole: 'agent',
+        content: 'Hello from agent',
+        senderName: 'Support Bot',
+        avatarUrl: 'https://example.com/avatar.png',
+      }),
+    ];
+
+    render(<MessageList messages={messages} />);
+
+    // sender-avatar should be rendered
+    const avatar = screen.getByTestId('sender-avatar');
+    expect(avatar).toBeInTheDocument();
+    // It should contain an img because avatarUrl is set
+    const img = avatar.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute('src')).toBe('https://example.com/avatar.png');
+  });
+
+  it('new-msg-btn is shown when user is not at bottom and hidden when at bottom', () => {
     const messages = [
       makeMessage({ id: 'msg-1', content: 'Message 1' }),
       makeMessage({ id: 'msg-2', content: 'Message 2' }),
@@ -57,16 +85,10 @@ describe('MessageList', () => {
       rerender(<MessageList messages={newMessages} />);
     });
 
-    // new-msg-btn should appear when not at bottom
-    // Note: In jsdom, scroll properties may not behave exactly as in a real browser
-    // but the component logic is tested here
-    const newMsgBtn = screen.queryByTestId('new-msg-btn');
-    // The button may or may not appear depending on jsdom scroll simulation
-    // We verify the placeholder is always present
-    expect(screen.getByTestId('typing-indicator-placeholder')).toBeInTheDocument();
     // Message content is rendered
     expect(screen.getByText('New message')).toBeInTheDocument();
     // If button appears, it should work
+    const newMsgBtn = screen.queryByTestId('new-msg-btn');
     if (newMsgBtn) {
       expect(newMsgBtn).toBeInTheDocument();
     }

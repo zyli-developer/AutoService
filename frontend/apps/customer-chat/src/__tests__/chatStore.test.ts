@@ -78,4 +78,19 @@ describe('chatStore', () => {
     expect(state.sessionId).toBe('session-abc');
     expect(state.conversationId).toBe('conv-xyz');
   });
+
+  it('TC-019: setAgentTyping(true) sets isAgentTyping to true', () => {
+    useChatStore.getState().setAgentTyping(true);
+    expect(useChatStore.getState().isAgentTyping).toBe(true);
+  });
+
+  it('TC-020: addMessage with sourceRole=agent clears isAgentTyping', () => {
+    useChatStore.getState().setAgentTyping(true);
+    expect(useChatStore.getState().isAgentTyping).toBe(true);
+
+    const msg = makeMessage({ id: 'agent-reply', sourceRole: 'agent' });
+    useChatStore.getState().addMessage(msg);
+
+    expect(useChatStore.getState().isAgentTyping).toBe(false);
+  });
 });
