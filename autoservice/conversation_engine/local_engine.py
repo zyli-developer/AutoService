@@ -1,7 +1,8 @@
 """LocalEngine — in-process ConversationEngine implementation (M0-M4).
 
 T1A.1: Mode/Gate/lifecycle/participants/messages.
-T1A.2 (Timer) and T1A.3 (full EventBus) remain NotImplementedError.
+T1A.2: Timer scheduling (set_timer/cancel_timer/on_expire actions).
+T1A.3 (full EventBus) remains NotImplementedError.
 T2A.1 (handle_command) remains NotImplementedError.
 
 Minimal event buffering (asyncio.Queue fan-out) is included so that
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Mapping
@@ -24,6 +26,8 @@ from autoservice.conversation_engine.errors import (
     UnknownParticipant,
     ValidationError,
 )
+
+log = logging.getLogger(__name__)
 from autoservice.conversation_engine.events import EventType
 from autoservice.conversation_engine.protocol import PluginHook
 from autoservice.conversation_engine.types import (
@@ -77,6 +81,8 @@ class LocalEngine:
         # Minimal event fan-out for subscribe() (replaced by T1A.3 EventBus)
         self._subscribers: list[asyncio.Queue[Event]] = []
         self._events: dict[str, list[Event]] = {}  # conv_id → [Event]
+        # Timer storage: conv_id → name → (Timer, asyncio.Task)
+        self._timers: dict[str, dict[str, tuple[Timer, asyncio.Task]]] = {}
         # Plugin hooks (T1A.3 will expand)
         self._hooks: list[PluginHook] = []
 
@@ -228,6 +234,9 @@ class LocalEngine:
         conv = self._get_conv(conversation_id)
         if conv.state == ConversationState.CLOSED:
             return conv
+        # Cancel all active timers for this conversation
+        for name in list(self._timers.get(conversation_id, {})):
+            self._cancel_timer_internal(conversation_id, name)
         resolution = Resolution(outcome=outcome, resolved_by=resolved_by)
         conv = self._update_conv(
             conversation_id,
@@ -455,6 +464,87 @@ class LocalEngine:
 
     # ---------- Timers (T1A.2) ----------
 
+    def _cancel_timer_internal(self, conversation_id: str, name: str) -> None:
+        """Cancel a timer's asyncio task without emitting events."""
+        conv_timers = self._timers.get(conversation_id, {})
+        entry = conv_timers.pop(name, None)
+        if entry is not None:
+            _, task = entry
+            task.cancel()
+
+    async def _timer_task(
+        self,
+        conversation_id: str,
+        timer: Timer,
+        on_expire: Mapping[str, Any],
+    ) -> None:
+        """Background task that sleeps then fires expiration logic."""
+        try:
+            await asyncio.sleep(timer.duration_ms / 1000.0)
+        except asyncio.CancelledError:
+            return
+        # Remove from storage before dispatching (timer has fired)
+        self._timers.get(conversation_id, {}).pop(timer.name, None)
+        # Emit timer.expired
+        self._emit(EventType.TIMER_EXPIRED, conversation_id, {
+            "name": timer.name, "duration_ms": timer.duration_ms,
+        })
+        # SLA breach for sla_* timers
+        if timer.name.startswith("sla_"):
+            self._emit(EventType.SLA_BREACH, conversation_id, {
+                "name": timer.name, "duration_ms": timer.duration_ms,
+            })
+        # Dispatch on_expire action
+        await self._dispatch_on_expire(conversation_id, timer, on_expire)
+
+    async def _dispatch_on_expire(
+        self,
+        conversation_id: str,
+        timer: Timer,
+        on_expire: Mapping[str, Any],
+    ) -> None:
+        """Execute the on_expire action after a timer fires."""
+        action_type = on_expire.get("type", "callback")
+        params = on_expire.get("params", {})
+        try:
+            if action_type == "mode_change":
+                target = ConversationMode(params["target"])
+                await self.switch_mode(
+                    conversation_id,
+                    target,
+                    triggered_by=params.get("triggered_by", "__system__"),
+                    trigger=params.get("trigger", f"auto:{timer.name}_expired"),
+                )
+            elif action_type == "system_message":
+                content = params.get("content", f"Timer {timer.name} expired")
+                msg = Message(
+                    id=_gen_id(),
+                    conversation_id=conversation_id,
+                    source="__system__",
+                    content=content,
+                    visibility=MessageVisibility.SYSTEM,
+                    timestamp=_now(),
+                    sequence_number=self._next_seq(conversation_id),
+                )
+                self._messages.setdefault(conversation_id, []).append(msg)
+                self._emit(EventType.MESSAGE_SENT, conversation_id, {
+                    "message_id": msg.id, "visibility": "system",
+                })
+            elif action_type == "callback":
+                conv = self._get_conv(conversation_id)
+                for hook in self._hooks:
+                    cb = getattr(hook, "on_timer_expired", None)
+                    if cb is not None:
+                        try:
+                            await cb(conv, timer)
+                        except Exception:
+                            self._emit(EventType.HOOK_FAILED, conversation_id, {
+                                "hook": type(hook).__name__,
+                                "timer": timer.name,
+                            })
+        except Exception:
+            log.exception("on_expire dispatch failed for timer %s", timer.name)
+
     async def set_timer(
         self,
         conversation_id: str,
@@ -463,10 +553,40 @@ class LocalEngine:
         *,
         on_expire: Mapping[str, Any],
     ) -> Timer:
-        raise NotImplementedError("T1A.2: timer scheduling")
+        conv = self._get_conv(conversation_id)
+        if conv.state == ConversationState.CLOSED:
+            raise ConversationAlreadyClosed(
+                f"Cannot set timer on closed conversation {conversation_id}"
+            )
+        # Override existing timer with same name (D2: no cancelled event)
+        self._cancel_timer_internal(conversation_id, name)
+        now = _now()
+        timer = Timer(
+            conversation_id=conversation_id,
+            name=name,
+            duration_ms=duration_ms,
+            started_at=now,
+        )
+        task = asyncio.create_task(
+            self._timer_task(conversation_id, timer, on_expire)
+        )
+        self._timers.setdefault(conversation_id, {})[name] = (timer, task)
+        self._emit(EventType.TIMER_SET, conversation_id, {
+            "name": name, "duration_ms": duration_ms,
+        })
+        return timer
 
     async def cancel_timer(self, conversation_id: str, name: str) -> None:
-        raise NotImplementedError("T1A.2: timer scheduling")
+        """Cancel a timer. Idempotent: no error if timer doesn't exist."""
+        conv_timers = self._timers.get(conversation_id, {})
+        entry = conv_timers.pop(name, None)
+        if entry is None:
+            return  # idempotent
+        _, task = entry
+        task.cancel()
+        self._emit(EventType.TIMER_CANCELLED, conversation_id, {
+            "name": name,
+        })
 
     # ---------- Events (minimal fan-out for T1A.1; T1A.3 replaces) ----------
 
