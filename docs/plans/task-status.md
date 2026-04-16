@@ -139,8 +139,8 @@
 | T4A.2 | /rules 后端 + 对话式配置 | 🟢 | 🟩 | DevA | T2A.1 | autoservice/rules.py |
 | T4A.3 | 低峰检测调度器 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/low_peak_scheduler.py |
 | T4A.4 | 提案生成 pipeline | 🟡 | 🟩 | DevA | T4A.1 | autoservice/proposal_pipeline.py |
-| T4A.5 | 晨起推送 | 🟢 | ⬜ | — | T4A.4 | — |
-| T4A.6 | canary.py 灰度路由 | 🟢 | ⬜ | — | T4A.4 | — |
+| T4A.5 | 晨起推送 | 🟢 | 🟦 | DevA | T4A.4 | — |
+| T4A.6 | canary.py 灰度路由 | 🟢 | 🟦 | DevA | T4A.4 | — |
 | T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | ⬜ | — | T4A.6,T2A.3 | — |
 | T4A.8 | /rollback 命令 | 🟢 | ⬜ | — | T4A.6 | — |
 | T4A.9 | 三指标统计 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/billing_metrics.py |
