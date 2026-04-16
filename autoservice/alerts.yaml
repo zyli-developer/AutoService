@@ -1,0 +1,56 @@
+# SLA Alert Rules Configuration
+# T2A.4 产出 | 2026-04-16
+# 关联: δ5 / SLAAggregator (T2A.3) / admin-portal 通知中心 (T3B.7)
+#
+# 4 条预置告警规则，基于 SLAAggregator 的 P95 指标触发
+
+rules:
+  - id: alert-first-reply
+    name: "First reply SLA breach"
+    name_zh: "首回时间超标"
+    metric: first_reply_ms
+    window: 5m
+    percentile: p95
+    threshold: 5000        # P95 > 5s 触发
+    severity: high
+    cooldown_seconds: 300  # 5 分钟内不重复告警
+    message_zh: "过去 5 分钟首次回复 P95 达到 {value}ms，超过阈值 {threshold}ms"
+    message_en: "First reply P95 reached {value}ms in last 5min, exceeding {threshold}ms threshold"
+
+  - id: alert-accept-time
+    name: "Operator accept SLA breach"
+    name_zh: "接单时间超标"
+    metric: accept_ms
+    window: 5m
+    percentile: p95
+    threshold: 180000      # P95 > 3min 触发
+    severity: high
+    cooldown_seconds: 300
+    message_zh: "过去 5 分钟人工接单 P95 达到 {value}ms，超过阈值 {threshold}ms"
+    message_en: "Operator accept P95 reached {value}ms in last 5min, exceeding {threshold}ms threshold"
+
+  - id: alert-csat-drop
+    name: "CSAT score drop"
+    name_zh: "客户满意度下降"
+    metric: csat_score
+    window: 1h
+    percentile: p50
+    threshold: 3.0         # P50 < 3.0 触发（反向：低于阈值告警）
+    direction: below       # 低于阈值才告警
+    severity: critical
+    cooldown_seconds: 1800 # 30 分钟内不重复
+    message_zh: "过去 1 小时 CSAT P50 降至 {value}，低于阈值 {threshold}"
+    message_en: "CSAT P50 dropped to {value} in last hour, below {threshold} threshold"
+
+  - id: alert-resolution-rate
+    name: "Resolution rate drop"
+    name_zh: "消化率下降"
+    metric: resolution_rate
+    window: 1h
+    percentile: p50
+    threshold: 0.7         # P50 < 70% 触发（反向）
+    direction: below
+    severity: high
+    cooldown_seconds: 1800
+    message_zh: "过去 1 小时自助解决率 P50 降至 {value:.0%}，低于阈值 {threshold:.0%}"
+    message_en: "Resolution rate P50 dropped to {value:.0%} in last hour, below {threshold:.0%} threshold"
