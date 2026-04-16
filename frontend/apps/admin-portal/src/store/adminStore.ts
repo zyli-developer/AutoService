@@ -32,6 +32,33 @@ export interface WizardFormData {
   files: File[];
 }
 
+export interface SimTurnUI {
+  role: 'customer' | 'agent';
+  content: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface SimDialogUI {
+  id: string;
+  scenario: {
+    id: string;
+    name_zh: string;
+    intent: string;
+    keywords: string[];
+    trap_question: string;
+    degraded: boolean;
+  };
+  persona: {
+    id: string;
+    name_zh: string;
+    traits: string[];
+    communication_style: string;
+  };
+  turns: SimTurnUI[];
+  language: string;
+  review_status: 'pending' | 'approved' | 'flagged';
+}
+
 export interface AdminState {
   tenantId: string | null;
   isLoggedIn: boolean;
@@ -43,6 +70,9 @@ export interface AdminState {
   generating: boolean;
   generationResult: GenerationResult | null;
 
+  rehearsalDialogs: SimDialogUI[];
+  rehearsalLoading: boolean;
+
   login: (tenantId: string) => void;
   logout: () => void;
   setActiveTab: (tab: AdminState['activeTab']) => void;
@@ -53,6 +83,10 @@ export interface AdminState {
   setWizardFormData: (data: Partial<WizardFormData>) => void;
   setGenerating: (v: boolean) => void;
   setGenerationResult: (r: GenerationResult | null) => void;
+
+  setRehearsalDialogs: (dialogs: SimDialogUI[]) => void;
+  setRehearsalLoading: (v: boolean) => void;
+  updateDialogReviewStatus: (dialogId: string, status: SimDialogUI['review_status']) => void;
 }
 
 const initialWizardFormData: WizardFormData = {
@@ -73,6 +107,8 @@ export const initialState = {
   wizardFormData: initialWizardFormData,
   generating: false,
   generationResult: null as GenerationResult | null,
+  rehearsalDialogs: [] as SimDialogUI[],
+  rehearsalLoading: false,
 };
 
 export const useAdminStore = create<AdminState>((set) => ({
@@ -96,4 +132,13 @@ export const useAdminStore = create<AdminState>((set) => ({
   setGenerating: (generating) => set({ generating }),
 
   setGenerationResult: (generationResult) => set({ generationResult }),
+
+  setRehearsalDialogs: (rehearsalDialogs) => set({ rehearsalDialogs }),
+  setRehearsalLoading: (rehearsalLoading) => set({ rehearsalLoading }),
+  updateDialogReviewStatus: (dialogId, status) =>
+    set((state) => ({
+      rehearsalDialogs: state.rehearsalDialogs.map((d) =>
+        d.id === dialogId ? { ...d, review_status: status } : d
+      ),
+    })),
 }));

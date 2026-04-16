@@ -2,6 +2,7 @@ import { Steps, Typography } from 'antd';
 import { useAdminStore } from '../store/adminStore';
 import { MaterialUploadStep } from './wizard/MaterialUploadStep';
 import { ChannelConfigStep } from './wizard/ChannelConfigStep';
+import { VirtualRehearsalStep } from './wizard/VirtualRehearsalStep';
 import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
 
 export function WizardTab() {
@@ -33,9 +34,7 @@ export function WizardTab() {
         <ChannelConfigStep tenantId={tenantId || 'default'} />
       )}
       {wizardStep === 2 && (
-        <Typography.Paragraph type="secondary">
-          虚拟预演 — T3B.4 TODO
-        </Typography.Paragraph>
+        <VirtualRehearsalStep tenantId={tenantId || 'default'} />
       )}
       {wizardStep === 3 && (
         <ComplianceCheckStep />
