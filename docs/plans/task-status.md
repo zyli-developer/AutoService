@@ -144,7 +144,7 @@
 | T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | ⬜ | — | T4A.6,T2A.3 | — |
 | T4A.8 | /rollback 命令 | 🟢 | ⬜ | — | T4A.6 | — |
 | T4A.9 | 三指标统计 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/billing_metrics.py |
-| T4A.10 | 阶梯计费 billing.py | 🟢 | ⬜ | — | T4A.9 | — |
+| T4A.10 | 阶梯计费 billing.py | 🟢 | 🟦 | DevA | T4A.9 | — |
 
 ### B 线
 
