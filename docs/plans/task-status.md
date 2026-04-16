@@ -178,7 +178,7 @@
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
 | T5B.1 | docker-compose 多租户模板 | 🟢 | 🟩 | DevB | — | eval-T5B.1, plan-T5B.1, test-diff-020 |
-| T5B.2 | 同主机部署约束落地 | 🔴 | ⬜ | — | — | — |
+| T5B.2 | 同主机部署约束落地 | 🔴 | 🟩 | DevB | — | test-diff-028, docs/deploy/nfr4-colocation-policy.md |
 | T5B.3 | 租户创建脚本 | 🟢 | 🟩 | DevB | T5B.1 | test-diff-026 |
 | T5B.4 | 端到端 E2E 自动化 | 🟢 | ⚠️ | — | T5A.8 | WAITING: T5A.1 (zchat) |
 | T5B.5 | 浮窗 SDK npm 发布 | 🟢 | 🟩 | DevB | T1B.5 | test-diff-027 |
