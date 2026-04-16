@@ -37,7 +37,9 @@
       "type": "eval-doc",
       "status": "confirmed",
       "producer": "skill-5",
-      "consumers": ["test-plan-001"],
+      "consumers": [
+        "test-plan-001"
+      ],
       "path": ".artifacts/eval-docs/eval-T0.4-local-engine-skeleton.md",
       "created_at": "2026-04-15T10:45:00Z",
       "updated_at": "2026-04-15T11:10:00Z",
@@ -49,11 +51,15 @@
       "type": "test-plan",
       "status": "executed",
       "producer": "skill-2",
-      "consumers": ["test-diff-001"],
+      "consumers": [
+        "test-diff-001"
+      ],
       "path": ".artifacts/test-plans/test-plan-T0.4-local-engine-skeleton.md",
       "created_at": "2026-04-15T11:10:00Z",
       "updated_at": "2026-04-15T11:35:00Z",
-      "related_ids": ["eval-doc-001"]
+      "related_ids": [
+        "eval-doc-001"
+      ]
     },
     {
       "id": "test-diff-001",
@@ -61,11 +67,16 @@
       "type": "test-diff",
       "status": "executed",
       "producer": "skill-3",
-      "consumers": ["e2e-report-001"],
+      "consumers": [
+        "e2e-report-001"
+      ],
       "path": ".artifacts/test-diffs/test-diff-T0.4-local-engine-skeleton.md",
       "created_at": "2026-04-15T11:35:00Z",
       "updated_at": "2026-04-15T11:50:00Z",
-      "related_ids": ["test-plan-001", "eval-doc-001"]
+      "related_ids": [
+        "test-plan-001",
+        "eval-doc-001"
+      ]
     },
     {
       "id": "eval-doc-003",
@@ -73,11 +84,15 @@
       "type": "eval-doc",
       "status": "confirmed",
       "producer": "skill-5",
-      "consumers": ["issue-001"],
+      "consumers": [
+        "issue-001"
+      ],
       "path": ".artifacts/eval-docs/eval-T0.6-ws-client-missing-handshake.md",
       "created_at": "2026-04-16T00:45:00Z",
       "updated_at": "2026-04-16T00:45:00Z",
-      "related_ids": ["e2e-report-002"]
+      "related_ids": [
+        "e2e-report-002"
+      ]
     },
     {
       "id": "issue-001",
@@ -89,7 +104,9 @@
       "path": ".artifacts/issues/issue-T0.6-ws-client-handshake.md",
       "created_at": "2026-04-16T00:50:00Z",
       "updated_at": "2026-04-16T00:50:00Z",
-      "related_ids": ["eval-doc-003"]
+      "related_ids": [
+        "eval-doc-003"
+      ]
     },
     {
       "id": "eval-doc-002",
@@ -97,11 +114,15 @@
       "type": "eval-doc",
       "status": "confirmed",
       "producer": "skill-5",
-      "consumers": ["test-plan-002"],
+      "consumers": [
+        "test-plan-002"
+      ],
       "path": ".artifacts/eval-docs/eval-T0.5-ws-gateway-skeleton.md",
       "created_at": "2026-04-15T12:00:00Z",
       "updated_at": "2026-04-15T12:00:00Z",
-      "related_ids": ["eval-doc-001"]
+      "related_ids": [
+        "eval-doc-001"
+      ]
     },
     {
       "id": "test-plan-002",
@@ -109,11 +130,16 @@
       "type": "test-plan",
       "status": "executed",
       "producer": "skill-2",
-      "consumers": ["test-diff-002", "e2e-report-002"],
+      "consumers": [
+        "test-diff-002",
+        "e2e-report-002"
+      ],
       "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
       "created_at": "2026-04-15T12:15:00Z",
       "updated_at": "2026-04-15T12:15:00Z",
-      "related_ids": ["eval-doc-002"]
+      "related_ids": [
+        "eval-doc-002"
+      ]
     },
     {
       "id": "test-diff-002",
@@ -121,11 +147,16 @@
       "type": "test-diff",
       "status": "executed",
       "producer": "skill-3",
-      "consumers": ["e2e-report-002"],
+      "consumers": [
+        "e2e-report-002"
+      ],
       "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
       "created_at": "2026-04-15T12:30:00Z",
       "updated_at": "2026-04-15T12:40:00Z",
-      "related_ids": ["test-plan-002", "eval-doc-002"]
+      "related_ids": [
+        "test-plan-002",
+        "eval-doc-002"
+      ]
     },
     {
       "id": "e2e-report-002",
@@ -137,7 +168,11 @@
       "path": ".artifacts/e2e-reports/e2e-report-T0.5-ws-gateway-skeleton.md",
       "created_at": "2026-04-15T12:40:00Z",
       "updated_at": "2026-04-15T12:40:00Z",
-      "related_ids": ["test-diff-002", "test-plan-002", "eval-doc-002"]
+      "related_ids": [
+        "test-diff-002",
+        "test-plan-002",
+        "eval-doc-002"
+      ]
     },
     {
       "id": "e2e-report-001",
@@ -149,7 +184,23 @@
       "path": ".artifacts/e2e-reports/e2e-report-T0.4-local-engine-skeleton.md",
       "created_at": "2026-04-15T11:50:00Z",
       "updated_at": "2026-04-15T11:50:00Z",
-      "related_ids": ["test-diff-001", "test-plan-001", "eval-doc-001"]
+      "related_ids": [
+        "test-diff-001",
+        "test-plan-001",
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "eval-doc-004",
+      "name": "T1B.1 customer-chat SPA skeleton (simulate)",
+      "type": "eval-doc",
+      "status": "pending-review",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T1B.1-customer-chat-spa.md",
+      "created_at": "2026-04-16T09:00:00Z",
+      "updated_at": "2026-04-16T09:00:00Z",
+      "related_ids": []
     }
   ]
 }
