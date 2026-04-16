@@ -42,7 +42,7 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T1A.1 | Mode/Gate 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
+| T1A.1 | Mode/Gate 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-003, test-plan-003 |
 | T1A.2 | Timer 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
 | T1A.3 | EventBus 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
 | T1A.4 | 4 角色 soul.md 定义 | 🟡 | ⬜ | — | T0.1 | — |

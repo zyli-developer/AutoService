@@ -1,4 +1,4 @@
-"""Shared fixtures for tests/conversation_engine (T0.4)."""
+"""Shared fixtures for tests/conversation_engine."""
 
 from datetime import datetime, timezone
 
@@ -19,9 +19,26 @@ def engine() -> LocalEngine:
 
 @pytest.fixture
 def participant_customer() -> Participant:
-    """A customer-role participant with a UTC-aware join timestamp."""
     return Participant(
         id="u-customer-1",
         role=ParticipantRole.CUSTOMER,
+        joined_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.fixture
+def participant_operator() -> Participant:
+    return Participant(
+        id="u-operator-1",
+        role=ParticipantRole.OPERATOR,
+        joined_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.fixture
+def participant_agent() -> Participant:
+    return Participant(
+        id="u-agent-1",
+        role=ParticipantRole.AGENT,
         joined_at=datetime.now(timezone.utc),
     )
