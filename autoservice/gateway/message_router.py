@@ -247,6 +247,17 @@ async def _call_engine(
             conv_id, source=source, content=payload["content"],
         )
 
+        # Broadcast customer message to operator connections
+        customer_frame = _message_frame(msg)
+        customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
+        from autoservice.web_gateway import _ws_connections
+        for sid, ows in list(_ws_connections.items()):
+            if ows is not ws:
+                try:
+                    await ows.send_json(customer_frame)
+                except Exception:
+                    pass
+
         # Fire-and-forget: trigger agent response via CCPool
         if ws is not None:
             asyncio.create_task(
@@ -372,39 +383,60 @@ async def _generate_agent_reply(
     Falls back gracefully if pool is unavailable.
     """
     try:
+        logger.info("Agent reply: starting for conv=%s text=%.40s", conv_id, customer_text)
         from autoservice.web_gateway import _get_pool
         pool = await _get_pool()
         if pool is None:
-            logger.debug("No CCPool available, skipping agent reply")
+            logger.warning("Agent reply: no CCPool available, skipping")
             return
 
-        # Build prompt in channel format (same as Feishu pattern)
-        prompt = f"<channel conv_id={conv_id} source=web>\n{customer_text}\n</channel>"
+        logger.info("Agent reply: pool ready, sending to CC SDK...")
 
-        # Collect response text from AssistantMessage stream
+        # Build prompt
+        suggestions = await _collect_operator_suggestions(engine, conv_id)
+        prompt_parts = []
+        if suggestions:
+            prompt_parts.append(suggestions)
+        prompt_parts.append(f"Customer message: {customer_text}\n\nReply briefly in the same language as the customer.")
+        prompt = "\n".join(prompt_parts)
+
+        # Collect response
         reply_text = ""
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
         async for msg in pool.session_query(conv_id, prompt):
+            cls = type(msg).__name__
+            logger.debug("Agent reply: stream msg type=%s", cls)
             if isinstance(msg, AssistantMessage) and msg.content:
                 for block in msg.content:
                     if hasattr(block, "text"):
                         reply_text += block.text
             elif isinstance(msg, ResultMessage) and msg.result:
-                # ResultMessage.result is the final text output
                 reply_text = msg.result
 
         if not reply_text.strip():
+            logger.warning("Agent reply: empty response from CC SDK")
             return
+
+        logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
 
         # Store agent reply in engine
         agent_msg = await engine.send_message(
             conv_id, source="agent", content=reply_text.strip(),
         )
 
-        # Push to client via WebSocket
+        # Push to customer via WebSocket
         frame = _message_frame(agent_msg)
         await ws.send_json(frame)
         logger.info("Agent reply pushed: conv=%s len=%d", conv_id, len(reply_text))
 
+        # Also broadcast to operator connections
+        from autoservice.web_gateway import _ws_connections
+        for sid, ows in list(_ws_connections.items()):
+            if ows is not ws:
+                try:
+                    await ows.send_json(frame)
+                except Exception:
+                    pass
+
     except Exception:
-        logger.exception("Agent reply generation failed for conv=%s", conv_id)
+        logger.exception("Agent reply FAILED for conv=%s", conv_id)

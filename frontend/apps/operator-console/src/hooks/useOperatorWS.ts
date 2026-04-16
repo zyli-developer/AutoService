@@ -115,10 +115,56 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
             addSubscription(p.scope.squad_id, p.subscription_id);
           }
         }
+
+        // Handle broadcast message frames (customer/agent messages from other connections)
+        if (frame.type === 'message') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string;
+          const msg = p.message as Record<string, unknown>;
+          const srcDisplay = p.source_display as Record<string, unknown> | undefined;
+          const role = (srcDisplay?.role as string) ?? 'agent';
+          const content = (msg?.content as string) ?? '';
+          const ts = (msg?.timestamp as string) ?? new Date().toISOString();
+
+          if (convId) {
+            // Auto-create conversation if not exists
+            const state = useOperatorStore.getState();
+            if (!state.conversations[convId]) {
+              addConversation({
+                id: convId,
+                customerId: role === 'customer' ? (srcDisplay?.id as string ?? 'customer') : 'customer',
+                squadId: state.activeSquadId ?? 'default',
+                mode: 'auto',
+                lastMessage: content,
+                lastActivityTs: ts,
+                unreadCount: 1,
+              });
+            } else {
+              updateConversation(convId, {
+                lastMessage: content,
+                lastActivityTs: ts,
+                unreadCount: (state.conversations[convId].unreadCount ?? 0) + 1,
+              });
+            }
+
+            // Add to copilot if this conversation is open
+            if (state.activeCopilotConvId === convId) {
+              const sender = role === 'customer' ? 'customer' as const
+                : role === 'operator' ? 'operator' as const
+                : 'agent' as const;
+              addCopilotMessage(convId, {
+                id: (msg?.id as string) ?? crypto.randomUUID(),
+                text: content,
+                sender,
+                ts,
+              });
+            }
+          }
+        }
+
         if (frame.type === 'event') {
           handleEventFrame(frame, addConversation, updateConversation);
 
-          // Also add to copilot messages if conversation is active in copilot
           const evtPayload = frame.payload as EventPayload;
           const evt = evtPayload?.event;
           if (evt?.type === 'message.sent' && evt.conversation_id) {

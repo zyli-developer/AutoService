@@ -65,33 +65,12 @@ export function WorkspacePage() {
                 </div>
               </div>
               <ConversationFeed
-                squadId={activeSquadId}
+                squadId={null}
                 onCardClick={openCopilot}
               />
               <div className="im-input">
-                <div className="im-input-row">
-                  <input
-                    data-testid="input-squad-id"
-                    value={newSquadId}
-                    onChange={(e) => setNewSquadId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddSquad()}
-                    placeholder="Squad ID"
-                    style={{
-                      flex: 1,
-                      border: '1px solid var(--oat)',
-                      borderRadius: 13,
-                      padding: '9px 14px',
-                      fontSize: 12,
-                      fontFamily: 'var(--font-sans)',
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    data-testid="btn-add-squad"
-                    onClick={handleAddSquad}
-                  >
-                    +
-                  </button>
+                <div className="im-input-box">
+                  等待客户接入...
                 </div>
               </div>
             </>
