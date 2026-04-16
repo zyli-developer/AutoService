@@ -46,7 +46,7 @@
 | T1A.2 | Timer 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-T1A.2, test-plan-T1A.2 |
 | T1A.3 | EventBus 最小实现 | 🟢 | 🟦 | DevA | T0.4 | — |
 | T1A.4 | 4 角色 soul.md 定义 | 🟡 | 🟩 | DevA | T0.1 | agents/{customer,translate,lead,triage}/{soul.md,agent.yaml} |
-| T1A.5 | ModelRouter + FastClassifier | 🟡 | ⬜ | — | T1A.4 | — |
+| T1A.5 | ModelRouter + FastClassifier | 🟡 | 🟦 | DevA | T1A.4 | — |
 | T1A.6 | 占位续写流程 | 🟢 | ⬜ | — | T1A.5,T1A.2 | — |
 | T1A.7 | lifecycle plugin | 🟢 | ⬜ | — | T1A.3 | — |
 | T1A.8 | metrics plugin | 🟢 | ⬜ | — | T1A.3 | — |
