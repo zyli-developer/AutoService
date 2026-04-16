@@ -17,9 +17,9 @@ export function IMInput({ send }: IMInputProps) {
 
   const placeholder = activeCopilotConvId
     ? isTakeover
-      ? '\u76F4\u63A5\u8F93\u5165\uFF0C\u4F1A\u53D1\u7ED9\u5BA2\u6237 (\u4EBA\u5DE5 driver \u6A21\u5F0F)'
-      : '\u8F93\u5165\u5EFA\u8BAE\u7ED9 agent (\u4E0D\u4F1A\u53D1\u7ED9\u5BA2\u6237)'
-    : '\u53D1\u9001\u6D88\u606F\u5230 Agent\u5206\u961F';
+      ? '直接输入，会发给客户 (人工 driver 模式)'
+      : '输入建议给 agent (不会发给客户)'
+    : '发送消息到 Agent分队';
 
   const handleSend = () => {
     const text = inputText.trim();
@@ -73,7 +73,7 @@ export function IMInput({ send }: IMInputProps) {
           onClick={handleSend}
           disabled={!inputText.trim() || !activeCopilotConvId}
         >
-          {'\u53D1\u9001'}
+          {'发送'}
         </button>
       </div>
     </div>

@@ -63,14 +63,14 @@ describe('Takeover Mode UI', () => {
       </>
     );
 
-    await user.type(screen.getByTestId('copilot-input'), '\u60A8\u597D\u5BA2\u6237');
+    await user.type(screen.getByTestId('copilot-input'), '您好客户');
     await user.click(screen.getByTestId('copilot-send'));
 
     const calls = send.mock.calls;
     const frame = calls[calls.length - 1][0];
     expect(frame.type).toBe('send_message');
     expect(frame.payload.visible_to_customer).toBe(true);
-    expect(frame.payload.text).toBe('\u60A8\u597D\u5BA2\u6237');
+    expect(frame.payload.text).toBe('您好客户');
   });
 
   it('TC-04: sends operator_message frame in copilot mode', async () => {
@@ -87,7 +87,7 @@ describe('Takeover Mode UI', () => {
       </>
     );
 
-    await user.type(screen.getByTestId('copilot-input'), '\u5EFA\u8BAE\u56DE\u590D');
+    await user.type(screen.getByTestId('copilot-input'), '建议回复');
     await user.click(screen.getByTestId('copilot-send'));
 
     const calls = send.mock.calls;
@@ -104,6 +104,6 @@ describe('Takeover Mode UI', () => {
     const send = vi.fn();
     render(<IMInput send={send} />);
     const input = screen.getByTestId('copilot-input');
-    expect(input.getAttribute('placeholder')).toContain('\u4EBA\u5DE5');
+    expect(input.getAttribute('placeholder')).toContain('人工');
   });
 });

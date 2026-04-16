@@ -15,13 +15,13 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
   return (
     <div className="im-sidebar" data-testid="im-sidebar">
       <div className="im-ws-header">
-        <div className="im-ws-title">{'\u5546\u6237\u5DE5\u4F5C\u533A'}</div>
+        <div className="im-ws-title">{'商户工作区'}</div>
         <div className="im-ws-user" data-testid="operator-name">
-          {operatorId ?? '\u5BA2\u670D'}
+          {operatorId ?? '客服'}
         </div>
       </div>
 
-      <div className="im-section-title">{'\u9891\u9053'}</div>
+      <div className="im-section-title">{'频道'}</div>
       {squads.map((squadId) => {
         const unread = unreadCounts[squadId] ?? 0;
         return (
@@ -41,10 +41,10 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         );
       })}
 
-      <div className="im-section-title">{'\u76F4\u63A5\u6D88\u606F'}</div>
+      <div className="im-section-title">{'直接消息'}</div>
       {activeCopilotConvId && (
         <div className="im-channel dm active" data-testid="dm-copilot">
-          {'\u5BF9\u8BDD'} {activeCopilotConvId.slice(0, 6)}
+          {'对话'} {activeCopilotConvId.slice(0, 6)}
         </div>
       )}
 
@@ -61,7 +61,7 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'\u9000\u51FA'}
+          {'退出'}
         </button>
       </div>
     </div>

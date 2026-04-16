@@ -31,7 +31,7 @@ export function CopilotView({ send }: CopilotViewProps) {
     <>
       <div className="im-main-header" data-testid="copilot-header">
         <div className="im-main-title">
-          {'\u804A\u5929\u7A97'} {activeCopilotConvId.slice(0, 8)}
+          {'聊天窗'} {activeCopilotConvId.slice(0, 8)}
           {isTakeover && (
             <span data-testid="takeover-indicator" style={{ color: 'var(--p)', fontSize: 11, marginLeft: 8, fontWeight: 700 }}>
               TAKEOVER
@@ -40,8 +40,8 @@ export function CopilotView({ send }: CopilotViewProps) {
         </div>
         <div className="im-main-subtitle">
           {isTakeover
-            ? '\u26A1 \u4EBA\u5DE5\u5DF2\u63A5\u7BA1 \u00B7 agent \u526F\u9A7E\u9A76'
-            : '\u9ED8\u8BA4 copilot \u6A21\u5F0F \u00B7 agent driver'}
+            ? '⚡ 人工已接管 · agent 副驾驶'
+            : '默认 copilot 模式 · agent driver'}
         </div>
       </div>
       <div className="im-feed" data-testid="copilot-sidebar">
@@ -49,7 +49,7 @@ export function CopilotView({ send }: CopilotViewProps) {
           if (msg.sender === 'customer') {
             return (
               <div key={msg.id} className="im-relay-line" data-testid={`copilot-message-${msg.id}`}>
-                {'\u5BA2\u6237\u8BF4'}: <span className="quote">{msg.text}</span>
+                {'客户说'}: <span className="quote">{msg.text}</span>
               </div>
             );
           }
@@ -57,13 +57,13 @@ export function CopilotView({ send }: CopilotViewProps) {
             if (isTakeover) {
               return (
                 <div key={msg.id} className="im-driver" data-testid={`copilot-message-${msg.id}`}>
-                  {'\uD83D\uDC64'} <b>{'\u5BA2\u670D'}</b>: {msg.text}
+                  {'\uD83D\uDC64'} <b>{'客服'}</b>: {msg.text}
                 </div>
               );
             }
             return (
               <div key={msg.id} className="im-suggest" data-testid={`copilot-message-${msg.id}`}>
-                {'\uD83D\uDCA1'} <b>{'\u5BA2\u670D'}</b>: {msg.text}
+                {'\uD83D\uDCA1'} <b>{'客服'}</b>: {msg.text}
               </div>
             );
           }
@@ -71,7 +71,7 @@ export function CopilotView({ send }: CopilotViewProps) {
           if (isTakeover) {
             return (
               <div key={msg.id} className="im-sidebar-msg" data-testid={`copilot-message-${msg.id}`}>
-                [{'\u4FA7\u680F'}] agent: {msg.text}
+                [{'侧栏'}] agent: {msg.text}
               </div>
             );
           }
@@ -85,19 +85,19 @@ export function CopilotView({ send }: CopilotViewProps) {
                   <span className="im-msg-time">{msg.ts}</span>
                 </div>
                 <div className="im-relay-line">
-                  {'\u62DF\u56DE\u590D'}: <span className="quote">{msg.text}</span>
+                  {'拟回复'}: <span className="quote">{msg.text}</span>
                 </div>
               </div>
             </div>
           );
         })}
         {messages.length === 0 && (
-          <div className="im-empty">{'\u6682\u65E0\u6D88\u606F'}</div>
+          <div className="im-empty">{'暂无消息'}</div>
         )}
         <div className="im-system">
           {isTakeover
-            ? '\u21BB \u4EBA\u5DE5 driver \u00B7 agent \u526F\u9A7E\u9A76'
-            : '\u21BB \u5B9E\u65F6\u5237\u65B0\u4E2D'}
+            ? '↻ 人工 driver · agent 副驾驶'
+            : '↻ 实时刷新中'}
         </div>
       </div>
       <div style={{ padding: '8px 20px', display: 'flex', gap: 8 }}>
@@ -117,7 +117,7 @@ export function CopilotView({ send }: CopilotViewProps) {
               fontFamily: 'var(--font-sans)',
             }}
           >
-            <span className="im-cmd">/hijack</span> {'\u62A2\u5355'}
+            <span className="im-cmd">/hijack</span> {'抢单'}
           </button>
         )}
         <button
@@ -134,7 +134,7 @@ export function CopilotView({ send }: CopilotViewProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'\u8FD4\u56DE\u5217\u8868'}
+          {'返回列表'}
         </button>
       </div>
     </>

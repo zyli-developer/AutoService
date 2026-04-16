@@ -34,7 +34,7 @@ export function ChatModal({
     <div className="web-modal" data-testid="chat-modal">
       <div className="web-modal-header">
         <div className="web-modal-title" data-testid="modal-title">
-          {'\u667A\u80FD\u5BA2\u670D \u00B7 \u5728\u7EBF'}
+          {'智能客服 · 在线'}
         </div>
         <div
           className="web-modal-close"
@@ -43,7 +43,7 @@ export function ChatModal({
           role="button"
           aria-label="Close chat"
         >
-          {'\u00D7'}
+          {'×'}
         </div>
       </div>
       <ConnectionBanner

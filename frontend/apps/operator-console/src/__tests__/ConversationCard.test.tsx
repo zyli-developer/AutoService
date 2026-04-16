@@ -37,7 +37,7 @@ describe('ConversationFeed cards', () => {
     render(<ConversationFeed squadId="sq-A" />);
     const el = screen.getByTestId('conv-last-message');
     expect(el.textContent!.length).toBeLessThanOrEqual(41);
-    expect(el.textContent).toContain('\u2026');
+    expect(el.textContent).toContain('…');
   });
 
   it('TC-15b: short message not truncated', () => {
@@ -64,7 +64,7 @@ describe('ConversationFeed cards', () => {
       conversations: { 'conv-001': makeConv({ mode: 'auto', lastMessageSender: '' }) },
     });
     render(<ConversationFeed squadId="sq-A" />);
-    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('\u7A7A\u95F2');
+    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('空闲');
   });
 
   it('displays correct status tag for human-takeover', () => {
@@ -72,6 +72,6 @@ describe('ConversationFeed cards', () => {
       conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
     });
     render(<ConversationFeed squadId="sq-A" />);
-    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('\u4EBA\u5DE5\u63A5\u7BA1');
+    expect(screen.getByTestId('conv-status-tag')).toHaveTextContent('人工接管');
   });
 });

@@ -41,7 +41,7 @@ export function WorkspacePage() {
             padding: '6px 16px',
           }}
         >
-          {wsStatus === 'connecting' ? '\u8FDE\u63A5\u4E2D...' : '\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u5C1D\u8BD5\u91CD\u8FDE'}
+          {wsStatus === 'connecting' ? '连接中...' : '连接已断开，尝试重连'}
         </div>
       )}
       <div className="im-body">
@@ -56,12 +56,12 @@ export function WorkspacePage() {
             <>
               <div className="im-main-header">
                 <div className="im-main-title">
-                  {activeSquadId ?? '\u5DE5\u4F5C\u53F0'}
+                  {activeSquadId ?? '工作台'}
                 </div>
                 <div className="im-main-subtitle">
                   {squads.length === 0
-                    ? '\u8BF7\u6DFB\u52A0 Squad ID'
-                    : `${Object.keys(useOperatorStore.getState().conversations).length} \u4E2A\u5BF9\u8BDD`}
+                    ? '请添加 Squad ID'
+                    : `${Object.keys(useOperatorStore.getState().conversations).length} 个对话`}
                 </div>
               </div>
               <ConversationFeed
