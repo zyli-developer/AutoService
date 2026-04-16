@@ -1,0 +1,27 @@
+# Triage Agent configuration
+# T1A.4 产出 | 2026-04-16
+
+role: triage
+name: "Triage Agent"
+name_zh: "智能分流 Agent"
+
+pool:
+  model: haiku
+  max_size: 3
+  skill: triage
+  permission_mode: default
+
+routing:
+  intent_types: ["*"]   # 入口 agent，接收所有意图
+  priority: critical     # 最高优先级，最先处理
+  fallback_to: customer  # 无法判断时默认到客服
+
+mode_behavior:
+  auto: active        # 分析并路由
+  copilot: inactive   # copilot 模式下不参与
+  takeover: inactive  # takeover 模式下不参与
+
+timers:
+  first_reply_sla: 1s   # 分流必须极快
+  slow_query_threshold: 2s
+  idle_timeout: 60s      # 分流完成即释放
