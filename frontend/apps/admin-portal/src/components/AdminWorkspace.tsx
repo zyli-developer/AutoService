@@ -6,6 +6,7 @@ import { WizardTab } from './WizardTab';
 import { DashboardTab } from './DashboardTab';
 import { NotificationsTab } from './NotificationsTab';
 import { ProposalsTab } from './ProposalsTab';
+import { BillingTab } from './BillingTab';
 
 const { Header, Content } = Layout;
 
@@ -50,6 +51,7 @@ export function AdminWorkspace() {
             { key: 'dashboard', label: '仪表盘', children: <DashboardTab /> },
             { key: 'notifications', label: '通知', children: <NotificationsTab /> },
             { key: 'proposals', label: '提案', children: <ProposalsTab /> },
+            { key: 'billing', label: '账单', children: <BillingTab /> },
           ]}
         />
       </Content>

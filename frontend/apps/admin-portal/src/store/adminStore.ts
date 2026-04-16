@@ -93,7 +93,7 @@ export interface CanaryStateUI {
 export interface AdminState {
   tenantId: string | null;
   isLoggedIn: boolean;
-  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals';
+  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing';
   notifications: Notification[];
 
   wizardStep: number;
