@@ -1,4 +1,4 @@
-export function formatTimestamp(isoString: string): string {
+export function formatTimestamp(isoString: string, yesterdayLabel?: string): string {
   if (!isoString) return '';
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return '';
@@ -15,7 +15,8 @@ export function formatTimestamp(isoString: string): string {
     return timeStr;
   }
   if (dateStart.getTime() === yesterdayStart.getTime()) {
-    return `昨天 ${timeStr}`;
+    const label = yesterdayLabel ?? '昨天';
+    return `${label} ${timeStr}`;
   }
   return `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
 }

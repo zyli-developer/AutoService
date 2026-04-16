@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 interface ChatInputProps {
   onSend: (content: string) => void;
@@ -8,6 +9,7 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { t } = useTranslation();
 
   const handleSend = () => {
     const trimmed = value.trim();
@@ -41,7 +43,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           ref={textareaRef}
           data-testid="chat-input"
           className="flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none disabled:opacity-50 max-h-[120px] overflow-y-auto"
-          placeholder={disabled ? 'Connecting...' : 'Type a message...'}
+          placeholder={disabled ? t('chat.input.placeholder.connecting') : t('chat.input.placeholder')}
           value={value}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
@@ -54,7 +56,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           disabled={disabled || !value.trim()}
           className="flex-shrink-0 rounded-xl bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          Send
+          {t('chat.input.send')}
         </button>
       </div>
     </div>
