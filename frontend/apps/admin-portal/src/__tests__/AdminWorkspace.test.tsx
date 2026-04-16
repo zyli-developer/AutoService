@@ -17,10 +17,10 @@ describe('AdminWorkspace', () => {
 
   it('TC-09: shows 4 tabs', () => {
     render(<AdminWorkspace />);
-    expect(screen.getByRole('tab', { name: '向导' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '仪表盘' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '通知' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '提案' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '\u5411\u5BFC' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '\u4EEA\u8868\u76D8' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '\u901A\u77E5' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '\u63D0\u6848' })).toBeInTheDocument();
   });
 
   it('TC-10: default tab is wizard', () => {
@@ -31,7 +31,7 @@ describe('AdminWorkspace', () => {
   it('TC-11: clicking dashboard tab switches content', async () => {
     const user = userEvent.setup();
     render(<AdminWorkspace />);
-    await user.click(screen.getByRole('tab', { name: '仪表盘' }));
+    await user.click(screen.getByRole('tab', { name: '\u4EEA\u8868\u76D8' }));
     expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
   });
 

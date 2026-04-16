@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import { Button, Checkbox, Space, Typography } from 'antd';
-import { CopyOutlined } from '@ant-design/icons';
 
 const channelOptions = [
-  { label: 'Web 在线客服', value: 'web' },
-  { label: '飞书 IM', value: 'feishu', disabled: true },
+  { label: 'Web \u5728\u7EBF\u5BA2\u670D', value: 'web', disabled: false },
+  { label: '\u98DE\u4E66 IM', value: 'feishu', disabled: true },
 ];
 
 interface ChannelConfigStepProps {
@@ -15,34 +13,59 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['web']);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
 
+  const toggleChannel = (value: string) => {
+    setSelectedChannels((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    );
+  };
+
   const handleGenerate = () => {
     setGeneratedUrl(`https://${tenantId}.autoservice.ai/chat`);
   };
 
   return (
     <div data-testid="channel-config-step">
-      <Typography.Title level={5}>渠道配置</Typography.Title>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Checkbox.Group
-          data-testid="channel-checkboxes"
-          options={channelOptions}
-          value={selectedChannels}
-          onChange={(values) => setSelectedChannels(values as string[])}
-        />
-        <Button
-          type="primary"
+      <div className="cs-card">
+        <div className="cs-ct">{'\u6E20\u9053\u914D\u7F6E'}</div>
+        <div data-testid="channel-checkboxes" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          {channelOptions.map((opt) => (
+            <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: opt.disabled ? 'var(--silver)' : 'var(--charcoal)' }}>
+              <input
+                type="checkbox"
+                checked={selectedChannels.includes(opt.value)}
+                disabled={opt.disabled}
+                onChange={() => toggleChannel(opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        <button
           data-testid="btn-generate-url"
           disabled={selectedChannels.length === 0}
           onClick={handleGenerate}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            background: selectedChannels.length === 0 ? 'var(--oat)' : 'var(--m800)',
+            color: selectedChannels.length === 0 ? 'var(--silver)' : '#fff',
+            borderRadius: 9,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: selectedChannels.length === 0 ? 'not-allowed' : 'pointer',
+            fontFamily: 'var(--font-sans)',
+          }}
         >
-          生成链接
-        </Button>
+          {'\u751F\u6210\u94FE\u63A5'}
+        </button>
         {generatedUrl && (
-          <Typography.Text data-testid="generated-url" copyable={{ icon: <CopyOutlined /> }}>
-            {generatedUrl}
-          </Typography.Text>
+          <div className="cs-row" style={{ marginTop: 12 }}>
+            <span data-testid="generated-url" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              {generatedUrl}
+            </span>
+          </div>
         )}
-      </Space>
+      </div>
     </div>
   );
 }
