@@ -14,8 +14,8 @@ export function LoginPage() {
   return (
     <div className="cs-login">
       <div className="cs-login-card" data-testid="login-card">
-        <h2>AutoService {'\u7BA1\u7406\u540E\u53F0'}</h2>
-        <p>{'\u8BF7\u8F93\u5165\u79DF\u6237 ID \u767B\u5F55'}</p>
+        <h2>AutoService {'管理后台'}</h2>
+        <p>{'请输入租户 ID 登录'}</p>
         <form onSubmit={handleLogin}>
           <input
             data-testid="input-tenant-id"
@@ -24,7 +24,7 @@ export function LoginPage() {
             onChange={(e) => setTenantId(e.target.value)}
           />
           <button type="submit" data-testid="btn-login">
-            {'\u767B\u5F55'}
+            {'登录'}
           </button>
         </form>
       </div>
