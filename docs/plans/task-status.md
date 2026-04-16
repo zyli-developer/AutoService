@@ -47,7 +47,7 @@
 | T1A.3 | EventBus 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-004, test-plan-003, test-diff-003 |
 | T1A.4 | 4 角色 soul.md 定义 | 🟡 | 🟩 | DevA | T0.1 | agents/{customer,translate,lead,triage}/{soul.md,agent.yaml} |
 | T1A.5 | ModelRouter + FastClassifier | 🟡 | 🟩 | DevA | T1A.4 | autoservice/model_router.py + classify_intent.yaml |
-| T1A.6 | 占位续写流程 | 🟢 | ⬜ | — | T1A.5,T1A.2 | — |
+| T1A.6 | 占位续写流程 | 🟢 | 🟦 | DevA | T1A.5,T1A.2 | — |
 | T1A.7 | lifecycle plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/lifecycle_plugin.py |
 | T1A.8 | metrics plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/metrics_plugin.py |
 | T1A.9 | squad plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/squad_plugin.py |
