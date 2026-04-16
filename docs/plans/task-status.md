@@ -104,7 +104,7 @@
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
 | T3A.1 | soul.md 自动生成器 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/soul_generator.py, eval-T3A.1 |
-| T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟦 | DevA | T1A.4 | — |
+| T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟩 | DevA | T1A.4 | eval-T3A.2, test-plan-T3A.2, autoservice/sim_customer.py |
 | T3A.3 | Few-shot 注入机制 | 🟢 | ⬜ | — | T3A.2 | — |
 | T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
 | T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
