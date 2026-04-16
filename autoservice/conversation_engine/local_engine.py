@@ -337,8 +337,9 @@ class LocalEngine:
             raise ValidationError("Cannot set CSAT on unresolved conversation")
         new_res = dataclasses.replace(conv.resolution, csat_score=score)
         self._update_conv(conversation_id, resolution=new_res)
-        self._emit(EventType.CONVERSATION_CSAT_RECORDED, conversation_id, {
-            "score": score,
+        await self._emit_and_dispatch_hooks(
+            EventType.CONVERSATION_CSAT_RECORDED, conversation_id, {
+                "score": score,
         })
 
     # ---------- Participants ----------
