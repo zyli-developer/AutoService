@@ -1,0 +1,12 @@
+# Turkish customer service terminology
+language: tr
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    tr: "Merhaba, size nasıl yardımcı olabilirim?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    tr: "Sizi bir müşteri temsilcisine bağlıyorum."
+  - id: thank_you
+    en: "Thank you for your patience."
+    tr: "Sabrınız için teşekkür ederim."

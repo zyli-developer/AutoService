@@ -1,0 +1,12 @@
+# Italian customer service terminology
+language: it
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    it: "Salve, come posso aiutarla?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    it: "La metto in contatto con un operatore."
+  - id: thank_you
+    en: "Thank you for your patience."
+    it: "Grazie per la pazienza."

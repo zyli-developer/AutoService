@@ -1,0 +1,12 @@
+# Malay customer service terminology
+language: ms
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ms: "Hai, bagaimana saya boleh membantu anda?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ms: "Saya akan menghubungkan anda dengan ejen kami."
+  - id: thank_you
+    en: "Thank you for your patience."
+    ms: "Terima kasih atas kesabaran anda."

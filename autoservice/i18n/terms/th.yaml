@@ -1,0 +1,12 @@
+# Thai customer service terminology
+language: th
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    th: "สวัสดีค่ะ มีอะไรให้ช่วยไหมคะ?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    th: "ขอเชื่อมต่อคุณกับเจ้าหน้าที่นะคะ"
+  - id: thank_you
+    en: "Thank you for your patience."
+    th: "ขอบคุณที่รอนะคะ"

@@ -1,0 +1,95 @@
+# Arabic customer service terminology (RTL)
+# Source: IATE / MS Terminology Portal
+language: ar
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ar: "مرحباً، كيف يمكنني مساعدتك؟"
+
+  - id: goodbye
+    en: "Thank you for contacting us. Goodbye!"
+    ar: "شكراً لتواصلك معنا. مع السلامة!"
+
+  - id: welcome
+    en: "Welcome! We're happy to assist you."
+    ar: "أهلاً وسهلاً! يسعدنا مساعدتك."
+
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ar: "دعني أحولك إلى أحد ممثلي خدمة العملاء."
+
+  - id: please_wait
+    en: "Please wait a moment while I look into this."
+    ar: "يرجى الانتظار قليلاً بينما أتحقق من ذلك."
+
+  - id: issue_resolved
+    en: "Your issue has been resolved. Is there anything else?"
+    ar: "تم حل مشكلتك. هل هناك شيء آخر يمكنني مساعدتك به؟"
+
+  - id: anything_else
+    en: "Is there anything else I can help you with?"
+    ar: "هل هناك شيء آخر يمكنني مساعدتك به؟"
+
+  - id: order_status
+    en: "Let me check your order status."
+    ar: "دعني أتحقق من حالة طلبك."
+
+  - id: refund_status
+    en: "Let me look up your refund status."
+    ar: "دعني أتحقق من حالة استرداد المبلغ."
+
+  - id: shipping_info
+    en: "Here is your shipping information."
+    ar: "إليك معلومات الشحن الخاصة بك."
+
+  - id: csat_request
+    en: "Would you mind rating your experience today?"
+    ar: "هل يمكنك تقييم تجربتك اليوم؟"
+
+  - id: thank_you
+    en: "Thank you for your patience."
+    ar: "شكراً لصبرك."
+
+  - id: apology
+    en: "I apologize for the inconvenience."
+    ar: "أعتذر عن أي إزعاج."
+
+  - id: account_settings
+    en: "I can help you with your account settings."
+    ar: "يمكنني مساعدتك في إعدادات حسابك."
+
+  - id: password_reset
+    en: "I'll help you reset your password."
+    ar: "سأساعدك في إعادة تعيين كلمة المرور."
+
+  - id: billing_inquiry
+    en: "Let me look into your billing inquiry."
+    ar: "دعني أتحقق من استفسارك بشأن الفواتير."
+
+  - id: subscription
+    en: "I can help you manage your subscription."
+    ar: "يمكنني مساعدتك في إدارة اشتراكك."
+
+  - id: cancellation
+    en: "I'll process your cancellation request."
+    ar: "سأقوم بمعالجة طلب الإلغاء الخاص بك."
+
+  - id: escalation_notice
+    en: "I'm escalating this to a specialist team."
+    ar: "سأقوم بتحويل هذا الأمر إلى فريق متخصص."
+
+  - id: manager_request
+    en: "I'll connect you with a manager right away."
+    ar: "سأوصلك بالمدير فوراً."
+
+  - id: complaint_received
+    en: "Your complaint has been received and logged."
+    ar: "تم استلام شكواك وتسجيلها."
+
+  - id: business_hours
+    en: "Our business hours are Monday to Friday, 9 AM to 6 PM."
+    ar: "ساعات العمل لدينا من الاثنين إلى الجمعة، من 9 صباحاً حتى 6 مساءً."
+
+  - id: privacy_notice
+    en: "Your data is protected under our privacy policy."
+    ar: "بياناتك محمية بموجب سياسة الخصوصية الخاصة بنا."

@@ -1,0 +1,12 @@
+# Korean customer service terminology
+language: ko
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ko: "안녕하세요, 무엇을 도와드릴까요?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ko: "상담원에게 연결해 드리겠습니다."
+  - id: thank_you
+    en: "Thank you for your patience."
+    ko: "기다려 주셔서 감사합니다."
