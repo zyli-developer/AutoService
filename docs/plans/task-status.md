@@ -116,9 +116,9 @@
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
 | T3B.1 | admin-portal SPA 骨架 | 🟢 | 🟩 | DevB | T0.6 | test-diff-015 |
-| T3B.2 | 向导 Step1 资料上传 | 🟢 | ⬜ | — | T3A.1 | — |
+| T3B.2 | 向导 Step1 资料上传 | 🟢 | 🟩 | DevB | T3A.1 | eval-T3B.2, plan-T3B.2, test-diff-021 |
 | T3B.3 | 向导 Step2 渠道配置 | 🟢 | 🟩 | DevB | T3B.1 | test-diff-016 |
-| T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | ⬜ | — | T3A.2 | — |
+| T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | 🟩 | DevB | T3A.2 | eval-T3B.4, plan-T3B.4, test-diff-022 |
 | T3B.5 | 向导 Step4 合规预检可视化 | 🟢 | 🟩 | DevB | T3A.7 | test-diff-017 |
 | T3B.6 | 运营仪表盘页 | 🟢 | 🟩 | DevB | T1A.8 | test-diff-018 |
 | T3B.7 | 通知中心 | 🟢 | 🟩 | DevB | T2A.1 | test-diff-019 |
@@ -150,9 +150,9 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T4B.1 | 提案审核页 | 🟢 | ⬜ | — | T4A.4 | — |
-| T4B.2 | 灰度进度可视化 | 🟢 | ⬜ | — | T4A.7 | — |
-| T4B.3 | 账单导出 UI | 🟢 | ⬜ | — | T4A.10 | — |
+| T4B.1 | 提案审核页 | 🟢 | 🟩 | DevB | T4A.4 | eval-T4B.1, test-diff-023 |
+| T4B.2 | 灰度进度可视化 | 🟢 | 🟩 | DevB | T4A.7 | test-diff-024 |
+| T4B.3 | 账单导出 UI | 🟢 | 🟩 | DevB | T4A.10 | test-diff-025 |
 
 **🤝 M4 联调**: Fri 14:00，30 min smoke test
 
@@ -177,11 +177,11 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T5B.1 | docker-compose 多租户模板 | 🟢 | ⬜ | — | — | — |
+| T5B.1 | docker-compose 多租户模板 | 🟢 | 🟩 | DevB | — | eval-T5B.1, plan-T5B.1, test-diff-020 |
 | T5B.2 | 同主机部署约束落地 | 🔴 | ⬜ | — | — | — |
-| T5B.3 | 租户创建脚本 | 🟢 | ⬜ | — | T5B.1 | — |
+| T5B.3 | 租户创建脚本 | 🟢 | 🟩 | DevB | T5B.1 | test-diff-026 |
 | T5B.4 | 端到端 E2E 自动化 | 🟢 | ⬜ | — | T5A.8 | — |
-| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | ⬜ | — | T1B.5 | — |
+| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | 🟩 | DevB | T1B.5 | test-diff-027 |
 
 **🤝 M5 联调**: Fri EOD，60 min（含 AB 测试 + 最终切换决策）
 
