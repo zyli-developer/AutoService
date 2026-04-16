@@ -6,7 +6,7 @@ const { Header, Content } = Layout;
 
 export function App() {
   const { t } = useTranslation();
-  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/operator');
+  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/operator', 'operator-console');
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

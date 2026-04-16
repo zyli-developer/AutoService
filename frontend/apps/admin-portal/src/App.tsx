@@ -6,7 +6,7 @@ const { Header, Content } = Layout;
 
 export function App() {
   const { t } = useTranslation();
-  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/admin');
+  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/admin', 'admin-portal');
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

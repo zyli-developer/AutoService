@@ -61,6 +61,34 @@ export type ConversationState = 'created' | 'active' | 'idle' | 'closed';
 /** 对齐 autoservice.conversation_engine.types.Outcome */
 export type Outcome = 'resolved' | 'abandoned' | 'escalated';
 
+/** T0.2 §3.1 client_hello payload */
+export interface ClientHelloPayload {
+  protocol_version: number;
+  client_app: string;
+  last_seen?: string;
+  conversation_id?: string;
+  operator_id?: string;
+  squads?: string[];
+}
+
+/** T0.2 §3.1 server_hello payload */
+export interface ServerHelloPayload {
+  session_id: string;
+  protocol_version: number;
+  server_time: string;
+  viewer_role: ViewerRole;
+  accepted_subscriptions: string[];
+  server_capabilities: string[];
+}
+
+/** T0.2 §6 error payload */
+export interface ErrorPayload {
+  code: string;
+  message: string;
+  recoverable: boolean;
+  details?: Record<string, unknown>;
+}
+
 export interface Message {
   id: string;
   source: string;
@@ -92,6 +120,7 @@ export const ERROR_CODES = {
   PARTICIPANT_NOT_FOUND: '4016_PARTICIPANT_NOT_FOUND',
   RATE_LIMIT: '4017_RATE_LIMIT',
   SEQ_GAP: '4018_SEQUENCE_GAP',
+  VERSION_INCOMPATIBLE: '4040_VERSION_INCOMPATIBLE',
   INTERNAL: '5010_INTERNAL',
   ENGINE: '5011_ENGINE',
 } as const;
