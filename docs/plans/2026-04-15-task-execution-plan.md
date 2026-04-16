@@ -142,15 +142,15 @@
 ## 三、依赖图（核心链）
 
 ```
-T0.1 ConversationEngine (🔴) ──┬─→ T0.4 LocalEngine (🟢) ──→ T1A.1-3 Mode/Gate/Timer/EventBus
-                               │                              │
-T0.2 WS Schema (🔴) ──────────┤                              ├─→ T1A.4-6 souls/ModelRouter/占位
-                               │                              │
-T0.3 契约测试 (🟢) ────────────┘                              ├─→ T1A.7-10 4 plugin
-                                                              │
-T0.5 WS 服务端骨架 ──────────────┐                            │
-                                ├─→ T1B.1 customer-chat ─────┘
-T0.6 前端 monorepo ─────────────┘    ↓
+T0.1 ConversationEngine (🔴) ──┬─→ T0.4 LocalEngine (🟢) ──┬─→ T1A.1-3 Mode/Gate/Timer/EventBus
+                               │                            │      │
+T0.2 WS Schema (🔴) ──────────┤                            │      ├─→ T1A.4-6 souls/ModelRouter/占位
+                               │                            │      │
+T0.3 契约测试 (🟢) ────────────┘                            │      ├─→ T1A.7-10 4 plugin
+                                                            ↓      │
+                             T0.2 + T0.4 ─→ T0.5 WS 服务端骨架 ──┐ │
+                                                                  ├─→ T1B.1 customer-chat ─┘
+                             T0.6 前端 monorepo ─────────────────┘    ↓
                                     T1B.2-6 消息流/重连/SDK/i18n
                                     ↓
                                     **M1 端到端**（Wed PM）
@@ -200,11 +200,13 @@ T5B.2 部署约束 (🔴)
 | T0.3 契约测试 | A | 🟢 |
 
 ### Batch 1 · 骨架（Wed 12:30-14:30）
-| 任务 | 线 | 类型 |
-|---|---|---|
-| T0.4 LocalEngine 骨架 | A | 🟢 |
-| T0.5 WS 服务端骨架 | A | 🟢 |
-| T0.6 前端 monorepo | B | 🟢 |
+| 任务 | 线 | 类型 | 依赖 |
+|---|---|---|---|
+| T0.4 LocalEngine 骨架 | A | 🟢 | T0.1 |
+| T0.5 WS 服务端骨架 | A | 🟢 | T0.2, **T0.4**（串行）|
+| T0.6 前端 monorepo | B | 🟢 | T0.2 |
+
+> A 线串行 T0.4 → T0.5（gateway 需引用 Engine Protocol 且读 local_engine.py 了解骨架）；B 线独立跑 T0.6。
 
 ### Batch 2 · LocalEngine 基础（Wed 14:30-17:00）
 | 任务 | 线 | 依赖 |

@@ -8,7 +8,18 @@
       "Bash(make *)",
       "Bash(git *)",
       "Bash(ls *)",
-      "Bash(mkdir *)"
+      "Bash(mkdir *)",
+      "Bash(pnpm *)",
+      "Bash(npm *)",
+      "Bash(yarn *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(cd *)"
     ],
     "defaultMode": "acceptEdits"
   },

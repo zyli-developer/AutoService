@@ -42,17 +42,17 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T1A.1 | Mode/Gate 最小实现 | 🟢 | ⬜ | — | T0.4 | — |
-| T1A.2 | Timer 最小实现 | 🟢 | ⬜ | — | T0.4 | — |
-| T1A.3 | EventBus 最小实现 | 🟢 | ⬜ | — | T0.4 | — |
-| T1A.4 | 4 角色 soul.md 定义 | 🟡 | ⬜ | — | T0.1 | — |
-| T1A.5 | ModelRouter + FastClassifier | 🟡 | ⬜ | — | T1A.4 | — |
-| T1A.6 | 占位续写流程 | 🟢 | ⬜ | — | T1A.5,T1A.2 | — |
-| T1A.7 | lifecycle plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.8 | metrics plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.9 | squad plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.10 | cc_pool plugin | 🟢 | ⬜ | — | T1A.3 | — |
-| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | ⬜ | — | T1A.4 | — |
+| T1A.1 | Mode/Gate 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-003, test-plan-003 |
+| T1A.2 | Timer 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-T1A.2, test-plan-T1A.2 |
+| T1A.3 | EventBus 最小实现 | 🟢 | 🟩 | DevA | T0.4 | eval-doc-004, test-plan-003, test-diff-003 |
+| T1A.4 | 4 角色 soul.md 定义 | 🟡 | 🟩 | DevA | T0.1 | agents/{customer,translate,lead,triage}/{soul.md,agent.yaml} |
+| T1A.5 | ModelRouter + FastClassifier | 🟡 | 🟩 | DevA | T1A.4 | autoservice/model_router.py + classify_intent.yaml |
+| T1A.6 | 占位续写流程 | 🟢 | 🟩 | DevA | T1A.5,T1A.2 | autoservice/placeholder_stream.py |
+| T1A.7 | lifecycle plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/lifecycle_plugin.py |
+| T1A.8 | metrics plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/metrics_plugin.py |
+| T1A.9 | squad plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/squad_plugin.py |
+| T1A.10 | cc_pool plugin | 🟢 | 🟩 | DevA | T1A.3 | autoservice/plugins/cc_pool_plugin.py |
+| T1A.11 | 情绪识别 prompt 扩展 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/sentiment.py |
 
 ### B 线
 
@@ -75,11 +75,11 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T2A.1 | 协议命令实现 | 🟢 | ⬜ | — | T1A.1 | — |
-| T2A.2 | 智能分流 Agent 信心模型 | 🟡 | ⬜ | — | T1A.4 | — |
-| T2A.3 | SLAAggregator | 🟢 | ⬜ | — | T1A.3 | — |
-| T2A.4 | alerts.yaml + 告警推送 | 🟢 | ⬜ | — | T2A.3 | — |
-| T2A.5 | 22 语种术语 + 注入 + 覆盖 | 🟡 | ⬜ | — | T1A.4 | — |
+| T2A.1 | 协议命令实现 | 🟢 | 🟩 | DevA | T1A.1 | eval-doc-T2A.1, test-plan-T2A.1 |
+| T2A.2 | 智能分流 Agent 信心模型 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/triage.py |
+| T2A.3 | SLAAggregator | 🟢 | 🟩 | DevA | T1A.3 | autoservice/sla_aggregator.py |
+| T2A.4 | alerts.yaml + 告警推送 | 🟢 | 🟩 | DevA | T2A.3 | autoservice/alerts.yaml + alert_engine.py |
+| T2A.5 | 22 语种术语 + 注入 + 覆盖 | 🟡 | 🟩 | DevA | T1A.4 | autoservice/i18n/ (22 YAML + term_loader.py) |
 
 ### B 线
 
@@ -103,13 +103,13 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T3A.1 | soul.md 自动生成器 | 🟡 | ⬜ | — | T1A.4 | — |
-| T3A.2 | 虚拟客户生成 pipeline | 🟡 | ⬜ | — | T1A.4 | — |
+| T3A.1 | soul.md 自动生成器 | 🟡 | 🟦 | DevA | T1A.4 | — |
+| T3A.2 | 虚拟客户生成 pipeline | 🟡 | 🟦 | DevA | T1A.4 | — |
 | T3A.3 | Few-shot 注入机制 | 🟢 | ⬜ | — | T3A.2 | — |
-| T3A.4 | 合规规则 schema | 🔴 | ⬜ | — | — | — |
-| T3A.5 | 16 条预置规则 YAML | 🔴 | ⬜ | — | T3A.4 | — |
-| T3A.6 | 16 条补救指南 md | 🔴 | ⬜ | — | T3A.5 | — |
-| T3A.7 | compliance.py 预检 + 策略下发 | 🟡 | ⬜ | — | T3A.5 | — |
+| T3A.4 | 合规规则 schema | 🔴 | 🟩 | DevA | — | docs/compliance/rule-schema.md v1.0 |
+| T3A.5 | 16 条预置规则 YAML | 🔴 | 🟩 | DevA | T3A.4 | autoservice/compliance/rules.yaml (16 rules) |
+| T3A.6 | 16 条补救指南 md | 🔴 | 🟩 | DevA | T3A.5 | docs/compliance/{eu,us,cn}-*.md (16 files) |
+| T3A.7 | compliance.py 预检 + 策略下发 | 🟡 | 🟩 | DevA | T3A.5 | autoservice/compliance/compliance.py |
 
 ### B 线
 

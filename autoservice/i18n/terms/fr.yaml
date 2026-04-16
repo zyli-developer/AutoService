@@ -1,0 +1,95 @@
+# French customer service terminology
+# Source: IATE / MS Terminology Portal
+language: fr
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    fr: "Bonjour, comment puis-je vous aider ?"
+
+  - id: goodbye
+    en: "Thank you for contacting us. Goodbye!"
+    fr: "Merci de nous avoir contactés. Au revoir !"
+
+  - id: welcome
+    en: "Welcome! We're happy to assist you."
+    fr: "Bienvenue ! Nous sommes ravis de vous aider."
+
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    fr: "Je vous mets en relation avec un conseiller."
+
+  - id: please_wait
+    en: "Please wait a moment while I look into this."
+    fr: "Veuillez patienter un instant, je vérifie."
+
+  - id: issue_resolved
+    en: "Your issue has been resolved. Is there anything else?"
+    fr: "Votre problème a été résolu. Puis-je vous aider autrement ?"
+
+  - id: anything_else
+    en: "Is there anything else I can help you with?"
+    fr: "Puis-je vous aider pour autre chose ?"
+
+  - id: order_status
+    en: "Let me check your order status."
+    fr: "Je vérifie l'état de votre commande."
+
+  - id: refund_status
+    en: "Let me look up your refund status."
+    fr: "Je consulte l'état de votre remboursement."
+
+  - id: shipping_info
+    en: "Here is your shipping information."
+    fr: "Voici vos informations de livraison."
+
+  - id: csat_request
+    en: "Would you mind rating your experience today?"
+    fr: "Pourriez-vous évaluer votre expérience aujourd'hui ?"
+
+  - id: thank_you
+    en: "Thank you for your patience."
+    fr: "Merci de votre patience."
+
+  - id: apology
+    en: "I apologize for the inconvenience."
+    fr: "Je vous prie de nous excuser pour ce désagrément."
+
+  - id: account_settings
+    en: "I can help you with your account settings."
+    fr: "Je peux vous aider avec les paramètres de votre compte."
+
+  - id: password_reset
+    en: "I'll help you reset your password."
+    fr: "Je vais vous aider à réinitialiser votre mot de passe."
+
+  - id: billing_inquiry
+    en: "Let me look into your billing inquiry."
+    fr: "Je vais examiner votre demande de facturation."
+
+  - id: subscription
+    en: "I can help you manage your subscription."
+    fr: "Je peux vous aider à gérer votre abonnement."
+
+  - id: cancellation
+    en: "I'll process your cancellation request."
+    fr: "Je traite votre demande d'annulation."
+
+  - id: escalation_notice
+    en: "I'm escalating this to a specialist team."
+    fr: "Je transmets votre dossier à une équipe spécialisée."
+
+  - id: manager_request
+    en: "I'll connect you with a manager right away."
+    fr: "Je vous mets en relation avec un responsable immédiatement."
+
+  - id: complaint_received
+    en: "Your complaint has been received and logged."
+    fr: "Votre réclamation a été reçue et enregistrée."
+
+  - id: business_hours
+    en: "Our business hours are Monday to Friday, 9 AM to 6 PM."
+    fr: "Nos horaires d'ouverture sont du lundi au vendredi, de 9h à 18h."
+
+  - id: privacy_notice
+    en: "Your data is protected under our privacy policy."
+    fr: "Vos données sont protégées conformément à notre politique de confidentialité."

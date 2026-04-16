@@ -1,0 +1,12 @@
+# Hebrew customer service terminology (RTL)
+language: he
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    he: "שלום, איך אוכל לעזור לך?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    he: "אני מעביר אותך לנציג שירות."
+  - id: thank_you
+    en: "Thank you for your patience."
+    he: "תודה על הסבלנות."

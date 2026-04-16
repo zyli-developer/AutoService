@@ -1,0 +1,12 @@
+# Hindi customer service terminology
+language: hi
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    hi: "नमस्ते, मैं आपकी कैसे मदद कर सकता हूँ?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    hi: "मैं आपको एक प्रतिनिधि से जोड़ रहा हूँ।"
+  - id: thank_you
+    en: "Thank you for your patience."
+    hi: "आपके धैर्य के लिए धन्यवाद।"

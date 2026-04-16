@@ -1,0 +1,12 @@
+# Russian customer service terminology
+language: ru
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ru: "Здравствуйте, чем могу помочь?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ru: "Соединяю вас с оператором."
+  - id: thank_you
+    en: "Thank you for your patience."
+    ru: "Спасибо за ваше терпение."

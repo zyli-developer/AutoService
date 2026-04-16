@@ -1,0 +1,12 @@
+# Spanish customer service terminology
+language: es
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    es: "Hola, ¿en qué puedo ayudarle?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    es: "Permítame conectarle con un agente."
+  - id: thank_you
+    en: "Thank you for your patience."
+    es: "Gracias por su paciencia."

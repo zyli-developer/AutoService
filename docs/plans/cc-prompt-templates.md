@@ -359,7 +359,7 @@
 | `{任务名}` | tasks-v3 中的任务名 | `Mode/Gate 最小实现` |
 | `{DevA\|DevB}` | 当前开发者代号 | `DevA` |
 | `{Mx}` | 里程碑编号 | `M1` |
-| `{产出文件}` | tasks-v3 中指定的文件路径 | `autoservice/engine/local_engine.py` |
+| `{产出文件}` | tasks-v3 中指定的文件路径 | `autoservice/conversation_engine/local_engine.py` |
 
 ---
 

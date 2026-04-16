@@ -71,10 +71,10 @@
 
 | # | 任务 | 线 | 类型 | 产出 |
 |---|---|---|---|---|
-| T0.1 | **`ConversationEngine` 抽象设计** | 🔀 A+B | 📐 | `autoservice/engine/conversation_engine.py` — Python Protocol: create_conversation / send_reply / edit_message / switch_mode / resolve / on / query |
+| T0.1 | **`ConversationEngine` 抽象设计** | 🔀 A+B | 📐 | `autoservice/conversation_engine/` 包（`protocol.py` / `types.py` / `events.py` / `errors.py`） — Python Protocol: create_conversation / send_reply / edit_message / switch_mode / resolve / on / query |
 | T0.2 | **WebSocket 消息 schema 冻结** | 🔀 A+B | 📝 | `docs/contracts/frontend-ws-schema.md` — 前端 ↔ 后端的消息类型（customer_msg / agent_reply / mode_changed / csat_request 等）|
 | T0.3 | **契约测试 suite** | 🔀 A+B | 🧪 | `tests/contract/` — schema 校验 + 状态流转 |
-| T0.4 | **LocalEngine 骨架** | A | 🔧 | `autoservice/engine/local_engine.py` — 实现 ConversationEngine（暂空方法 + TODO） |
+| T0.4 | **LocalEngine 骨架** | A | 🔧 | `autoservice/conversation_engine/local_engine.py` — 实现 ConversationEngine（暂空方法 + TODO） |
 | T0.5 | **WebSocket 服务端骨架** | A | 🔧 | `autoservice/web_gateway.py` — FastAPI + WebSocket，对前端暴露冻结 schema |
 | T0.6 | **前端 monorepo 骨架** | B | 🎨 | `frontend/` — pnpm workspace + React + WebSocket client 封装 + i18n 框架 |
 
@@ -218,7 +218,7 @@
 |---|---|---|---|---|
 | T5A.1 | **对齐 zchat Bridge API v0.3** | 📝 | γ1 | 与 zchat 团队签字版本锁 + 契约文档 |
 | T5A.2 | **Bridge API Python SDK** | 🔧 | γ1 | `autoservice/zchat_client/` — WebSocket 连接 + 14 消息 schema + 重连/心跳 |
-| T5A.3 | **ZchatEngine 适配器** | 🔧 | 路径 B 核心 | `autoservice/engine/zchat_engine.py` — 实现 ConversationEngine 接口；底层走 SDK |
+| T5A.3 | **ZchatEngine 适配器** | 🔧 | 路径 B 核心 | `autoservice/conversation_engine/zchat_engine.py` — 实现 ConversationEngine 接口；底层走 SDK |
 | T5A.4 | **4 plugin 双实现对齐** | 🔧 | γ4 | lifecycle/metrics/squad/cc_pool 在 ZchatEngine 下同样工作；注入 zchat channel-server |
 | T5A.5 | **cc-pool key 迁移 chat_id → conversation_id** | 🔧 | γ7 | `acquire_sticky(conv.id)`；adapter 层做 chat_id ↔ conv_id 映射 |
 | T5A.6 | **延迟监控埋点**（NFR-1/2/3） | 🔧 | γ6 | `bridge_api.roundtrip_ms` / `plugin.hook_duration_ms` / `eventbus.emit_ms`；P95 告警 |

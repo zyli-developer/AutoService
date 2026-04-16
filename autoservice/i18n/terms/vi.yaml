@@ -1,0 +1,12 @@
+# Vietnamese customer service terminology
+language: vi
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    vi: "Xin chào, tôi có thể giúp gì cho bạn?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    vi: "Tôi sẽ kết nối bạn với nhân viên hỗ trợ."
+  - id: thank_you
+    en: "Thank you for your patience."
+    vi: "Cảm ơn bạn đã kiên nhẫn."
