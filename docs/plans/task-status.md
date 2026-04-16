@@ -77,7 +77,7 @@
 |---|---|---|---|---|---|---|
 | T2A.1 | 协议命令实现 | 🟢 | 🟩 | DevA | T1A.1 | eval-doc-T2A.1, test-plan-T2A.1 |
 | T2A.2 | 智能分流 Agent 信心模型 | 🟡 | ⬜ | — | T1A.4 | — |
-| T2A.3 | SLAAggregator | 🟢 | 🟦 | DevA | T1A.3 | — |
+| T2A.3 | SLAAggregator | 🟢 | 🟩 | DevA | T1A.3 | autoservice/sla_aggregator.py |
 | T2A.4 | alerts.yaml + 告警推送 | 🟢 | ⬜ | — | T2A.3 | — |
 | T2A.5 | 22 语种术语 + 注入 + 覆盖 | 🟡 | ⬜ | — | T1A.4 | — |
 
