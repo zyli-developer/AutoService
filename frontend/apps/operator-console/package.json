@@ -8,9 +8,12 @@
     "dev": "vite --port 5174 --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5174",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.1.1",
     "@autoservice/i18n": "workspace:*",
     "@autoservice/ws-client": "workspace:*",
     "antd": "^5.16.2",
@@ -19,10 +22,16 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^1.5.0",
+    "jsdom": "^24.0.0",
     "typescript": "^5.4.5",
-    "vite": "^5.2.10"
+    "vite": "^5.2.10",
+    "vitest": "^1.5.0"
   }
 }
