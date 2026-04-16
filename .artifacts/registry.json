@@ -277,6 +277,18 @@
         "eval-doc-005"
       ],
       "summary": "42/42 passed (21 new T1B.2 + 21 original T1B.1). TC-008 act() warning harmless."
+    },
+    {
+      "id": "eval-doc-006",
+      "name": "T1B.3 占位续写渲染 (simulate)",
+      "type": "eval-doc",
+      "status": "pending-review",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T1B.3-placeholder-streaming.md",
+      "created_at": "2026-04-16T10:45:00Z",
+      "updated_at": "2026-04-16T10:45:00Z",
+      "related_ids": []
     }
   ]
 }
