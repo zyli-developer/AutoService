@@ -1,0 +1,76 @@
+# Intent Classification Configuration
+# T1A.5 产出 | 2026-04-16
+# 5 类意图 + 4 阶段 timeout + 路由目标
+
+intents:
+  product_inquiry:
+    description: "产品/服务咨询、功能问题、使用方法"
+    keywords: ["怎么用", "功能", "支持", "how to", "feature", "support", "价格", "price"]
+    route_to: customer
+    model_tier: slow    # 需要知识库检索
+    priority: normal
+
+  complaint:
+    description: "投诉、不满、问题报告、退款"
+    keywords: ["投诉", "不满", "退款", "refund", "complaint", "问题", "bug", "坏了"]
+    route_to: customer
+    model_tier: slow    # 需要理解上下文 + 安抚
+    priority: high      # 投诉优先处理
+
+  purchase_intent:
+    description: "购买意向、报价、合作、试用"
+    keywords: ["买", "购买", "价格", "报价", "合作", "试用", "buy", "pricing", "demo", "trial"]
+    route_to: lead
+    model_tier: slow    # 需要理解需求
+    priority: high      # 商机优先
+
+  language_barrier:
+    description: "语言不通、需要翻译"
+    keywords: []        # 主要靠语言检测，非关键词
+    route_to: translate
+    model_tier: fast    # 翻译用快模型
+    priority: high
+
+  general_question:
+    description: "闲聊、通用问题、无法归类"
+    keywords: []        # 兜底类别
+    route_to: customer
+    model_tier: fast    # 简单问题用快模型
+    priority: normal
+
+# 模型层级配置
+model_tiers:
+  fast:
+    model: haiku
+    target_latency_ms: 1000
+    use_cases: ["意图分类", "占位消息", "简单问答", "翻译"]
+  slow:
+    model: sonnet
+    target_latency_ms: 15000
+    use_cases: ["知识库检索", "复杂推理", "线索分析", "投诉处理"]
+
+# 4 阶段 timeout（对话生命周期内的超时策略）
+timeouts:
+  stage_1_classify:
+    description: "意图分类阶段"
+    timeout_ms: 2000
+    on_timeout: "route_to_customer_default"
+  stage_2_placeholder:
+    description: "占位消息生成"
+    timeout_ms: 3000
+    on_timeout: "send_generic_placeholder"
+  stage_3_full_response:
+    description: "完整回复生成"
+    timeout_ms: 30000
+    on_timeout: "send_apology_and_escalate"
+  stage_4_followup:
+    description: "后续追问响应"
+    timeout_ms: 15000
+    on_timeout: "send_thinking_indicator"
+
+# 信心阈值
+confidence:
+  high: 0.8       # 直接路由
+  medium: 0.6     # 路由但通知 operator
+  low: 0.3        # 路由到 customer + 附摘要
+  uncertain: 0.0  # 人工介入
