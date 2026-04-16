@@ -68,6 +68,30 @@
       "related_ids": ["test-plan-001", "eval-doc-001"]
     },
     {
+      "id": "eval-doc-003",
+      "name": "T0.6 ws-client missing client_hello handshake (verify)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": ["issue-001"],
+      "path": ".artifacts/eval-docs/eval-T0.6-ws-client-missing-handshake.md",
+      "created_at": "2026-04-16T00:45:00Z",
+      "updated_at": "2026-04-16T00:45:00Z",
+      "related_ids": ["e2e-report-002"]
+    },
+    {
+      "id": "issue-001",
+      "name": "Issue #30 · T0.6 ws-client missing client_hello",
+      "type": "issue",
+      "status": "open",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/issues/issue-T0.6-ws-client-handshake.md",
+      "created_at": "2026-04-16T00:50:00Z",
+      "updated_at": "2026-04-16T00:50:00Z",
+      "related_ids": ["eval-doc-003"]
+    },
+    {
       "id": "eval-doc-002",
       "name": "T0.5 WS gateway skeleton (simulate)",
       "type": "eval-doc",
