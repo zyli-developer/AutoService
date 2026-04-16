@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@autoservice/design-system": "workspace:*",
     "@autoservice/i18n": "workspace:*",
     "@autoservice/ws-client": "workspace:*",
     "@radix-ui/react-dialog": "^1.0.5",

@@ -9,16 +9,12 @@ interface ConnectionBannerProps {
 export function ConnectionBanner({ status, isReplaying = false, replayCount = 0 }: ConnectionBannerProps) {
   const { t } = useTranslation();
 
-  // Replaying takes priority over connection status
   if (isReplaying) {
     const replayText = replayCount > 0
       ? t('connection.replaying', { count: replayCount })
       : t('connection.replaying_no_count');
     return (
-      <div
-        data-testid="connection-banner"
-        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500"
-      >
+      <div data-testid="connection-banner" className="web-connection-banner replaying">
         {replayText}
       </div>
     );
@@ -26,24 +22,15 @@ export function ConnectionBanner({ status, isReplaying = false, replayCount = 0 
 
   if (status === 'connecting') {
     return (
-      <div
-        data-testid="connection-banner"
-        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500"
-      >
-        <>
-          <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          {t('connection.reconnecting')}
-        </>
+      <div data-testid="connection-banner" className="web-connection-banner connecting">
+        {t('connection.reconnecting')}
       </div>
     );
   }
 
   if (status === 'closed') {
     return (
-      <div
-        data-testid="connection-banner"
-        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-500"
-      >
+      <div data-testid="connection-banner" className="web-connection-banner closed">
         {t('connection.lost')}
       </div>
     );

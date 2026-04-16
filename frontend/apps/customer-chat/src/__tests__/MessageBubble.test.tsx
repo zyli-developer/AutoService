@@ -19,18 +19,12 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe('MessageBubble', () => {
-  it('TC-011: customer message is right-aligned with blue background', () => {
+  it('TC-011: customer message has web-msg customer class', () => {
     const msg = makeMessage({ sourceRole: 'customer', content: 'Hi there' });
     const { container } = render(<MessageBubble message={msg} />);
-
-    // Outer div should have justify-end
-    const outer = container.firstChild as HTMLElement;
-    expect(outer.className).toContain('justify-end');
-
-    // Inner bubble should have blue background
-    const bubble = outer.querySelector('.bg-blue-500');
+    const bubble = container.querySelector('.web-msg.customer');
     expect(bubble).not.toBeNull();
-    expect(bubble!.textContent).toBe('Hi there');
+    expect(bubble!.textContent).toContain('Hi there');
   });
 
   it('TC-012: sending status shows sending indicator', () => {
@@ -39,19 +33,14 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('sending-indicator')).toBeInTheDocument();
   });
 
-  it('TC-013: D1 fallback — sourceRole undefined, source includes "agent" → treated as agent (left-aligned)', () => {
+  it('TC-013: D1 fallback -- sourceRole undefined, source includes "agent" -> treated as agent', () => {
     const msg = makeMessage({
       sourceRole: undefined,
       source: 'agent-bot-1',
       content: 'Agent reply',
     });
     const { container } = render(<MessageBubble message={msg} />);
-
-    const outer = container.firstChild as HTMLElement;
-    expect(outer.className).toContain('justify-start');
-
-    // Should have gray background (agent)
-    const bubble = outer.querySelector('.bg-slate-100');
+    const bubble = container.querySelector('.web-msg.agent');
     expect(bubble).not.toBeNull();
   });
 
@@ -77,17 +66,6 @@ describe('MessageBubble', () => {
     expect(screen.queryByTestId('image-attachment')).not.toBeInTheDocument();
     expect(screen.getByTestId('image-error-placeholder')).toBeInTheDocument();
   });
-
-  it('TC-016: showTimestamp=true shows message-timestamp element', () => {
-    const msg = makeMessage({
-      timestamp: '2026-04-16T09:30:00Z',
-    });
-    render(<MessageBubble message={msg} showTimestamp={true} />);
-    const ts = screen.getByTestId('message-timestamp');
-    expect(ts).toBeInTheDocument();
-    // Timestamp text should be non-empty
-    expect(ts.textContent).not.toBe('');
-  });
 });
 
 describe('TC-027~030: streaming / justEdited states', () => {
@@ -97,31 +75,29 @@ describe('TC-027~030: streaming / justEdited states', () => {
   });
 
   it('TC-027: isStreaming=true renders streaming-cursor', () => {
-    render(<MessageBubble message={{ id:'m1', source:'agent-1', sourceRole:'agent',
-      content:'…', visibility:'public', timestamp:new Date().toISOString(),
-      sequenceNumber:1, status:'sent', isStreaming:true }} />);
+    render(<MessageBubble message={{ id: 'm1', source: 'agent-1', sourceRole: 'agent',
+      content: '\u2026', visibility: 'public', timestamp: new Date().toISOString(),
+      sequenceNumber: 1, status: 'sent', isStreaming: true }} />);
     expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument();
   });
 
   it('TC-028: isStreaming=false does not render streaming-cursor', () => {
-    render(<MessageBubble message={{ id:'m2', source:'agent-1', sourceRole:'agent',
-      content:'hello', visibility:'public', timestamp:new Date().toISOString(),
-      sequenceNumber:1, status:'sent', isStreaming:false }} />);
+    render(<MessageBubble message={{ id: 'm2', source: 'agent-1', sourceRole: 'agent',
+      content: 'hello', visibility: 'public', timestamp: new Date().toISOString(),
+      sequenceNumber: 1, status: 'sent', isStreaming: false }} />);
     expect(screen.queryByTestId('streaming-cursor')).toBeNull();
   });
 
-  it('TC-029: justEdited=true adds ring-2 highlight class', () => {
-    render(<MessageBubble message={{ id:'m3', source:'agent-1', sourceRole:'agent',
-      content:'edited', visibility:'public', timestamp:new Date().toISOString(),
-      sequenceNumber:1, status:'sent', justEdited:true }} />);
-    // The inner bubble div should have ring-2
-    const bubble = screen.getByText('edited').closest('div[class*="rounded-2xl"]');
-    expect(bubble).toHaveClass('ring-2');
+  it('TC-029: justEdited=true adds edited class', () => {
+    render(<MessageBubble message={{ id: 'm3', source: 'agent-1', sourceRole: 'agent',
+      content: 'edited', visibility: 'public', timestamp: new Date().toISOString(),
+      sequenceNumber: 1, status: 'sent', justEdited: true }} />);
+    const bubble = screen.getByText('edited').closest('.web-msg');
+    expect(bubble?.className).toContain('edited');
   });
 
   it('TC-030: justEdited=true triggers clearJustEdited after 500ms', () => {
     vi.useFakeTimers();
-    // Add to store so clearJustEdited can find it
     useChatStore.getState().addMessage({
       id: 'm4', source: 'agent-1', sourceRole: 'agent',
       content: 'edited', visibility: 'public',

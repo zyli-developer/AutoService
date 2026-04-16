@@ -1,25 +1,23 @@
 import { useState, useEffect } from 'react';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
-import { SystemMessage } from './SystemMessage';
-import { formatTimestamp } from '../utils/formatTimestamp';
 
-interface MessageBubbleProps {
-  message: ChatMessage;
-  showTimestamp?: boolean;
-}
-
-function resolveRole(message: ChatMessage): 'customer' | 'agent' | 'operator' | 'system' {
-  if (message.sourceRole) return message.sourceRole === undefined ? 'agent' : message.sourceRole;
+function resolveRole(message: ChatMessage): 'customer' | 'agent' | 'system' {
+  if (message.visibility === 'system') return 'system';
+  if (message.sourceRole === 'system') return 'system';
+  if (message.sourceRole === 'customer') return 'customer';
+  if (message.sourceRole === 'agent' || message.sourceRole === 'operator') return 'agent';
   // D1 fallback: check source string
-  if (message.source.includes('agent')) return 'agent';
-  if (message.source.includes('operator')) return 'operator';
   if (message.source.includes('customer')) return 'customer';
+  if (message.source.includes('agent') || message.source.includes('operator')) return 'agent';
   return 'agent';
 }
 
-export function MessageBubble({ message, showTimestamp = false }: MessageBubbleProps) {
+export function MessageBubble({ message }: { message: ChatMessage }) {
   const [imgError, setImgError] = useState(false);
+  const role = resolveRole(message);
+  const attachmentUrl = message.metadata?.attachment_url as string | undefined;
+  const isImage = !!attachmentUrl && !imgError;
 
   useEffect(() => {
     if (!message.justEdited) return;
@@ -29,87 +27,52 @@ export function MessageBubble({ message, showTimestamp = false }: MessageBubbleP
     return () => clearTimeout(timer);
   }, [message.justEdited, message.id]);
 
-  if (message.visibility === 'system') {
-    return <SystemMessage content={message.content} />;
-  }
-
-  const role = resolveRole(message);
-
-  if (role === 'system') {
-    return <SystemMessage content={message.content} />;
-  }
-
-  const isCustomer = role === 'customer';
-  const attachmentUrl = message.metadata?.attachment_url as string | undefined;
-  const isImage = !!attachmentUrl && !imgError;
+  const statusSuffix =
+    message.status === 'sending' ? ' sending' :
+    message.status === 'failed' ? ' failed' : '';
+  const editedSuffix = message.justEdited ? ' edited' : '';
 
   return (
-    <div className={`flex px-4 py-0.5 ${isCustomer ? 'justify-end' : 'justify-start'}`}>
-      <div className="flex flex-col items-end gap-0.5 max-w-[75%]">
-        <div
-          className={`
-            relative rounded-2xl px-4 py-2 text-sm
-            ${isCustomer
-              ? 'bg-blue-500 text-white rounded-br-sm'
-              : 'bg-slate-100 text-slate-800 rounded-bl-sm'
-            }
-            ${message.status === 'sending' ? 'opacity-60' : ''}
-            ${message.justEdited ? 'ring-2 ring-blue-300' : ''}
-          `}
-        >
-          {attachmentUrl ? (
-            imgError ? (
-              <div
-                data-testid="image-error-placeholder"
-                className="w-48 h-32 bg-slate-200 rounded flex items-center justify-center text-slate-400 text-xs"
-              >
-                Image unavailable
-              </div>
-            ) : (
-              <img
-                data-testid="image-attachment"
-                src={attachmentUrl}
-                alt="image attachment"
-                className="max-w-[240px] rounded-lg"
-                loading="lazy"
-                onError={() => setImgError(true)}
-              />
-            )
-          ) : (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
-          )}
-          {message.status === 'sending' && (
-            <span
-              data-testid="sending-indicator"
-              className="absolute -bottom-4 right-0 text-xs text-slate-400"
-            >
-              ...
-            </span>
-          )}
-          {message.status === 'failed' && (
-            <span
-              data-testid="failed-indicator"
-              className="absolute -bottom-4 right-0 text-xs text-red-500 font-bold"
-            >
-              !
-            </span>
-          )}
-          {message.isStreaming && (
-            <span
-              data-testid="streaming-cursor"
-              className="inline-block w-0.5 h-4 bg-current ml-0.5 animate-pulse align-middle"
-            />
-          )}
+    <div
+      className={`web-msg ${role}${statusSuffix}${editedSuffix}`}
+      data-testid={`msg-${role}`}
+    >
+      {isImage ? (
+        <img
+          data-testid="image-attachment"
+          src={attachmentUrl}
+          alt="image attachment"
+          style={{ maxWidth: 200, borderRadius: 8 }}
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
+      ) : attachmentUrl && imgError ? (
+        <div data-testid="image-error-placeholder" style={{ color: 'var(--silver)', fontSize: 11 }}>
+          Image unavailable
         </div>
-        {showTimestamp && (
-          <span
-            data-testid="message-timestamp"
-            className="text-[10px] text-slate-400 px-1"
-          >
-            {formatTimestamp(message.timestamp)}
-          </span>
-        )}
-      </div>
+      ) : (
+        <span>{message.content}</span>
+      )}
+      {message.status === 'sending' && (
+        <span data-testid="sending-indicator" style={{ fontSize: 10, opacity: 0.6 }}> ...</span>
+      )}
+      {message.status === 'failed' && (
+        <span data-testid="failed-indicator" style={{ fontSize: 10, color: 'var(--p)', fontWeight: 700 }}> !</span>
+      )}
+      {message.isStreaming && (
+        <span
+          data-testid="streaming-cursor"
+          style={{
+            display: 'inline-block',
+            width: 2,
+            height: 14,
+            background: 'currentColor',
+            marginLeft: 2,
+            verticalAlign: 'middle',
+            animation: 'pulse 1s infinite',
+          }}
+        />
+      )}
     </div>
   );
 }

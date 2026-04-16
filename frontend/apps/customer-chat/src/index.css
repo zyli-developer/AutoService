@@ -1,25 +1,115 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import '@autoservice/design-system';
 
-html, body, #root { height: 100%; }
-body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+html, body, #root { height: 100%; margin: 0; }
 
 /* Custom scrollbar for message list */
-.overflow-y-auto::-webkit-scrollbar {
+.web-modal-body::-webkit-scrollbar {
   width: 4px;
 }
 
-.overflow-y-auto::-webkit-scrollbar-track {
+.web-modal-body::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.overflow-y-auto::-webkit-scrollbar-thumb {
+.web-modal-body::-webkit-scrollbar-thumb {
   background-color: rgb(203 213 225 / 0.8);
   border-radius: 2px;
 }
 
-/* Smooth scroll behavior */
-[data-testid="message-list"] {
-  scroll-behavior: smooth;
+/* Chat input within modal */
+.web-modal-input textarea {
+  width: 100%;
+  border: none;
+  background: var(--oat-l);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--charcoal);
+  font-family: var(--font-sans);
+  resize: none;
+  outline: none;
+}
+
+.web-modal-input textarea::placeholder {
+  color: var(--silver);
+}
+
+.web-modal-input textarea:disabled {
+  opacity: 0.5;
+}
+
+/* Send button within modal */
+.web-modal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.web-modal-input-row button {
+  flex-shrink: 0;
+  border: none;
+  background: var(--m800);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.web-modal-input-row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Typing indicator */
+.web-typing {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 14px;
+  align-self: flex-start;
+}
+
+.web-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--silver);
+  animation: bounce 1s infinite;
+}
+
+.web-typing span:nth-child(2) { animation-delay: 0.15s; }
+.web-typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Connection banner */
+.web-connection-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+}
+
+.web-connection-banner.connecting {
+  background: var(--l500);
+}
+
+.web-connection-banner.closed {
+  background: var(--p);
+}
+
+.web-connection-banner.replaying {
+  background: var(--l500);
 }
