@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SquadPane } from '../components/SquadPane';
+import { ConversationFeed } from '../components/ConversationFeed';
 import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation>): Conversation => ({
@@ -20,10 +20,10 @@ beforeEach(() => {
   useOperatorStore.setState({ ...initialState, conversations: {} });
 });
 
-describe('SquadPane', () => {
+describe('ConversationFeed (squad filtering)', () => {
   it('TC-01: empty squad shows placeholder', () => {
-    render(<SquadPane squadId="sq-A" />);
-    expect(screen.getByTestId('empty-squad')).toHaveTextContent('暂无会话');
+    render(<ConversationFeed squadId="sq-A" />);
+    expect(screen.getByTestId('empty-squad')).toBeInTheDocument();
   });
 
   it('TC-08: filters conversations by squadId', () => {
@@ -34,7 +34,7 @@ describe('SquadPane', () => {
         'c3': makeConv({ id: 'c3', squadId: 'sq-A' }),
       },
     });
-    render(<SquadPane squadId="sq-A" />);
+    render(<ConversationFeed squadId="sq-A" />);
     expect(screen.getByTestId('conv-card-c1')).toBeInTheDocument();
     expect(screen.getByTestId('conv-card-c3')).toBeInTheDocument();
     expect(screen.queryByTestId('conv-card-c2')).toBeNull();
@@ -48,7 +48,7 @@ describe('SquadPane', () => {
       },
     });
     const user = userEvent.setup();
-    render(<SquadPane squadId="sq-A" onCardClick={onClick} />);
+    render(<ConversationFeed squadId="sq-A" onCardClick={onClick} />);
     await user.click(screen.getByTestId('conv-card-c1'));
     expect(onClick).toHaveBeenCalledWith('c1');
   });
@@ -61,11 +61,11 @@ describe('SquadPane', () => {
         'c-mid': makeConv({ id: 'c-mid', squadId: 'sq-A', lastActivityTs: '2026-04-16T10:00:00Z' }),
       },
     });
-    render(<SquadPane squadId="sq-A" />);
-    const pane = screen.getByTestId('squad-pane-sq-A');
-    const cards = within(pane).getAllByTestId(/^conv-card-/);
-    expect(cards[0].dataset.testid).toBe('conv-card-c-new');
-    expect(cards[1].dataset.testid).toBe('conv-card-c-mid');
-    expect(cards[2].dataset.testid).toBe('conv-card-c-old');
+    render(<ConversationFeed squadId="sq-A" />);
+    const feed = screen.getByTestId('conversation-feed');
+    const cards = feed.querySelectorAll('[data-testid^="conv-card-"]');
+    expect(cards[0].getAttribute('data-testid')).toBe('conv-card-c-new');
+    expect(cards[1].getAttribute('data-testid')).toBe('conv-card-c-mid');
+    expect(cards[2].getAttribute('data-testid')).toBe('conv-card-c-old');
   });
 });

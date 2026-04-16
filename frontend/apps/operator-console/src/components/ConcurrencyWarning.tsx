@@ -1,4 +1,3 @@
-import { Alert } from 'antd';
 import { useOperatorStore } from '../store/operatorStore';
 
 export function ConcurrencyWarning() {
@@ -12,11 +11,12 @@ export function ConcurrencyWarning() {
   if (count < concurrencyLimit) return null;
 
   return (
-    <Alert
+    <div
       data-testid="concurrency-warning"
-      type="warning"
-      message={`并发会话已达上限 (${count}/${concurrencyLimit})`}
-      showIcon
-    />
+      className="im-handoff"
+      style={{ margin: '8px 20px' }}
+    >
+      {`\u5E76\u53D1\u4F1A\u8BDD\u5DF2\u8FBE\u4E0A\u9650 (${count}/${concurrencyLimit})`}
+    </div>
   );
 }
