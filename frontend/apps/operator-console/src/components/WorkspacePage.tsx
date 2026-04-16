@@ -7,10 +7,7 @@ import { ConversationFeed } from './ConversationFeed';
 import { CopilotView } from './CopilotView';
 import { IMInput } from './IMInput';
 
-const WS_URL =
-  typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL
-    ? (import.meta as any).env.VITE_WS_URL
-    : 'ws://localhost:9999/ws/operator';
+const WS_URL = `ws://${window.location.hostname}:8000/ws/operator`;
 
 export function WorkspacePage() {
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);

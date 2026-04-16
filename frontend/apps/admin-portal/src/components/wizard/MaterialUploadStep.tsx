@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAdminStore } from '../../store/adminStore';
 import type { GenerationResult } from '../../store/adminStore';
+import { postForm } from '../../api';
 
 export const INDUSTRY_OPTIONS = [
   { label: '电商', value: 'ecommerce' }, { label: 'SaaS', value: 'saas' },
@@ -9,16 +10,6 @@ export const INDUSTRY_OPTIONS = [
 ];
 
 const AGENT_ROLES = ['customer', 'translate', 'lead', 'triage'] as const;
-
-function mockGenerateSouls(tenantId: string): Promise<GenerationResult> {
-  return new Promise((resolve) => setTimeout(() => {
-    const souls: GenerationResult['souls'] = {};
-    for (const role of AGENT_ROLES) {
-      souls[role] = { role, kbHitCount: Math.floor(Math.random() * 10) + 3, mode: 'ai', warnings: [] };
-    }
-    resolve({ tenantId, souls, totalKbHits: Object.values(souls).reduce((s, v) => s + v.kbHitCount, 0), mode: 'ai', warnings: [] });
-  }, 1500));
-}
 
 interface Props { tenantId: string; onGenerated?: () => void; }
 
@@ -33,10 +24,25 @@ export function MaterialUploadStep({ tenantId, onGenerated }: Props) {
 
   const handleGenerate = async () => {
     setGenerating(true);
-    const result = await mockGenerateSouls(tenantId);
-    setGenerationResult(result);
-    setGenerating(false);
-    onGenerated?.();
+    try {
+      const formData = new FormData();
+      formData.append('brand_name', brandName || tenantId);
+      formData.append('industry', industry);
+      formData.append('website_url', url);
+      for (const f of files) formData.append('files', f);
+      const resp = await postForm<{ tenant_id: string; souls: Record<string, unknown>; files_parsed: number }>('/api/onboard/upload', formData);
+      const souls: GenerationResult['souls'] = {};
+      for (const role of AGENT_ROLES) {
+        const s = (resp.souls as Record<string, any>)?.[role];
+        souls[role] = { role, kbHitCount: s?.kb_hit_count ?? 0, mode: s?.mode ?? 'dry_run', warnings: s?.warnings ?? [] };
+      }
+      setGenerationResult({ tenantId: resp.tenant_id, souls, totalKbHits: Object.values(souls).reduce((sum, v) => sum + v.kbHitCount, 0), mode: 'api', warnings: [] });
+      onGenerated?.();
+    } catch (e) {
+      console.error('Upload failed:', e);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (

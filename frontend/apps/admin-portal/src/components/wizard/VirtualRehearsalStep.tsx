@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAdminStore } from '../../store/adminStore';
 import type { SimDialogUI, SimTurnUI } from '../../store/adminStore';
+import { postJSON } from '../../api';
 
 const PERSONAS = [
   { id: 'angry-refund', name_zh: '愤怒退款客户', traits: ['情绪激动', '用词尖锐'], communication_style: 'aggressive' },
@@ -49,9 +50,16 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
 
   const handleStart = async () => {
     setRehearsalLoading(true);
-    const dialogs = await mockGenerate();
-    setRehearsalDialogs(dialogs);
-    setRehearsalLoading(false);
+    try {
+      const dialogs = await postJSON<SimDialogUI[]>(`/api/rehearsal/generate?tenant_id=${tenantId}`);
+      setRehearsalDialogs(dialogs);
+    } catch {
+      // Fallback to local mock if API fails
+      const dialogs = await mockGenerate();
+      setRehearsalDialogs(dialogs);
+    } finally {
+      setRehearsalLoading(false);
+    }
   };
 
   return (

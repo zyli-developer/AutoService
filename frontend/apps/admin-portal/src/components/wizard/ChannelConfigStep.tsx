@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { postForm } from '../../api';
 
 const channelOptions = [
   { label: 'Web 在线客服', value: 'web', disabled: false },
@@ -19,8 +20,15 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
     );
   };
 
-  const handleGenerate = () => {
-    setGeneratedUrl(`https://${tenantId}.autoservice.ai/chat`);
+  const handleGenerate = async () => {
+    try {
+      const form = new FormData();
+      form.append('tenant_id', tenantId);
+      const resp = await postForm<{ sandbox_url: string }>('/api/onboard/activate', form);
+      setGeneratedUrl(resp.sandbox_url);
+    } catch {
+      setGeneratedUrl(`https://${tenantId}.sandbox.localhost`);
+    }
   };
 
   return (
