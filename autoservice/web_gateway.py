@@ -1,7 +1,7 @@
-"""FastAPI WebSocket gateway app factory (T0.5 skeleton).
+"""FastAPI WebSocket gateway app factory.
 
 Launch:
-    uvicorn autoservice.web_gateway:app
+    uvicorn autoservice.web_gateway:create_app --factory
 
 Test:
     from autoservice.web_gateway import create_app
@@ -11,7 +11,9 @@ Test:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -34,24 +36,42 @@ from autoservice.gateway.message_router import dispatch
 logger = logging.getLogger("autoservice.gateway")
 
 _CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
+    f"http://localhost:{p}" for p in range(5173, 5180)
 ]
 
 _CLOSE_CODE_VERSION = 4040
 
+# Global WebSocket connection registry: session_id → WebSocket
+_ws_connections: dict[str, WebSocket] = {}
+
+# Global CCPool reference (lazily initialized)
+_pool = None
+_pool_lock = asyncio.Lock()
+
+
+async def _get_pool():
+    """Lazy-init the CCPool singleton. Returns None if pool_mode is off."""
+    global _pool
+    if _pool is not None:
+        return _pool
+    if not os.environ.get("POOL_MODE", "1") == "1":
+        return None
+    async with _pool_lock:
+        if _pool is not None:
+            return _pool
+        try:
+            from autoservice.cc_pool import get_pool
+            _pool = await get_pool()
+            logger.info("CCPool started for web gateway")
+            return _pool
+        except Exception as exc:
+            logger.warning("CCPool init failed, running without AI agent: %s", exc)
+            return None
+
 
 def create_app(engine: ConversationEngine | None = None) -> FastAPI:
-    """Build the FastAPI app with 3 WS endpoints + CORS.
-
-    Args:
-        engine: ConversationEngine implementation. Defaults to LocalEngine().
-
-    Returns:
-        FastAPI app with /ws/customer, /ws/operator, /ws/admin routes.
-    """
-    app = FastAPI(title="autoservice-gateway", version="0.5.0")
+    """Build the FastAPI app with 3 WS endpoints + CORS."""
+    app = FastAPI(title="autoservice-gateway", version="0.6.0")
     app.state.engine = engine or LocalEngine()
 
     app.add_middleware(
@@ -61,6 +81,10 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Mount onboarding REST API
+    from autoservice.onboarding import onboard_router
+    app.include_router(onboard_router)
 
     for role in ("customer", "operator", "admin"):
         app.add_api_websocket_route(
@@ -123,6 +147,8 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         return
 
     session_id = generate_session_id()
+    _ws_connections[session_id] = ws
+
     await ws.send_json(
         build_frame(
             "server_hello",
@@ -135,15 +161,19 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
     try:
         while True:
             raw = await ws.receive_json()
-            frames = await _process_frame(raw, viewer_role=viewer_role, engine=engine)
+            frames = await _process_frame(
+                raw, viewer_role=viewer_role, engine=engine, ws=ws,
+            )
             for frame in frames:
                 await ws.send_json(frame)
     except WebSocketDisconnect:
         logger.info("ws %s disconnected (session=%s)", viewer_role, session_id)
+    finally:
+        _ws_connections.pop(session_id, None)
 
 
 async def _process_frame(
-    raw: Any, *, viewer_role: str, engine: ConversationEngine
+    raw: Any, *, viewer_role: str, engine: ConversationEngine, ws: WebSocket,
 ) -> list[dict[str, Any]]:
     env, err_details = parse_envelope(raw)
     if env is None:
@@ -171,7 +201,7 @@ async def _process_frame(
             )
         ]
 
-    return await dispatch(env, viewer_role=viewer_role, engine=engine)
+    return await dispatch(env, viewer_role=viewer_role, engine=engine, ws=ws)
 
 
 # Module-level app for `uvicorn autoservice.web_gateway:app`

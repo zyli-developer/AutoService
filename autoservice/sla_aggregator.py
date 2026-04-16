@@ -28,6 +28,9 @@ class MetricType(str, Enum):
     ACCEPT_MS = "accept_ms"
     CSAT_SCORE = "csat_score"
     RESOLUTION_RATE = "resolution_rate"
+    DIGEST_RATE = "digest_rate"
+    COMPLAINT_RATE = "complaint_rate"
+    TTFB_MS = "ttfb_ms"
 
 
 class WindowSize(str, Enum):

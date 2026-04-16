@@ -6,7 +6,7 @@
 **状态图例**: ⬜ pending · 🟦 in_progress · 🟩 completed · ⚠️ blocked · 🟥 failed(需重做)
 **类型图例**: 🟢 Green(AI 独立) · 🟡 Yellow(AI+人审) · 🔴 Red(人主导)
 
-**最后更新**: 2026-04-16 · **整体进度**: 32/75
+**最后更新**: 2026-04-16 · **整体进度**: 66/75 (88%) · ⚠️ 9 tasks blocked on zchat
 
 ## ⚡ AI 快车道时间表
 
@@ -116,9 +116,9 @@
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
 | T3B.1 | admin-portal SPA 骨架 | 🟢 | 🟩 | DevB | T0.6 | test-diff-015 |
-| T3B.2 | 向导 Step1 资料上传 | 🟢 | ⬜ | — | T3A.1 | — |
+| T3B.2 | 向导 Step1 资料上传 | 🟢 | 🟩 | DevB | T3A.1 | eval-T3B.2, plan-T3B.2, test-diff-021 |
 | T3B.3 | 向导 Step2 渠道配置 | 🟢 | 🟩 | DevB | T3B.1 | test-diff-016 |
-| T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | ⬜ | — | T3A.2 | — |
+| T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | 🟩 | DevB | T3A.2 | eval-T3B.4, plan-T3B.4, test-diff-022 |
 | T3B.5 | 向导 Step4 合规预检可视化 | 🟢 | 🟩 | DevB | T3A.7 | test-diff-017 |
 | T3B.6 | 运营仪表盘页 | 🟢 | 🟩 | DevB | T1A.8 | test-diff-018 |
 | T3B.7 | 通知中心 | 🟢 | 🟩 | DevB | T2A.1 | test-diff-019 |
@@ -150,9 +150,9 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T4B.1 | 提案审核页 | 🟢 | ⬜ | — | T4A.4 | — |
-| T4B.2 | 灰度进度可视化 | 🟢 | ⬜ | — | T4A.7 | — |
-| T4B.3 | 账单导出 UI | 🟢 | ⬜ | — | T4A.10 | — |
+| T4B.1 | 提案审核页 | 🟢 | 🟩 | DevB | T4A.4 | eval-T4B.1, test-diff-023 |
+| T4B.2 | 灰度进度可视化 | 🟢 | 🟩 | DevB | T4A.7 | test-diff-024 |
+| T4B.3 | 账单导出 UI | 🟢 | 🟩 | DevB | T4A.10 | test-diff-025 |
 
 **🤝 M4 联调**: Fri 14:00，30 min smoke test
 
@@ -164,24 +164,24 @@
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T5A.1 | 对齐 zchat Bridge API v0.3 | 🔴 | ⬜ | — | — | — |
-| T5A.2 | Bridge API Python SDK | 🟢 | ⬜ | — | T5A.1 | — |
-| T5A.3 | ZchatEngine 适配器 | 🟢 | ⬜ | — | T5A.2 | — |
-| T5A.4 | 4 plugin 双实现对齐 | 🟢 | ⬜ | — | T5A.3 | — |
-| T5A.5 | cc-pool key 迁移 | 🟡 | ⬜ | — | T5A.3 | — |
-| T5A.6 | 延迟监控埋点 | 🟢 | ⬜ | — | T5A.3 | — |
-| T5A.7 | LocalEngine vs ZchatEngine AB 测试 | 🟡 | ⬜ | — | T5A.6 | — |
-| T5A.8 | engine 配置切换 | 🟢 | ⬜ | — | T5A.7 | — |
+| T5A.1 | 对齐 zchat Bridge API v0.3 | 🔴 | ⚠️ | DevA | — | BLOCKED-BY: zchat 未就绪，走 B 方案 LocalEngine |
+| T5A.2 | Bridge API Python SDK | 🟢 | ⚠️ | — | T5A.1 | WAITING: T5A.1 |
+| T5A.3 | ZchatEngine 适配器 | 🟢 | ⚠️ | — | T5A.2 | WAITING: T5A.1 |
+| T5A.4 | 4 plugin 双实现对齐 | 🟢 | ⚠️ | — | T5A.3 | WAITING: T5A.1 |
+| T5A.5 | cc-pool key 迁移 | 🟡 | ⚠️ | — | T5A.3 | WAITING: T5A.1 |
+| T5A.6 | 延迟监控埋点 | 🟢 | ⚠️ | — | T5A.3 | WAITING: T5A.1 |
+| T5A.7 | LocalEngine vs ZchatEngine AB 测试 | 🟡 | ⚠️ | — | T5A.6 | WAITING: T5A.1 |
+| T5A.8 | engine 配置切换 | 🟢 | ⚠️ | — | T5A.7 | WAITING: T5A.1 |
 
 ### B 线
 
 | ID | 名称 | 类型 | 状态 | Owner | 依赖 | 关联 |
 |---|---|---|---|---|---|---|
-| T5B.1 | docker-compose 多租户模板 | 🟢 | ⬜ | — | — | — |
-| T5B.2 | 同主机部署约束落地 | 🔴 | ⬜ | — | — | — |
-| T5B.3 | 租户创建脚本 | 🟢 | ⬜ | — | T5B.1 | — |
-| T5B.4 | 端到端 E2E 自动化 | 🟢 | ⬜ | — | T5A.8 | — |
-| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | ⬜ | — | T1B.5 | — |
+| T5B.1 | docker-compose 多租户模板 | 🟢 | 🟩 | DevB | — | eval-T5B.1, plan-T5B.1, test-diff-020 |
+| T5B.2 | 同主机部署约束落地 | 🔴 | 🟩 | DevB | — | test-diff-028, docs/deploy/nfr4-colocation-policy.md |
+| T5B.3 | 租户创建脚本 | 🟢 | 🟩 | DevB | T5B.1 | test-diff-026 |
+| T5B.4 | 端到端 E2E 自动化 | 🟢 | ⚠️ | — | T5A.8 | WAITING: T5A.1 (zchat) |
+| T5B.5 | 浮窗 SDK npm 发布 | 🟢 | 🟩 | DevB | T1B.5 | test-diff-027 |
 
 **🤝 M5 联调**: Fri EOD，60 min（含 AB 测试 + 最终切换决策）
 
@@ -195,11 +195,11 @@
 |---|---|---|---|---|---|
 | P0 | 6 | 0 | 0 | 6 | 0 |
 | P1 | 17 | 0 | 0 | 17 | 0 |
-| P2 | 12 | 6 | 1 | 5 | 0 |
-| P3 | 14 | 8 | 2 | 4 | 0 |
-| P4 | 13 | 13 | 0 | 0 | 0 |
-| P5 | 13 | 13 | 0 | 0 | 0 |
-| **合计** | **75** | **40** | **3** | **32** | **0** |
+| P2 | 12 | 0 | 0 | 12 | 0 |
+| P3 | 14 | 0 | 0 | 14 | 0 |
+| P4 | 13 | 0 | 0 | 13 | 0 |
+| P5 | 13 | 0 | 0 | 4 | 9 |
+| **合计** | **75** | **0** | **0** | **66** | **9** |
 
 **按线**: A 线 43 / B 线 29 / 协作 3
 
