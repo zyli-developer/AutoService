@@ -141,10 +141,10 @@
 | T4A.4 | 提案生成 pipeline | 🟡 | 🟩 | DevA | T4A.1 | autoservice/proposal_pipeline.py |
 | T4A.5 | 晨起推送 | 🟢 | 🟩 | DevA | T4A.4 | autoservice/morning_push.py |
 | T4A.6 | canary.py 灰度路由 | 🟢 | 🟩 | DevA | T4A.4 | autoservice/canary.py |
-| T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | 🟦 | DevA | T4A.6,T2A.3 | — |
-| T4A.8 | /rollback 命令 | 🟢 | 🟦 | DevA | T4A.6 | — |
+| T4A.7 | 灰度 5 指标监测 + 自动回滚 | 🟢 | 🟩 | DevA | T4A.6,T2A.3 | autoservice/canary_monitor.py |
+| T4A.8 | /rollback 命令 | 🟢 | 🟩 | DevA | T4A.6 | autoservice/rollback_command.py |
 | T4A.9 | 三指标统计 | 🟢 | 🟩 | DevA | T1A.8 | autoservice/billing_metrics.py |
-| T4A.10 | 阶梯计费 billing.py | 🟢 | 🟩 | DevA | T4A.9 | autoservice/billing.py |
+| T4A.10 | 阶梯计费 billing.py | 🟢 | 🟩 | DevA | T4A.9 | eval-T4A.10, test-plan-T4A.10, autoservice/billing.py |
 
 ### B 线
 
