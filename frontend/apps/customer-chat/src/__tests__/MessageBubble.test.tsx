@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MessageBubble } from '../components/MessageBubble';
 import type { ChatMessage } from '../store/chatStore';
+import { useChatStore, initialState } from '../store/chatStore';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -86,5 +87,51 @@ describe('MessageBubble', () => {
     expect(ts).toBeInTheDocument();
     // Timestamp text should be non-empty
     expect(ts.textContent).not.toBe('');
+  });
+});
+
+describe('TC-027~030: streaming / justEdited states', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    useChatStore.setState(initialState);
+  });
+
+  it('TC-027: isStreaming=true renders streaming-cursor', () => {
+    render(<MessageBubble message={{ id:'m1', source:'agent-1', sourceRole:'agent',
+      content:'…', visibility:'public', timestamp:new Date().toISOString(),
+      sequenceNumber:1, status:'sent', isStreaming:true }} />);
+    expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument();
+  });
+
+  it('TC-028: isStreaming=false does not render streaming-cursor', () => {
+    render(<MessageBubble message={{ id:'m2', source:'agent-1', sourceRole:'agent',
+      content:'hello', visibility:'public', timestamp:new Date().toISOString(),
+      sequenceNumber:1, status:'sent', isStreaming:false }} />);
+    expect(screen.queryByTestId('streaming-cursor')).toBeNull();
+  });
+
+  it('TC-029: justEdited=true adds ring-2 highlight class', () => {
+    render(<MessageBubble message={{ id:'m3', source:'agent-1', sourceRole:'agent',
+      content:'edited', visibility:'public', timestamp:new Date().toISOString(),
+      sequenceNumber:1, status:'sent', justEdited:true }} />);
+    // The inner bubble div should have ring-2
+    const bubble = screen.getByText('edited').closest('div[class*="rounded-2xl"]');
+    expect(bubble).toHaveClass('ring-2');
+  });
+
+  it('TC-030: justEdited=true triggers clearJustEdited after 500ms', () => {
+    vi.useFakeTimers();
+    // Add to store so clearJustEdited can find it
+    useChatStore.getState().addMessage({
+      id: 'm4', source: 'agent-1', sourceRole: 'agent',
+      content: 'edited', visibility: 'public',
+      timestamp: new Date().toISOString(), sequenceNumber: 1,
+      status: 'sent', justEdited: true,
+    });
+    const msg = useChatStore.getState().messages[0];
+    render(<MessageBubble message={msg} />);
+    expect(useChatStore.getState().messages[0].justEdited).toBe(true);
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(useChatStore.getState().messages[0].justEdited).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ export function useWebSocket(
           if (msg) {
             const metadata = msg.metadata as Record<string, unknown> | undefined;
             const attachmentUrl = metadata?.attachment_url as string | undefined;
+            const isPlaceholder = (metadata?.is_placeholder as boolean) === true;
             useChatStore.getState().addMessage({
               id: msg.id as string,
               source: (msg.source as string) ?? '',
@@ -50,15 +51,16 @@ export function useWebSocket(
               status: 'sent',
               metadata: metadata,
               contentType: attachmentUrl ? 'image' : 'text',
+              isStreaming: isPlaceholder,
             });
             // Note: setAgentTyping(false) is handled inside addMessage action
           }
         } else if (frame.type === 'message_edited') {
           const p = frame.payload as Record<string, unknown>;
           const messageId = p.message_id as string;
-          const content = p.content as string;
-          if (messageId && content !== undefined) {
-            useChatStore.getState().updateMessage(messageId, content);
+          const newContent = p.new_content as string;   // ← was p.content (WRONG)
+          if (messageId && newContent !== undefined) {
+            useChatStore.getState().updateMessage(messageId, newContent);
           }
         } else if (frame.type === 'event') {
           const p = frame.payload as Record<string, unknown>;

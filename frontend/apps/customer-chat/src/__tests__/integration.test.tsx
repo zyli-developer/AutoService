@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FakeWSClient } from './fakeWSClient';
+// FakeWSClient type used in TC-034~038 helper functions
 import type { WSClientOptions } from '@autoservice/ws-client';
 import { useChatStore, initialState } from '../store/chatStore';
 
@@ -141,5 +142,93 @@ describe('Integration', () => {
     // Message should be in the store
     const { messages } = useChatStore.getState();
     expect(messages.some((m) => m.id === 'incoming-msg-1')).toBe(true);
+  });
+});
+
+describe('TC-034~038: placeholder → streaming flow', () => {
+  beforeEach(() => {
+    fakeInstance = null;
+    useChatStore.setState(initialState);
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  const pushPlaceholder = (fake: FakeWSClient) => fake.pushFrame({
+    v:1, type:'message', id:'f-ph', ts:new Date().toISOString(),
+    payload: {
+      conversation_id:'cv1',
+      message: { id:'ph-1', source:'agent-1', content:'正在查询…',
+        visibility:'public', sequence_number:1, timestamp:new Date().toISOString(),
+        metadata: { is_placeholder: true } },
+      source_display: { id:'agent-1', role:'agent', name:'Bot' },
+    },
+  });
+
+  const pushEdited = (fake: FakeWSClient) => fake.pushFrame({
+    v:1, type:'message_edited', id:'f-edit', ts:new Date().toISOString(),
+    payload: { message_id:'ph-1', new_content:'套餐价格是 199 元', sequence_number:2 },
+  });
+
+  it('TC-034: placeholder message shows streaming cursor', async () => {
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
+    await waitFor(() => expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument());
+    expect(screen.getByText('正在查询…')).toBeInTheDocument();
+  });
+
+  it('TC-035: message_edited replaces content in-place, cursor disappears', async () => {
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
+    await waitFor(() => expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument());
+
+    act(() => { if (fakeInstance) pushEdited(fakeInstance); });
+    await waitFor(() => expect(screen.queryByTestId('streaming-cursor')).toBeNull());
+    expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument();
+    expect(screen.queryByText('正在查询…')).toBeNull();
+    // Only ONE message bubble (not two)
+    expect(useChatStore.getState().messages).toHaveLength(1);
+  });
+
+  it('TC-036: after message_edited, ring-2 highlight is visible', async () => {
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
+    act(() => { if (fakeInstance) pushEdited(fakeInstance); });
+    await waitFor(() => expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument());
+    const bubble = screen.getByText('套餐价格是 199 元').closest('div[class*="rounded-2xl"]');
+    expect(bubble).toHaveClass('ring-2');
+  });
+
+  it('TC-037: 500ms later, ring-2 highlight disappears', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
+    act(() => { if (fakeInstance) pushEdited(fakeInstance); });
+    await waitFor(() => expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument());
+    act(() => { vi.advanceTimersByTime(500); });
+    const bubble = screen.getByText('套餐价格是 199 元').closest('div[class*="rounded-2xl"]');
+    expect(bubble).not.toHaveClass('ring-2');
+  });
+
+  it('TC-038: normal message without is_placeholder has no streaming cursor', async () => {
+    render(<App />);
+    act(() => { fakeInstance?.triggerOpen(); });
+    act(() => {
+      fakeInstance?.pushFrame({
+        v:1, type:'message', id:'f-n', ts:new Date().toISOString(),
+        payload: {
+          conversation_id:'cv1',
+          message: { id:'norm', source:'agent-1', content:'Hello!',
+            visibility:'public', sequence_number:1, timestamp:new Date().toISOString() },
+          source_display: { id:'agent-1', role:'agent' },
+        },
+      });
+    });
+    await waitFor(() => expect(screen.getByText('Hello!')).toBeInTheDocument());
+    expect(screen.queryByTestId('streaming-cursor')).toBeNull();
   });
 });

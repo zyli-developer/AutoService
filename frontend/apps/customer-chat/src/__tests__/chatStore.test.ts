@@ -93,4 +93,51 @@ describe('chatStore', () => {
 
     expect(useChatStore.getState().isAgentTyping).toBe(false);
   });
+
+  it('TC-023: updateMessage clears isStreaming and sets justEdited', () => {
+    useChatStore.getState().addMessage({
+      id: 'm-stream', source: 'agent-1', sourceRole: 'agent',
+      content: '占位中…', visibility: 'public',
+      timestamp: new Date().toISOString(), sequenceNumber: 1,
+      status: 'sent', isStreaming: true,
+    });
+    useChatStore.getState().updateMessage('m-stream', '真实内容');
+    const msg = useChatStore.getState().messages[0];
+    expect(msg.content).toBe('真实内容');
+    expect(msg.isStreaming).toBe(false);
+    expect(msg.justEdited).toBe(true);
+  });
+
+  it('TC-024: clearJustEdited sets justEdited to false', () => {
+    useChatStore.getState().addMessage({
+      id: 'm-edited', source: 'agent-1', sourceRole: 'agent',
+      content: 'done', visibility: 'public',
+      timestamp: new Date().toISOString(), sequenceNumber: 2,
+      status: 'sent', justEdited: true,
+    });
+    useChatStore.getState().clearJustEdited('m-edited');
+    expect(useChatStore.getState().messages[0].justEdited).toBe(false);
+  });
+
+  it('TC-025: clearJustEdited only affects target message', () => {
+    const base = { source:'agent-1', sourceRole:'agent' as const, content:'x',
+      visibility:'public' as const, timestamp: new Date().toISOString(),
+      sequenceNumber:1, status:'sent' as const, justEdited: true };
+    useChatStore.getState().addMessage({ id: 'ma', ...base });
+    useChatStore.getState().addMessage({ id: 'mb', ...base });
+    useChatStore.getState().clearJustEdited('ma');
+    const msgs = useChatStore.getState().messages;
+    expect(msgs.find(m => m.id === 'ma')?.justEdited).toBe(false);
+    expect(msgs.find(m => m.id === 'mb')?.justEdited).toBe(true);
+  });
+
+  it('TC-026: addMessage with isStreaming=true stores correctly', () => {
+    useChatStore.getState().addMessage({
+      id: 'ph1', source: 'agent-1', sourceRole: 'agent',
+      content: '…', visibility: 'public',
+      timestamp: new Date().toISOString(), sequenceNumber: 1,
+      status: 'sent', isStreaming: true,
+    });
+    expect(useChatStore.getState().messages[0].isStreaming).toBe(true);
+  });
 });

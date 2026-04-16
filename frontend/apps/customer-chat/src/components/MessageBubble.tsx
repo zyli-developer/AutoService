@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ChatMessage } from '../store/chatStore';
+import { useChatStore } from '../store/chatStore';
 import { SystemMessage } from './SystemMessage';
 import { formatTimestamp } from '../utils/formatTimestamp';
 
@@ -19,6 +20,14 @@ function resolveRole(message: ChatMessage): 'customer' | 'agent' | 'operator' | 
 
 export function MessageBubble({ message, showTimestamp = false }: MessageBubbleProps) {
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    if (!message.justEdited) return;
+    const timer = setTimeout(() => {
+      useChatStore.getState().clearJustEdited(message.id);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [message.justEdited, message.id]);
 
   if (message.visibility === 'system') {
     return <SystemMessage content={message.content} />;
@@ -45,6 +54,7 @@ export function MessageBubble({ message, showTimestamp = false }: MessageBubbleP
               : 'bg-slate-100 text-slate-800 rounded-bl-sm'
             }
             ${message.status === 'sending' ? 'opacity-60' : ''}
+            ${message.justEdited ? 'ring-2 ring-blue-300' : ''}
           `}
         >
           {attachmentUrl ? (
@@ -83,6 +93,12 @@ export function MessageBubble({ message, showTimestamp = false }: MessageBubbleP
             >
               !
             </span>
+          )}
+          {message.isStreaming && (
+            <span
+              data-testid="streaming-cursor"
+              className="inline-block w-0.5 h-4 bg-current ml-0.5 animate-pulse align-middle"
+            />
           )}
         </div>
         {showTimestamp && (

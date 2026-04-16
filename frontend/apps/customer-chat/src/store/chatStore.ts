@@ -17,6 +17,8 @@ export interface ChatMessage {
     [key: string]: unknown;
   };
   contentType?: 'text' | 'image';  // derived: 'image' if attachment_url exists
+  isStreaming?: boolean;   // true = placeholder awaiting message_edited
+  justEdited?: boolean;    // transient: true for 500ms after message_edited arrives
 }
 
 interface ChatState {
@@ -28,6 +30,7 @@ interface ChatState {
   // Actions
   addMessage: (msg: ChatMessage) => void;
   updateMessage: (messageId: string, content: string) => void;
+  clearJustEdited: (messageId: string) => void;
   confirmOptimistic: (clientMsgId: string, serverMsg: Partial<ChatMessage>) => void;
   setConnectionStatus: (status: ChatState['connectionStatus']) => void;
   setSessionId: (id: string) => void;
@@ -37,7 +40,7 @@ interface ChatState {
 
 export const initialState: Omit<
   ChatState,
-  'addMessage' | 'updateMessage' | 'confirmOptimistic' | 'setConnectionStatus' | 'setSessionId' | 'setConversationId' | 'setAgentTyping'
+  'addMessage' | 'updateMessage' | 'clearJustEdited' | 'confirmOptimistic' | 'setConnectionStatus' | 'setSessionId' | 'setConversationId' | 'setAgentTyping'
 > = {
   connectionStatus: 'idle',
   sessionId: null,
@@ -61,7 +64,16 @@ export const useChatStore = create<ChatState>()((set) => ({
   updateMessage: (messageId, content) =>
     set((state) => ({
       messages: state.messages.map((m) =>
-        m.id === messageId ? { ...m, content } : m,
+        m.id === messageId
+          ? { ...m, content, isStreaming: false, justEdited: true }
+          : m,
+      ),
+    })),
+
+  clearJustEdited: (messageId) =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === messageId ? { ...m, justEdited: false } : m,
       ),
     })),
 
