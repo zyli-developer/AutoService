@@ -234,6 +234,30 @@
       "created_at": "2026-04-16T16:00:00Z",
       "updated_at": "2026-04-16T16:00:00Z",
       "related_ids": ["eval-T3A.2"]
+    },
+    {
+      "id": "eval-T4A.10",
+      "name": "T4A.10 阶梯计费 billing.py (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T4A.10-tiered-billing.md",
+      "created_at": "2026-04-16T18:00:00Z",
+      "updated_at": "2026-04-16T18:00:00Z",
+      "related_ids": ["eval-T3A.3"]
+    },
+    {
+      "id": "test-plan-T4A.10",
+      "name": "T4A.10 阶梯计费 billing.py test-plan (12 cases)",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [],
+      "path": ".artifacts/test-plans/plan-T4A.10-tiered-billing.md",
+      "created_at": "2026-04-16T18:10:00Z",
+      "updated_at": "2026-04-16T18:10:00Z",
+      "related_ids": ["eval-T4A.10"]
     }
   ]
 }
