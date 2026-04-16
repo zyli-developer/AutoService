@@ -1,5 +1,7 @@
 import { Card, Tag, Typography } from 'antd';
 import { type Conversation, type CardStatus, deriveCardStatus } from '../store/operatorStore';
+import type { Envelope } from '@autoservice/ws-client';
+import { HijackButton } from './HijackButton';
 
 const STATUS_CONFIG: Record<CardStatus, { color: string; label: string }> = {
   idle: { color: 'default', label: '空闲' },
@@ -20,9 +22,10 @@ function shortId(id: string): string {
 interface ConversationCardProps {
   conversation: Conversation;
   onClick?: (conversationId: string) => void;
+  send?: (frame: Envelope) => void;
 }
 
-export function ConversationCard({ conversation, onClick }: ConversationCardProps) {
+export function ConversationCard({ conversation, onClick, send }: ConversationCardProps) {
   const status = deriveCardStatus(conversation);
   const cfg = STATUS_CONFIG[status];
 
@@ -59,6 +62,11 @@ export function ConversationCard({ conversation, onClick }: ConversationCardProp
           {conversation.lastActivityTs}
         </Typography.Text>
       </div>
+      {send && conversation.mode !== 'takeover' && conversation.state !== 'closed' && (
+        <div style={{ marginTop: 8, textAlign: 'right' }}>
+          <HijackButton conversationId={conversation.id} send={send} />
+        </div>
+      )}
     </Card>
   );
 }
