@@ -1,15 +1,21 @@
 import { parseEnvelope, type Envelope } from './envelope';
-import type { FeToBeType, BeToFeType } from './types';
+import type { FeToBeType, BeToFeType, ClientHelloPayload, ServerHelloPayload, ErrorPayload } from './types';
+import { ERROR_CODES } from './types';
 
 export interface WSClientOptions {
   url: string;
+  clientApp: string;
   protocolVersion?: number;
   heartbeatMs?: number;
   reconnectBaseMs?: number;
   reconnectMaxMs?: number;
   ackTimeoutMs?: number;
+  lastSeen?: string;
+  conversationId?: string;
+  operatorId?: string;
+  squads?: string[];
   onFrame?: (frame: Envelope) => void;
-  onOpen?: () => void;
+  onOpen?: (hello: ServerHelloPayload) => void;
   onClose?: (code: number, reason: string) => void;
   onError?: (err: unknown) => void;
 }
@@ -32,14 +38,22 @@ interface PendingAck {
 export class WSClient {
   private ws: WebSocket | null = null;
   private closedByUser = false;
+  private versionIncompatible = false;
+  private handshakeComplete = false;
   private reconnectAttempt = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pendingAcks = new Map<string, PendingAck>();
 
   constructor(private readonly opts: WSClientOptions) {}
 
+  get connected(): boolean {
+    return this.handshakeComplete;
+  }
+
   connect(): void {
     this.closedByUser = false;
+    this.versionIncompatible = false;
+    this.handshakeComplete = false;
     this.open();
   }
 
@@ -78,11 +92,11 @@ export class WSClient {
   private open(): void {
     const ws = new WebSocket(this.opts.url);
     this.ws = ws;
+    this.handshakeComplete = false;
 
     ws.addEventListener('open', () => {
       this.reconnectAttempt = 0;
-      this.startHeartbeat();
-      this.opts.onOpen?.();
+      this.sendClientHello();
     });
 
     ws.addEventListener('message', (ev) => {
@@ -99,20 +113,65 @@ export class WSClient {
         return;
       }
       const frame = result.frame;
+
+      // Handshake response handling (before general dispatch)
+      if (!this.handshakeComplete) {
+        if (frame.type === 'server_hello') {
+          this.handshakeComplete = true;
+          this.startHeartbeat();
+          this.opts.onOpen?.(frame.payload as ServerHelloPayload);
+          this.opts.onFrame?.(frame);
+          return;
+        }
+        if (frame.type === 'error') {
+          const payload = frame.payload as ErrorPayload;
+          if (payload.code === ERROR_CODES.VERSION_INCOMPATIBLE) {
+            this.versionIncompatible = true;
+            this.closedByUser = true; // prevent reconnect
+          }
+          this.opts.onError?.(payload);
+          this.opts.onFrame?.(frame);
+          return;
+        }
+      }
+
       this.handleAckIfAny(frame);
       this.opts.onFrame?.(frame);
     });
 
     ws.addEventListener('close', (ev) => {
       this.stopHeartbeat();
+      this.handshakeComplete = false;
       this.opts.onClose?.(ev.code, ev.reason);
       this.rejectAllPending(new Error(`ws_closed:${ev.code}`));
-      if (!this.closedByUser) this.scheduleReconnect();
+      if (!this.closedByUser && !this.versionIncompatible) {
+        this.scheduleReconnect();
+      }
     });
 
     ws.addEventListener('error', (err) => {
       this.opts.onError?.(err);
     });
+  }
+
+  private sendClientHello(): void {
+    const payload: ClientHelloPayload = {
+      protocol_version: this.opts.protocolVersion ?? 1,
+      client_app: this.opts.clientApp,
+    };
+    if (this.opts.lastSeen) payload.last_seen = this.opts.lastSeen;
+    if (this.opts.conversationId) payload.conversation_id = this.opts.conversationId;
+    if (this.opts.operatorId) payload.operator_id = this.opts.operatorId;
+    if (this.opts.squads) payload.squads = this.opts.squads;
+
+    const frame: Envelope = {
+      v: 1,
+      type: 'client_hello' as FeToBeType,
+      id: cryptoRandomId(),
+      ts: new Date().toISOString(),
+      payload,
+    };
+    this.ws?.send(JSON.stringify(frame));
   }
 
   private handleAckIfAny(frame: Envelope): void {
