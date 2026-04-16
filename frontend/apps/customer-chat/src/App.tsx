@@ -1,9 +1,19 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
 import { ChatFAB } from './components/ChatFAB';
 import { ChatModal } from './components/ChatModal';
+
+// Unique customer ID per browser tab (persisted in sessionStorage)
+function getCustomerId(): string {
+  let id = sessionStorage.getItem('customer_id');
+  if (!id) {
+    id = `cust_${crypto.randomUUID().slice(0, 8)}`;
+    sessionStorage.setItem('customer_id', id);
+  }
+  return id;
+}
 
 export function App() {
   const wsUrl = `ws://${window.location.hostname}:8000/ws/customer`;
@@ -11,6 +21,7 @@ export function App() {
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
   const [isOpen, setIsOpen] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customerId = useMemo(getCustomerId, []);
 
   const handleSend = async (content: string) => {
     const clientMsgId = crypto.randomUUID();
@@ -40,6 +51,7 @@ export function App() {
       const convId = useChatStore.getState().conversationId;
       await send('customer_message', {
         content,
+        source: customerId,
         client_msg_id: clientMsgId,
         ...(convId ? { conversation_id: convId } : {}),
       });

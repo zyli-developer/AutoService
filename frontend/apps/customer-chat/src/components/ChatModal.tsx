@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
 import { MessageBubble } from './MessageBubble';
@@ -28,7 +28,13 @@ export function ChatModal({
 }: ChatModalProps) {
   const isAgentTyping = useChatStore((s) => s.isAgentTyping);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   useAutoScroll(bodyRef as React.RefObject<HTMLElement>, [messages.length]);
+
+  // Force scroll to bottom on new messages
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length, isAgentTyping]);
 
   return (
     <div className="web-modal" data-testid="chat-modal">
@@ -56,6 +62,7 @@ export function ChatModal({
           <MessageBubble key={msg.id} message={msg} />
         ))}
         <TypingIndicator visible={isAgentTyping} />
+        <div ref={endRef} />
       </div>
       <div className="web-modal-input">
         <ChatInput onSend={onSend} disabled={disabled} />
