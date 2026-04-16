@@ -1,62 +1,65 @@
-import { Button, Layout, Tabs, Tag, Typography } from 'antd';
-import { LogoutOutlined } from '@ant-design/icons';
 import { useAdminStore } from '../store/adminStore';
-import { useWebSocket } from '../hooks/useWebSocket';
 import { WizardTab } from './WizardTab';
 import { DashboardTab } from './DashboardTab';
 import { NotificationsTab } from './NotificationsTab';
 import { ProposalsTab } from './ProposalsTab';
 import { BillingTab } from './BillingTab';
 
-const { Header, Content } = Layout;
+type TabKey = 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing';
 
-const WS_URL =
-  typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL
-    ? (import.meta as any).env.VITE_WS_URL
-    : 'ws://localhost:9999/ws/admin';
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'wizard', label: '向导' },
+  { key: 'dashboard', label: '仪表盘' },
+  { key: 'notifications', label: '通知' },
+  { key: 'proposals', label: '提案' },
+  { key: 'billing', label: '账单' },
+];
+
+const TAB_CONTENT: Record<TabKey, React.ReactNode> = {
+  wizard: <WizardTab />,
+  dashboard: <DashboardTab />,
+  notifications: <NotificationsTab />,
+  proposals: <ProposalsTab />,
+  billing: <BillingTab />,
+};
 
 export function AdminWorkspace() {
   const tenantId = useAdminStore((s) => s.tenantId);
-  const activeTab = useAdminStore((s) => s.activeTab);
+  const activeTab = useAdminStore((s) => s.activeTab) as TabKey;
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
   const logout = useAdminStore((s) => s.logout);
-  const { status } = useWebSocket(WS_URL, 'admin-portal');
 
   return (
-    <Layout style={{ minHeight: '100vh' }} data-testid="admin-workspace">
-      <Header style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Typography.Title level={4} style={{ color: '#fff', margin: 0, flex: 1 }}>
-          AutoService 管理后台
-        </Typography.Title>
-        <Tag color={status === 'open' ? 'green' : 'default'}>WS: {status}</Tag>
-        <Typography.Text style={{ color: '#ccc', marginRight: 8 }} data-testid="tenant-id">
-          {tenantId}
-        </Typography.Text>
-        <Button
-          icon={<LogoutOutlined />}
-          size="small"
-          type="text"
-          style={{ color: '#ccc' }}
-          data-testid="btn-logout"
-          onClick={logout}
-        />
-      </Header>
-      <Content style={{ padding: 24 }}>
-        <Tabs
-          activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as AdminState['activeTab'])}
-          data-testid="admin-tabs"
-          items={[
-            { key: 'wizard', label: '向导', children: <WizardTab /> },
-            { key: 'dashboard', label: '仪表盘', children: <DashboardTab /> },
-            { key: 'notifications', label: '通知', children: <NotificationsTab /> },
-            { key: 'proposals', label: '提案', children: <ProposalsTab /> },
-            { key: 'billing', label: '账单', children: <BillingTab /> },
-          ]}
-        />
-      </Content>
-    </Layout>
+    <div className="cs-w" data-testid="admin-workspace">
+      <div className="cs-tb">
+        <div className="cs-tb-dots"><span /><span /><span /></div>
+        <div className="cs-app">console.onesync.io / {tenantId}</div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: 'var(--silver)' }} data-testid="tenant-id">{tenantId}</span>
+          <button
+            data-testid="btn-logout"
+            onClick={logout}
+            style={{ background: 'transparent', border: 'none', color: 'var(--silver)', fontSize: 11, cursor: 'pointer' }}
+          >
+            退出
+          </button>
+        </div>
+      </div>
+      <div className="cs-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            className={`cs-tab ${activeTab === t.key ? 'active' : ''}`}
+            data-testid={`tab-${t.key}`}
+            onClick={() => setActiveTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="cs-main">
+        {TAB_CONTENT[activeTab]}
+      </div>
+    </div>
   );
 }
-
-type AdminState = import('../store/adminStore').AdminState;

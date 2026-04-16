@@ -1,218 +1,101 @@
 import { useState } from 'react';
-import { Button, Card, Form, Input, Select, Space, Tag, Typography, Upload, Alert, Spin } from 'antd';
-import { InboxOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd';
 import { useAdminStore } from '../../store/adminStore';
 import type { GenerationResult } from '../../store/adminStore';
 
 export const INDUSTRY_OPTIONS = [
-  { label: '电商', value: 'ecommerce' },
-  { label: 'SaaS', value: 'saas' },
-  { label: '金融', value: 'finance' },
-  { label: '医疗', value: 'healthcare' },
-  { label: '教育', value: 'education' },
-  { label: '电信', value: 'telecom' },
-  { label: '通用', value: 'general' },
+  { label: '电商', value: 'ecommerce' }, { label: 'SaaS', value: 'saas' },
+  { label: '金融', value: 'finance' }, { label: '医疗', value: 'healthcare' },
+  { label: '教育', value: 'education' }, { label: '通用', value: 'general' },
 ];
-
-const LANGUAGE_OPTIONS = [
-  { label: '中文', value: 'zh' },
-  { label: 'English', value: 'en' },
-  { label: '日本語', value: 'ja' },
-  { label: '한국어', value: 'ko' },
-];
-
-const ACCEPT_FORMATS = '.pdf,.csv,.txt';
 
 const AGENT_ROLES = ['customer', 'translate', 'lead', 'triage'] as const;
 
-function mockGenerateSouls(tenantId: string, _brandName: string, _industry: string): Promise<GenerationResult> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const souls: GenerationResult['souls'] = {};
-      for (const role of AGENT_ROLES) {
-        souls[role] = {
-          role,
-          kbHitCount: Math.floor(Math.random() * 10) + 3,
-          mode: 'ai',
-          warnings: [],
-        };
-      }
-      resolve({
-        tenantId,
-        souls,
-        totalKbHits: Object.values(souls).reduce((sum, s) => sum + s.kbHitCount, 0),
-        mode: 'ai',
-        warnings: [],
-      });
-    }, 1500);
-  });
+function mockGenerateSouls(tenantId: string): Promise<GenerationResult> {
+  return new Promise((resolve) => setTimeout(() => {
+    const souls: GenerationResult['souls'] = {};
+    for (const role of AGENT_ROLES) {
+      souls[role] = { role, kbHitCount: Math.floor(Math.random() * 10) + 3, mode: 'ai', warnings: [] };
+    }
+    resolve({ tenantId, souls, totalKbHits: Object.values(souls).reduce((s, v) => s + v.kbHitCount, 0), mode: 'ai', warnings: [] });
+  }, 1500));
 }
 
-interface MaterialUploadStepProps {
-  tenantId: string;
-  onGenerated?: () => void;
-}
+interface Props { tenantId: string; onGenerated?: () => void; }
 
-export function MaterialUploadStep({ tenantId, onGenerated }: MaterialUploadStepProps) {
-  const { wizardFormData, setWizardFormData, generating, setGenerating, generationResult, setGenerationResult } =
-    useAdminStore();
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
-
-  const brandName = wizardFormData.brandName;
+export function MaterialUploadStep({ tenantId, onGenerated }: Props) {
+  const [brandName, setBrandName] = useState('');
+  const [industry, setIndustry] = useState('general');
+  const [url, setUrl] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const generationResult = useAdminStore((s) => s.generationResult);
+  const setGenerationResult = useAdminStore((s) => s.setGenerationResult);
 
   const handleGenerate = async () => {
-    if (!brandName.trim()) return;
     setGenerating(true);
-    try {
-      const result = await mockGenerateSouls(tenantId, brandName, wizardFormData.industry);
-      setGenerationResult(result);
-      onGenerated?.();
-    } finally {
-      setGenerating(false);
-    }
+    const result = await mockGenerateSouls(tenantId);
+    setGenerationResult(result);
+    setGenerating(false);
+    onGenerated?.();
   };
 
   return (
     <div data-testid="material-upload-step">
-      <Typography.Title level={5}>资料上传</Typography.Title>
-      <Form layout="vertical" style={{ maxWidth: 600 }}>
-        <Form.Item label="公司官网" help="选填，用于抓取产品信息">
-          <Input
-            placeholder="https://example.com"
-            value={wizardFormData.websiteUrl}
-            onChange={(e) => setWizardFormData({ websiteUrl: e.target.value })}
-          />
-        </Form.Item>
+      <div className="cs-card hl">
+        <div className="cs-ct"><span className="num">1</span>上传基础信息</div>
 
-        <Form.Item label="品牌名称" required>
-          <Input
-            placeholder="请输入品牌名称"
-            data-testid="input-brand-name"
-            aria-label="品牌名称"
-            value={brandName}
-            onChange={(e) => setWizardFormData({ brandName: e.target.value })}
-          />
-        </Form.Item>
-
-        <Form.Item label="行业">
-          <Select
-            data-testid="select-industry"
-            placeholder="选择行业"
-            value={wizardFormData.industry}
-            onChange={(v) => setWizardFormData({ industry: v })}
-            options={INDUSTRY_OPTIONS}
-            style={{ width: '100%' }}
-          />
-        </Form.Item>
-
-        <Form.Item label="支持语言">
-          <Select
-            mode="multiple"
-            data-testid="select-languages"
-            value={wizardFormData.languages}
-            onChange={(v) => setWizardFormData({ languages: v })}
-            options={LANGUAGE_OPTIONS}
-          />
-        </Form.Item>
-
-        <Form.Item label="产品资料">
-          <div data-testid="upload-area">
-            <Upload.Dragger
-              accept={ACCEPT_FORMATS}
-              multiple
-              fileList={fileList}
-              beforeUpload={(file) => {
-                setFileList((prev) => [...prev, file]);
-                return false;
-              }}
-              onRemove={(file) => {
-                setFileList((prev) => prev.filter((f) => f.uid !== file.uid));
-              }}
-            >
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">点击或拖拽文件上传</p>
-              <p className="ant-upload-hint">支持 PDF、CSV、TXT 格式</p>
-            </Upload.Dragger>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '12px 0' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>品牌名称</label>
+            <input data-testid="input-brand" value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="MyAwesomeStore"
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--oat)', borderRadius: 9, fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }} />
           </div>
-        </Form.Item>
-
-        <Form.Item label="额外备注">
-          <Input.TextArea
-            rows={3}
-            placeholder="希望 Agent 注意的事项（选填）"
-            value={wizardFormData.extraContext}
-            onChange={(e) => setWizardFormData({ extraContext: e.target.value })}
-          />
-        </Form.Item>
-
-        <Form.Item>
-          <Button
-            type="primary"
-            data-testid="btn-generate"
-            disabled={!brandName.trim() || generating}
-            onClick={handleGenerate}
-            loading={generating}
-          >
-            生成 Agent
-          </Button>
-        </Form.Item>
-      </Form>
-
-      {generating && (
-        <div data-testid="generating-indicator">
-          <Spin tip="正在生成 Agent soul.md..." />
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>行业</label>
+            <select data-testid="select-industry" value={industry} onChange={e => setIndustry(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--oat)', borderRadius: 9, fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none', background: '#fff' }}>
+              {INDUSTRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>公司官网 URL</label>
+            <input data-testid="input-url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com"
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--oat)', borderRadius: 9, fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>上传文件 (PDF/CSV/TXT)</label>
+            <input data-testid="file-upload" type="file" accept=".pdf,.csv,.txt" multiple
+              onChange={e => setFiles(Array.from(e.target.files || []))}
+              style={{ fontSize: 12, fontFamily: 'var(--font-sans)' }} />
+            {files.length > 0 && <div style={{ fontSize: 11, color: 'var(--silver)', marginTop: 4 }}>{files.length} 个文件已选择</div>}
+          </div>
         </div>
-      )}
 
-      {generationResult && !generating && (
-        <div data-testid="generation-result">
-          <Typography.Title level={5} style={{ marginTop: 16 }}>生成结果</Typography.Title>
-          <Space wrap>
-            {AGENT_ROLES.map((role) => {
-              const soul = generationResult.souls[role];
-              if (!soul) return null;
-              return (
-                <Card key={role} size="small" style={{ width: 200 }} data-testid={`role-card-${role}`}>
-                  <Typography.Text strong>{role}</Typography.Text>
-                  <div style={{ marginTop: 8 }}>
-                    <Tag
-                      color={soul.mode === 'ai' ? 'green' : 'orange'}
-                      icon={soul.mode === 'ai' ? <CheckCircleOutlined /> : <WarningOutlined />}
-                    >
-                      {soul.mode === 'ai' ? 'AI 生成' : '模板生成'}
-                    </Tag>
-                  </div>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    KB 命中: {soul.kbHitCount}
-                  </Typography.Text>
-                  {soul.warnings.length > 0 && (
-                    <Alert type="warning" message={soul.warnings.join('; ')} style={{ marginTop: 8 }} />
-                  )}
-                </Card>
-              );
-            })}
-          </Space>
-          {generationResult.warnings.length > 0 && (
-            <Alert
-              type="warning"
-              message="生成警告"
-              description={generationResult.warnings.join('\n')}
-              style={{ marginTop: 16 }}
-            />
-          )}
-        </div>
-      )}
-
-      <div style={{ marginTop: 24 }}>
-        <Button
-          type="primary"
-          data-testid="btn-next-step"
-          disabled={!generationResult}
-        >
-          下一步
-        </Button>
+        <button className="cs-btn ok" data-testid="btn-generate" onClick={handleGenerate} disabled={generating}
+          style={{ width: '100%', marginTop: 8, opacity: generating ? 0.6 : 1 }}>
+          {generating ? '生成中...' : '🤖 生成 Agent'}
+        </button>
       </div>
+
+      {generationResult && (
+        <div className="cs-card" style={{ marginTop: 14 }} data-testid="generation-result">
+          <div className="cs-ct">🤖 Agent 初始化</div>
+          {AGENT_ROLES.map(role => {
+            const soul = generationResult.souls[role];
+            return (
+              <div className="cs-row" key={role} data-testid={`agent-status-${role}`}>
+                <span>{role} Agent</span>
+                <span style={{ color: soul ? 'var(--m600)' : 'var(--silver)', fontWeight: 700 }}>
+                  {soul ? `✓ KB ${soul.kbHitCount} hits` : '...'}
+                </span>
+              </div>
+            );
+          })}
+          <div className="cs-pg ok" style={{ marginTop: 8 }}>
+            ✓ 4 个 Agent 已初始化 · 总 KB 命中 {generationResult.totalKbHits}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
