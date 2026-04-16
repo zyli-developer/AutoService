@@ -34,9 +34,7 @@ from autoservice.gateway.message_router import dispatch
 logger = logging.getLogger("autoservice.gateway")
 
 _CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
+    f"http://localhost:{p}" for p in range(5173, 5180)
 ]
 
 _CLOSE_CODE_VERSION = 4040

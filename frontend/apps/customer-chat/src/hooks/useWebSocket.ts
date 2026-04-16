@@ -43,7 +43,22 @@ export function useWebSocket(url: string, clientApp: string) {
       onFrame: (frame: Envelope) => {
         const store = useChatStore.getState();
 
-        if (frame.type === 'message') {
+        if (frame.type === 'message_confirm') {
+          const p = frame.payload as Record<string, unknown>;
+          const clientMsgId = p.client_msg_id as string | undefined;
+          const convId = p.conversation_id as string | undefined;
+          if (clientMsgId) {
+            store.confirmOptimistic(clientMsgId, {
+              id: p.message_id as string,
+              sequenceNumber: (p.sequence_number as number) ?? 0,
+              timestamp: (p.timestamp as string) ?? new Date().toISOString(),
+            });
+          }
+          if (convId && !store.conversationId) {
+            store.setConversationId(convId);
+          }
+
+        } else if (frame.type === 'message') {
           const p = frame.payload as Record<string, unknown>;
           const msg = p.message as Record<string, unknown> | undefined;
           const sourceDisplay = p.source_display as Record<string, unknown> | undefined;

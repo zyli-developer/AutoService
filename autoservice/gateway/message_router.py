@@ -14,7 +14,11 @@ import logging
 import re
 from typing import Any
 
+from datetime import datetime, timezone
+
 from autoservice.conversation_engine import ConversationEngine
+from autoservice.conversation_engine.errors import ConversationNotFound
+from autoservice.conversation_engine.types import Participant, ParticipantRole
 
 from .connection import build_frame
 from .errors import ERR_INTERNAL, ERR_VALIDATION, make_error_payload
@@ -209,12 +213,39 @@ async def _call_engine(
 ) -> list[dict[str, Any]]:
     """Map a FE frame type to an Engine call; return BE→FE push frames (not including ack)."""
     if frame_type == "customer_message":
+        conv_id = payload.get("conversation_id")
+        source = payload.get("source", "customer")
+        # Auto-create conversation + participant on first message
+        if conv_id:
+            try:
+                await engine.get_conversation(conv_id)
+            except ConversationNotFound:
+                conv_id = None
+        if not conv_id:
+            conv = await engine.create_conversation(
+                channel="web", external_id=source,
+            )
+            conv_id = conv.id
+            now = datetime.now(timezone.utc)
+            await engine.join(
+                conv_id,
+                Participant(id=source, role=ParticipantRole.CUSTOMER, joined_at=now),
+            )
+            await engine.join(
+                conv_id,
+                Participant(id="agent", role=ParticipantRole.AGENT, joined_at=now),
+            )
         msg = await engine.send_message(
-            payload["conversation_id"],
-            source=payload.get("source", "customer"),
-            content=payload["content"],
+            conv_id, source=source, content=payload["content"],
         )
-        return [_message_frame(msg)]
+        # Return confirmation data (not full message echo — FE has optimistic msg)
+        return [build_frame("message_confirm", {
+            "conversation_id": conv_id,
+            "message_id": msg.id,
+            "client_msg_id": payload.get("client_msg_id"),
+            "sequence_number": msg.sequence_number,
+            "timestamp": msg.timestamp.isoformat() if hasattr(msg.timestamp, "isoformat") else msg.timestamp,
+        })]
 
     if frame_type == "operator_message":
         msg = await engine.send_message(
