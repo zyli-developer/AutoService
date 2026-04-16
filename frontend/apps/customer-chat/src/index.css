@@ -4,3 +4,22 @@
 
 html, body, #root { height: 100%; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+/* Custom scrollbar for message list */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225 / 0.8);
+  border-radius: 2px;
+}
+
+/* Smooth scroll behavior */
+[data-testid="message-list"] {
+  scroll-behavior: smooth;
+}
