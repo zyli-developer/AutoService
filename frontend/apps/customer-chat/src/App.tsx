@@ -4,7 +4,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 
 export function App() {
   const { t } = useTranslation();
-  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/customer');
+  const { status, lastFrame } = useWebSocket('ws://localhost:9999/ws/customer', 'customer-chat');
   const [ticks, setTicks] = useState(0);
 
   useEffect(() => {
