@@ -247,7 +247,9 @@
       "path": ".artifacts/eval-docs/eval-T3A.2-sim-customer-pipeline.md",
       "created_at": "2026-04-16T14:00:00Z",
       "updated_at": "2026-04-16T14:00:00Z",
-      "related_ids": ["test-plan-T3A.2"]
+      "related_ids": [
+        "test-plan-T3A.2"
+      ]
     },
     {
       "id": "test-plan-T3A.2",
@@ -259,7 +261,9 @@
       "path": ".artifacts/test-plans/plan-T3A.2-sim-customer-pipeline.md",
       "created_at": "2026-04-16T14:30:00Z",
       "updated_at": "2026-04-16T14:30:00Z",
-      "related_ids": ["eval-T3A.2"]
+      "related_ids": [
+        "eval-T3A.2"
+      ]
     },
     {
       "id": "eval-T3A.1",
@@ -283,7 +287,9 @@
       "path": ".artifacts/eval-docs/eval-T3A.3-fewshot-injection.md",
       "created_at": "2026-04-16T16:00:00Z",
       "updated_at": "2026-04-16T16:00:00Z",
-      "related_ids": ["eval-T3A.2"]
+      "related_ids": [
+        "eval-T3A.2"
+      ]
     },
     {
       "id": "eval-T4A.10",
@@ -315,11 +321,31 @@
       "type": "eval-doc",
       "status": "draft",
       "producer": "skill-5",
-      "consumers": ["skill-2"],
+      "consumers": [
+        "skill-2"
+      ],
       "path": ".artifacts/eval-docs/eval-T5B.1-docker-compose-multi-tenant.md",
       "created_at": "2026-04-16T14:00:00Z",
       "updated_at": "2026-04-16T14:00:00Z",
-      "related_ids": ["T5B.1"]
+      "related_ids": [
+        "T5B.1"
+      ]
+    },
+    {
+      "id": "plan-T5B.1",
+      "name": "Test Plan: docker-compose multi-tenant template",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [
+        "skill-3"
+      ],
+      "path": ".artifacts/test-plans/plan-T5B.1-docker-compose-multi-tenant.md",
+      "created_at": "2026-04-16T14:30:00Z",
+      "updated_at": "2026-04-16T14:30:00Z",
+      "related_ids": [
+        "eval-T5B.1"
+      ]
     }
   ]
 }
