@@ -536,6 +536,409 @@ async def test_tc_delete_message(
     assert not any(mm.id == m.id for mm in msgs)
 
 
+# ---- Group L: EventBus subscribe scopes (T1A.3 · TC-002~TC-008) ----
+
+
+async def test_tc_subscribe_conv_scope(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-002: subscribe(conversation_id) receives events for that conv."""
+    conv = await engine.create_conversation(channel="web", external_id="eb1")
+    await engine.join(conv.id, participant_customer)
+
+    events: list = []
+
+    async def collect():
+        async for ev in engine.subscribe(conversation_id=conv.id):
+            events.append(ev)
+            if len(events) >= 1:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    await engine.send_message(conv.id, source=participant_customer.id, content="hi")
+    await asyncio.wait_for(task, timeout=2.0)
+    assert any(e.type == "message.sent" for e in events)
+
+
+async def test_tc_subscribe_event_types_filter(
+    engine: LocalEngine,
+    participant_customer: Participant,
+    participant_operator: Participant,
+) -> None:
+    """TC-003: subscribe with event_types only yields matching types."""
+    conv = await engine.create_conversation(channel="web", external_id="eb2")
+    await engine.join(conv.id, participant_customer)
+    await engine.join(conv.id, participant_operator)
+
+    events: list = []
+
+    async def collect():
+        async for ev in engine.subscribe(
+            conversation_id=conv.id, event_types=["mode.changed"],
+        ):
+            events.append(ev)
+            if len(events) >= 1:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    # send_message → message.sent (should be filtered out)
+    await engine.send_message(conv.id, source=participant_customer.id, content="msg")
+    # switch mode → mode.changed (should pass filter)
+    await engine.switch_mode(
+        conv.id, ConversationMode.TAKEOVER,
+        triggered_by=participant_operator.id, trigger="/hijack",
+    )
+    await asyncio.wait_for(task, timeout=2.0)
+    assert all(e.type == "mode.changed" for e in events)
+
+
+async def test_tc_subscribe_squad_scope(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-004: subscribe(squad_id) only receives events from that squad."""
+    conv_a = await engine.create_conversation(
+        channel="web", external_id="sq1", metadata={"squad_id": "s1"},
+    )
+    conv_b = await engine.create_conversation(
+        channel="web", external_id="sq2", metadata={"squad_id": "s2"},
+    )
+    await engine.join(conv_a.id, participant_customer)
+    cust2 = Participant(
+        id="u-customer-2", role=ParticipantRole.CUSTOMER,
+        joined_at=participant_customer.joined_at,
+    )
+    await engine.join(conv_b.id, cust2)
+
+    events: list = []
+
+    async def collect():
+        async for ev in engine.subscribe(squad_id="s1"):
+            events.append(ev)
+            if len(events) >= 1:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    # Event on conv_b (squad s2) — should NOT reach subscriber
+    await engine.send_message(conv_b.id, source=cust2.id, content="s2 msg")
+    # Event on conv_a (squad s1) — should reach subscriber
+    await engine.send_message(conv_a.id, source=participant_customer.id, content="s1 msg")
+    await asyncio.wait_for(task, timeout=2.0)
+    assert all(e.conversation_id == conv_a.id for e in events)
+
+
+async def test_tc_subscribe_global_scope(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-005: subscribe() with no scope receives all events."""
+    conv1 = await engine.create_conversation(channel="web", external_id="gl1")
+    conv2 = await engine.create_conversation(channel="web", external_id="gl2")
+    await engine.join(conv1.id, participant_customer)
+    cust2 = Participant(
+        id="u-customer-2", role=ParticipantRole.CUSTOMER,
+        joined_at=participant_customer.joined_at,
+    )
+    await engine.join(conv2.id, cust2)
+
+    events: list = []
+
+    async def collect():
+        # Filter to message.sent only to avoid noise from conversation.activated
+        async for ev in engine.subscribe(event_types=["message.sent"]):
+            events.append(ev)
+            if len(events) >= 2:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    await engine.send_message(conv1.id, source=participant_customer.id, content="a")
+    await engine.send_message(conv2.id, source=cust2.id, content="b")
+    await asyncio.wait_for(task, timeout=2.0)
+    conv_ids = {e.conversation_id for e in events}
+    assert conv1.id in conv_ids and conv2.id in conv_ids
+
+
+async def test_tc_subscribe_since_sequence_conv(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-006: since_sequence replays missed events then continues live."""
+    conv = await engine.create_conversation(channel="web", external_id="ss1")
+    await engine.join(conv.id, participant_customer)
+    # Generate 5 events (message.sent) with seq 1-5 (plus earlier events from create/join)
+    for i in range(5):
+        await engine.send_message(conv.id, source=participant_customer.id, content=f"m{i+1}")
+
+    # Get all events to find the sequence to resume from
+    all_events = await engine.query_events(conv.id)
+    mid_seq = all_events[len(all_events) // 2].sequence_number
+
+    events: list = []
+
+    async def collect():
+        async for ev in engine.subscribe(
+            conversation_id=conv.id, since_sequence=mid_seq,
+        ):
+            events.append(ev)
+            if len(events) >= 3:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0.05)  # allow replay
+    # Also send a new live event
+    await engine.send_message(conv.id, source=participant_customer.id, content="live")
+    await asyncio.wait_for(task, timeout=3.0)
+
+    # All replayed events should have seq > mid_seq
+    replayed = [e for e in events if e.sequence_number <= all_events[-1].sequence_number]
+    assert all(e.sequence_number > mid_seq for e in replayed)
+
+
+async def test_tc_subscribe_viewer_role_filters_side(
+    engine: LocalEngine,
+    participant_customer: Participant,
+    participant_operator: Participant,
+    participant_agent: Participant,
+) -> None:
+    """TC-008: CUSTOMER viewer does not receive SIDE message events."""
+    conv = await engine.create_conversation(channel="web", external_id="vr1")
+    await _setup_all_roles(engine, conv.id, participant_customer, participant_operator, participant_agent)
+    # Now in copilot mode
+
+    events: list = []
+
+    async def collect():
+        async for ev in engine.subscribe(
+            conversation_id=conv.id,
+            event_types=["message.sent"],
+            viewer_role=ParticipantRole.CUSTOMER,
+        ):
+            events.append(ev)
+            if len(events) >= 1:
+                break
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    # Operator PUBLIC in copilot → SIDE (should be filtered for CUSTOMER viewer)
+    await engine.send_message(
+        conv.id, source=participant_operator.id, content="side",
+        requested_visibility=MessageVisibility.PUBLIC,
+    )
+    # Customer PUBLIC stays PUBLIC (should pass through)
+    await engine.send_message(
+        conv.id, source=participant_customer.id, content="public",
+    )
+    await asyncio.wait_for(task, timeout=2.0)
+    # The customer viewer should only see the PUBLIC message event
+    assert all(e.data.get("visibility") != "side" for e in events)
+
+
+# ---- Group M: query_events (T1A.3 · TC-009~TC-011) ----
+
+
+async def test_tc_query_events_limit(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-009: query_events with limit returns at most N events."""
+    conv = await engine.create_conversation(channel="web", external_id="qe1")
+    await engine.join(conv.id, participant_customer)
+    for i in range(10):
+        await engine.send_message(conv.id, source=participant_customer.id, content=f"q{i}")
+    events = await engine.query_events(conv.id, limit=5)
+    assert len(events) == 5
+    # Should be ordered by sequence_number
+    seqs = [e.sequence_number for e in events]
+    assert seqs == sorted(seqs)
+
+
+async def test_tc_query_events_type_filter(
+    engine: LocalEngine,
+    participant_customer: Participant,
+    participant_operator: Participant,
+) -> None:
+    """TC-010: query_events with types filter."""
+    conv = await engine.create_conversation(channel="web", external_id="qe2")
+    await engine.join(conv.id, participant_customer)
+    await engine.join(conv.id, participant_operator)
+    await engine.send_message(conv.id, source=participant_customer.id, content="msg")
+    await engine.switch_mode(
+        conv.id, ConversationMode.TAKEOVER,
+        triggered_by=participant_operator.id, trigger="/hijack",
+    )
+    events = await engine.query_events(conv.id, types=["mode.changed"])
+    assert all(e.type == "mode.changed" for e in events)
+    assert len(events) >= 1
+
+
+async def test_tc_query_events_since_and_until(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-011: query_events with since_sequence + until combo."""
+    conv = await engine.create_conversation(channel="web", external_id="qe3")
+    await engine.join(conv.id, participant_customer)
+    for i in range(5):
+        await engine.send_message(conv.id, source=participant_customer.id, content=f"t{i}")
+    all_events = await engine.query_events(conv.id)
+    if len(all_events) >= 4:
+        cutoff_time = all_events[-1].timestamp
+        events = await engine.query_events(
+            conv.id, since_sequence=2, until=cutoff_time,
+        )
+        assert all(e.sequence_number > 2 for e in events)
+        assert all(e.timestamp <= cutoff_time for e in events)
+
+
+# ---- Group N: Plugin Hook dispatch (T1A.3 · TC-013~TC-016, TC-021~TC-023) ----
+
+
+class _RecordingHook:
+    """Test helper: records all hook calls."""
+
+    def __init__(self):
+        self.events: list = []
+        self.conversations_created: list = []
+        self.conversations_closed: list = []
+        self.mode_changes: list = []
+        self.participants_joined: list = []
+
+    async def on_event(self, event):
+        self.events.append(event)
+
+    async def on_conversation_created(self, conv):
+        self.conversations_created.append(conv)
+
+    async def on_conversation_closed(self, conv):
+        self.conversations_closed.append(conv)
+
+    async def on_mode_changed(self, conv, old_mode, new_mode, trigger):
+        self.mode_changes.append((conv, old_mode, new_mode, trigger))
+
+    async def on_participant_joined(self, conv, p):
+        self.participants_joined.append((conv, p))
+
+    async def on_timer_expired(self, conv, timer):
+        pass  # not tested here
+
+
+class _FailingHook:
+    """Test helper: on_event always raises."""
+
+    async def on_event(self, event):
+        raise RuntimeError("hook deliberately fails")
+
+    async def on_conversation_created(self, conv):
+        pass
+
+    async def on_conversation_closed(self, conv):
+        pass
+
+    async def on_mode_changed(self, conv, old_mode, new_mode, trigger):
+        pass
+
+    async def on_participant_joined(self, conv, p):
+        pass
+
+    async def on_timer_expired(self, conv, timer):
+        pass
+
+
+async def test_tc_hook_on_event(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-013: on_event is called for every emitted event."""
+    hook = _RecordingHook()
+    engine.register_hook(hook)
+    conv = await engine.create_conversation(channel="web", external_id="hk1")
+    await engine.join(conv.id, participant_customer)
+    await engine.send_message(conv.id, source=participant_customer.id, content="hi")
+    assert len(hook.events) > 0
+    assert any(e.type == "message.sent" for e in hook.events)
+
+
+async def test_tc_hook_on_conversation_created(engine: LocalEngine) -> None:
+    """TC-014: on_conversation_created fires on create_conversation."""
+    hook = _RecordingHook()
+    engine.register_hook(hook)
+    await engine.create_conversation(channel="web", external_id="hk2")
+    assert len(hook.conversations_created) == 1
+    assert hook.conversations_created[0].id == "web_hk2"
+
+
+async def test_tc_hook_on_mode_changed(
+    engine: LocalEngine,
+    participant_customer: Participant,
+    participant_operator: Participant,
+) -> None:
+    """TC-015: on_mode_changed fires with correct old/new mode."""
+    hook = _RecordingHook()
+    engine.register_hook(hook)
+    conv = await engine.create_conversation(channel="web", external_id="hk3")
+    await engine.join(conv.id, participant_customer)
+    await engine.join(conv.id, participant_operator)  # auto → copilot
+    assert len(hook.mode_changes) >= 1
+    _, old, new, trigger = hook.mode_changes[0]
+    assert old == ConversationMode.AUTO
+    assert new == ConversationMode.COPILOT
+
+
+async def test_tc_hook_exception_isolation(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-016: Hook exception is swallowed + hook.failed event emitted."""
+    failing = _FailingHook()
+    engine.register_hook(failing)
+    conv = await engine.create_conversation(channel="web", external_id="hk4")
+    await engine.join(conv.id, participant_customer)
+    # This should NOT raise despite the failing hook
+    msg = await engine.send_message(conv.id, source=participant_customer.id, content="safe")
+    assert msg.content == "safe"
+    # Check hook.failed event was emitted
+    events = await engine.query_events(conv.id, types=["hook.failed"])
+    assert len(events) > 0
+
+
+async def test_tc_hook_on_conversation_closed(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-021: on_conversation_closed fires on close_conversation."""
+    hook = _RecordingHook()
+    engine.register_hook(hook)
+    conv = await engine.create_conversation(channel="web", external_id="hk5")
+    await engine.join(conv.id, participant_customer)
+    await engine.close_conversation(conv.id, outcome=Outcome.RESOLVED, resolved_by="op")
+    assert len(hook.conversations_closed) == 1
+
+
+async def test_tc_hook_on_participant_joined(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-022: on_participant_joined fires on join."""
+    hook = _RecordingHook()
+    engine.register_hook(hook)
+    conv = await engine.create_conversation(channel="web", external_id="hk6")
+    await engine.join(conv.id, participant_customer)
+    assert len(hook.participants_joined) == 1
+    _, p = hook.participants_joined[0]
+    assert p.id == participant_customer.id
+
+
+async def test_tc_hook_multi_hook_isolation(
+    engine: LocalEngine, participant_customer: Participant,
+) -> None:
+    """TC-023: Multiple hooks — one failure doesn't block the other."""
+    good_hook = _RecordingHook()
+    bad_hook = _FailingHook()
+    engine.register_hook(good_hook)
+    engine.register_hook(bad_hook)
+    conv = await engine.create_conversation(channel="web", external_id="hk7")
+    await engine.join(conv.id, participant_customer)
+    await engine.send_message(conv.id, source=participant_customer.id, content="test")
+    # good_hook should have received events despite bad_hook failing
+    assert len(good_hook.events) > 0
+    assert any(e.type == "message.sent" for e in good_hook.events)
+
+
 # ---- Preserved structural checks from T0.4 ----
 
 

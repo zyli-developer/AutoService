@@ -15,6 +15,7 @@ from autoservice.conversation_engine.errors import (
     UnknownParticipant,
     ValidationError,
 )
+from autoservice.conversation_engine.event_bus import EventBus
 from autoservice.conversation_engine.events import EventType
 from autoservice.conversation_engine.local_engine import LocalEngine
 from autoservice.conversation_engine.protocol import ConversationEngine, PluginHook
@@ -34,6 +35,7 @@ from autoservice.conversation_engine.types import (
 
 __all__ = [
     "ConversationEngine",
+    "EventBus",
     "LocalEngine",
     "PluginHook",
     "Conversation",

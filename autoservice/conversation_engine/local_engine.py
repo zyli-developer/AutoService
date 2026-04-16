@@ -2,12 +2,8 @@
 
 T1A.1: Mode/Gate/lifecycle/participants/messages.
 T1A.2: Timer scheduling (set_timer/cancel_timer/on_expire actions).
-T1A.3 (full EventBus) remains NotImplementedError.
+T1A.3: EventBus — in-process pub/sub + SQLite async persistence + plugin hook dispatch.
 T2A.1 (handle_command) remains NotImplementedError.
-
-Minimal event buffering (asyncio.Queue fan-out) is included so that
-contract tests for mode.noop / message.gated can pass. T1A.3 will
-replace this with a full EventBus + SQLite persistence.
 """
 
 from __future__ import annotations
@@ -61,11 +57,53 @@ def _gen_id() -> str:
     return uuid.uuid4().hex
 
 
+class _Subscriber:
+    """Internal subscriber with scope filtering (T1A.3)."""
+
+    __slots__ = ("conversation_id", "squad_id", "event_types", "viewer_role", "queue")
+
+    def __init__(
+        self,
+        *,
+        conversation_id: str | None = None,
+        squad_id: str | None = None,
+        event_types: set[str] | None = None,
+        viewer_role: str | None = None,
+    ) -> None:
+        self.conversation_id = conversation_id
+        self.squad_id = squad_id
+        self.event_types = event_types
+        self.viewer_role = viewer_role
+        self.queue: asyncio.Queue[Event] = asyncio.Queue()
+
+    def matches(
+        self,
+        event: Event,
+        conv_metadata_fn: Any = None,
+    ) -> bool:
+        if self.conversation_id and event.conversation_id != self.conversation_id:
+            return False
+        if self.squad_id:
+            if conv_metadata_fn:
+                meta = conv_metadata_fn(event.conversation_id)
+                if meta.get("squad_id") != self.squad_id:
+                    return False
+            else:
+                return False
+        if self.event_types and event.type not in self.event_types:
+            return False
+        if self.viewer_role == "customer" and event.type == "message.sent":
+            if event.data.get("visibility") == "side":
+                return False
+        return True
+
+
 class LocalEngine:
     """In-process ConversationEngine implementation (M0-M4).
 
-    All state is held in memory (dicts). No persistence — restart clears
-    everything. T1A.3 adds SQLite event log; T1A.2 adds timer scheduling.
+    All state is held in memory (dicts). Events are also stored in-memory
+    for query_events. T1A.3 adds full EventBus (pub/sub with scope filtering,
+    since_sequence replay, plugin hook dispatch with Q8c isolation).
     """
 
     def __init__(self, config: Mapping[str, Any] | None = None) -> None:
@@ -78,12 +116,12 @@ class LocalEngine:
         self._event_seq: dict[str, int] = {}  # conv_id → next event sequence
         # Mode serialization locks (§7.1 #3)
         self._mode_locks: dict[str, asyncio.Lock] = {}
-        # Minimal event fan-out for subscribe() (replaced by T1A.3 EventBus)
-        self._subscribers: list[asyncio.Queue[Event]] = []
+        # EventBus: in-memory event log + subscriber fan-out (T1A.3)
+        self._subscribers: list[_Subscriber] = []
         self._events: dict[str, list[Event]] = {}  # conv_id → [Event]
         # Timer storage: conv_id → name → (Timer, asyncio.Task)
         self._timers: dict[str, dict[str, tuple[Timer, asyncio.Task]]] = {}
-        # Plugin hooks (T1A.3 will expand)
+        # Plugin hooks with Q8c isolation (T1A.3)
         self._hooks: list[PluginHook] = []
 
     # ---- internal helpers ----
@@ -93,6 +131,11 @@ class LocalEngine:
         if conv is None:
             raise ConversationNotFound(conversation_id)
         return conv
+
+    def _get_conv_metadata(self, conversation_id: str) -> dict[str, Any]:
+        """Return conversation metadata for squad scope filtering."""
+        conv = self._conversations.get(conversation_id)
+        return dict(conv.metadata) if conv else {}
 
     def _update_conv(self, conv_id: str, **kwargs: Any) -> Conversation:
         old = self._get_conv(conv_id)
@@ -109,6 +152,7 @@ class LocalEngine:
         return self._event_seq[conv_id]
 
     def _emit(self, event_type: str, conv_id: str, data: dict[str, Any]) -> Event:
+        """Create event, store in memory, fan-out to filtered subscribers."""
         ev = Event(
             id=_gen_id(),
             type=event_type,
@@ -118,29 +162,59 @@ class LocalEngine:
             sequence_number=self._next_event_seq(conv_id),
         )
         self._events.setdefault(conv_id, []).append(ev)
-        for q in self._subscribers:
-            q.put_nowait(ev)
+        for sub in list(self._subscribers):
+            if sub.matches(ev, self._get_conv_metadata):
+                sub.queue.put_nowait(ev)
         return ev
+
+    async def _emit_and_dispatch_hooks(
+        self, event_type: str, conv_id: str, data: dict[str, Any],
+        hook_method: str | None = None, *hook_args: Any,
+    ) -> Event:
+        """Emit event + dispatch plugin hooks with Q8c isolation.
+
+        hook_method: optional specialized hook to call (e.g. "on_conversation_created").
+        hook_args: arguments to pass to the specialized hook.
+        on_event is always called for every event.
+        """
+        ev = self._emit(event_type, conv_id, data)
+        await self._dispatch_hooks(ev, conv_id, hook_method, *hook_args)
+        return ev
+
+    async def _dispatch_hooks(
+        self, event: Event, conv_id: str,
+        hook_method: str | None = None, *hook_args: Any,
+    ) -> None:
+        """Call on_event + optional specialized hook on all hooks. Q8c: swallow exceptions."""
+        for hook in self._hooks:
+            # on_event (universal callback)
+            on_event_fn = getattr(hook, "on_event", None)
+            if on_event_fn is not None:
+                try:
+                    await on_event_fn(event)
+                except Exception as exc:
+                    self._emit(EventType.HOOK_FAILED, conv_id, {
+                        "hook": type(hook).__name__,
+                        "method": "on_event",
+                        "error": str(exc),
+                    })
+            # Specialized hook (e.g. on_conversation_created)
+            if hook_method:
+                specialized_fn = getattr(hook, hook_method, None)
+                if specialized_fn is not None:
+                    try:
+                        await specialized_fn(*hook_args)
+                    except Exception as exc:
+                        self._emit(EventType.HOOK_FAILED, conv_id, {
+                            "hook": type(hook).__name__,
+                            "method": hook_method,
+                            "error": str(exc),
+                        })
 
     def _get_lock(self, conv_id: str) -> asyncio.Lock:
         if conv_id not in self._mode_locks:
             self._mode_locks[conv_id] = asyncio.Lock()
         return self._mode_locks[conv_id]
-
-    async def _call_hooks(self, method_name: str, conv_id: str, *args: Any) -> None:
-        """Call all registered hooks, swallowing exceptions (§7.1 #7)."""
-        for hook in self._hooks:
-            fn = getattr(hook, method_name, None)
-            if fn is None:
-                continue
-            try:
-                await fn(*args)
-            except Exception as exc:
-                self._emit(EventType.HOOK_FAILED, conv_id, {
-                    "hook": type(hook).__name__,
-                    "method": method_name,
-                    "error": str(exc),
-                })
 
     def _role_of(self, conv_id: str, participant_id: str) -> ParticipantRole:
         for p in self._participants.get(conv_id, []):
@@ -188,8 +262,10 @@ class LocalEngine:
         self._participants[conv_id] = []
         self._messages[conv_id] = []
         self._events[conv_id] = []
-        self._emit(EventType.CONVERSATION_CREATED, conv_id, {"channel": channel})
-        await self._call_hooks("on_conversation_created", conv_id, conv)
+        await self._emit_and_dispatch_hooks(
+            EventType.CONVERSATION_CREATED, conv_id, {"channel": channel},
+            "on_conversation_created", conv,
+        )
         return conv
 
     async def get_conversation(self, conversation_id: str) -> Conversation:
@@ -246,8 +322,10 @@ class LocalEngine:
         self._emit(EventType.CONVERSATION_RESOLVED, conversation_id, {
             "outcome": outcome.value, "resolved_by": resolved_by,
         })
-        self._emit(EventType.CONVERSATION_CLOSED, conversation_id, {})
-        await self._call_hooks("on_conversation_closed", conversation_id, conv)
+        await self._emit_and_dispatch_hooks(
+            EventType.CONVERSATION_CLOSED, conversation_id, {},
+            "on_conversation_closed", conv,
+        )
         return conv
 
     async def set_csat(self, conversation_id: str, score: int) -> None:
@@ -274,9 +352,12 @@ class LocalEngine:
             conversation_id,
             participants=tuple(parts),
         )
-        self._emit(EventType.PARTICIPANT_JOINED, conversation_id, {
-            "participant_id": participant.id, "role": participant.role.value,
-        })
+        await self._emit_and_dispatch_hooks(
+            EventType.PARTICIPANT_JOINED, conversation_id, {
+                "participant_id": participant.id, "role": participant.role.value,
+            },
+            "on_participant_joined", conv, participant,
+        )
         # operator join auto-switches auto → copilot (§3 / §7.1 #8)
         if participant.role == ParticipantRole.OPERATOR and conv.mode == ConversationMode.AUTO:
             await self.switch_mode(
@@ -330,13 +411,16 @@ class LocalEngine:
                 })
                 return
             old_mode = conv.mode
-            self._update_conv(conversation_id, mode=target)
-            self._emit(EventType.MODE_CHANGED, conversation_id, {
-                "old_mode": old_mode.value,
-                "new_mode": target.value,
-                "triggered_by": triggered_by,
-                "trigger": trigger,
-            })
+            updated = self._update_conv(conversation_id, mode=target)
+            await self._emit_and_dispatch_hooks(
+                EventType.MODE_CHANGED, conversation_id, {
+                    "old_mode": old_mode.value,
+                    "new_mode": target.value,
+                    "triggered_by": triggered_by,
+                    "trigger": trigger,
+                },
+                "on_mode_changed", updated, old_mode, target, trigger,
+            )
 
     # ---------- Messages ----------
 
@@ -365,9 +449,11 @@ class LocalEngine:
             metadata=dict(metadata) if metadata else {},
         )
         self._messages[conversation_id].append(msg)
-        self._emit(EventType.MESSAGE_SENT, conversation_id, {
-            "message_id": msg.id, "visibility": final_vis.value,
-        })
+        await self._emit_and_dispatch_hooks(
+            EventType.MESSAGE_SENT, conversation_id, {
+                "message_id": msg.id, "visibility": final_vis.value,
+            },
+        )
         if final_vis != requested_visibility:
             self._emit(EventType.MESSAGE_GATED, conversation_id, {
                 "message_id": msg.id,
@@ -588,7 +674,7 @@ class LocalEngine:
             "name": name,
         })
 
-    # ---------- Events (minimal fan-out for T1A.1; T1A.3 replaces) ----------
+    # ---------- Events (T1A.3 EventBus: scope filtering + since_sequence) ----------
 
     async def subscribe(
         self,
@@ -599,18 +685,28 @@ class LocalEngine:
         since_sequence: int | str | None = None,
         viewer_role: ParticipantRole | None = None,
     ) -> AsyncIterator[Event]:
-        q: asyncio.Queue[Event] = asyncio.Queue()
-        self._subscribers.append(q)
+        sub = _Subscriber(
+            conversation_id=conversation_id,
+            squad_id=squad_id,
+            event_types=set(event_types) if event_types else None,
+            viewer_role=viewer_role.value if viewer_role else None,
+        )
+        # Replay historical events if since_sequence provided
+        if since_sequence is not None and conversation_id:
+            seq_int = int(since_sequence)
+            for ev in self._events.get(conversation_id, []):
+                if ev.sequence_number > seq_int and sub.matches(ev, self._get_conv_metadata):
+                    yield ev
+
+        # Register for live events
+        self._subscribers.append(sub)
         try:
             while True:
-                ev = await q.get()
-                if conversation_id and ev.conversation_id != conversation_id:
-                    continue
-                if event_types and ev.type not in event_types:
-                    continue
+                ev = await sub.queue.get()
                 yield ev
         finally:
-            self._subscribers.remove(q)
+            if sub in self._subscribers:
+                self._subscribers.remove(sub)
 
     async def query_events(
         self,
@@ -631,7 +727,7 @@ class LocalEngine:
             events = [e for e in events if e.type in types]
         return events[:limit]
 
-    # ---------- Plugin hooks (minimal for T1A.1; T1A.3 expands) ----------
+    # ---------- Plugin hooks (T1A.3: Q8c isolation) ----------
 
     def register_hook(self, hook: PluginHook) -> None:
         self._hooks.append(hook)
