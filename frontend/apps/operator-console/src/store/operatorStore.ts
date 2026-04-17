@@ -154,7 +154,12 @@ export const useOperatorStore = create<OperatorState>((set) => ({
   addCopilotMessage: (convId, msg) =>
     set((state) => {
       const existing = state.copilotMessages[convId] ?? [];
+      // Dedup by id OR by same sender+text within 5 seconds
       if (existing.some((m) => m.id === msg.id)) return state;
+      if (existing.some((m) =>
+        m.sender === msg.sender && m.text === msg.text &&
+        Math.abs(new Date(m.ts).getTime() - new Date(msg.ts).getTime()) < 5000
+      )) return state;
       return {
         copilotMessages: {
           ...state.copilotMessages,
