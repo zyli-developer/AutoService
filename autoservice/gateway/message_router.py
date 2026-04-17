@@ -230,6 +230,8 @@ async def _handle_subscribe(
     session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Handle F6 subscribe: create subscription, return S13 subscription_added."""
+    import sys
+    print(f"[SUB] role={viewer_role} session={session_id} scope={env.payload.get('scope')}", file=sys.stderr, flush=True)
     payload = env.payload
     scope = payload.get("scope")
     if not scope or not isinstance(scope, dict):
@@ -620,6 +622,11 @@ async def _broadcast_to_squad(
         pass
 
     sent = 0
+    import sys
+    print(
+        f"[BCAST] conv={conv_id} squad={squad_id} reg_count={_registry.count} ws_count={len(_ws_connections)} scopes={list(_registry._by_scope.keys())}",
+        file=sys.stderr, flush=True,
+    )
 
     if squad_id:
         # Look up sessions subscribed to this squad
@@ -632,6 +639,10 @@ async def _broadcast_to_squad(
         target_sessions = {
             e.session_id for e in (*squad_subs, *conv_subs, *global_subs)
         }
+        print(
+            f"[BCAST] squad_subs={len(squad_subs)} conv_subs={len(conv_subs)} global_subs={len(global_subs)} targets={len(target_sessions)}",
+            file=sys.stderr, flush=True,
+        )
 
         for session_id in target_sessions:
             target_ws = _ws_connections.get(session_id)
