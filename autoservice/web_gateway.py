@@ -16,6 +16,8 @@ import logging
 import os
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,6 +34,7 @@ from autoservice.gateway.errors import (
     make_error_payload,
 )
 from autoservice.gateway.message_router import dispatch, get_subscription_registry, replay_messages
+from autoservice.takeover_config import TakeoverConfig, load_takeover_config
 
 logger = logging.getLogger("autoservice.gateway")
 
@@ -46,6 +49,12 @@ _ws_connections: dict[str, WebSocket] = {}
 
 # Admin WS connections for alert push (T6E.7): session_id → WebSocket
 _admin_connections: dict[str, WebSocket] = {}
+
+# Test-only override; production loads from .autoservice/config.local.yaml
+_TAKEOVER_CONFIG_OVERRIDE: TakeoverConfig | None = None
+
+# operator_id → set of session_ids (for targeted pushes)
+_operator_sessions: dict[str, set[str]] = {}
 
 # Global CCPool reference (lazily initialized)
 _pool = None
@@ -78,6 +87,24 @@ async def _get_pool():
             return None
 
 
+async def _send_to_operator(operator_id: str, frame: dict) -> None:
+    """Push a frame to every session held by a given operator_id."""
+    for session_id in list(_operator_sessions.get(operator_id, set())):
+        ws = _ws_connections.get(session_id)
+        if ws is None:
+            continue
+        try:
+            await ws.send_json(frame)
+        except Exception:
+            pass
+
+
+async def _broadcast_cancelled(conv_id: str, frame: dict) -> None:
+    """Broadcast takeover_warning_cancelled to any session subscribed to the conv's squad."""
+    from autoservice.gateway.message_router import _broadcast_to_squad
+    await _broadcast_to_squad(frame, conv_id)
+
+
 async def _push_alert_to_admins(alert) -> None:
     """Push a FiredAlert to all connected admin WebSocket sessions (T6E.7)."""
     from autoservice.gateway.connection import build_frame
@@ -98,7 +125,37 @@ async def _push_alert_to_admins(alert) -> None:
 def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     """Build the FastAPI app with 3 WS endpoints + CORS."""
     app = FastAPI(title="autoservice-gateway", version="0.6.0")
-    app.state.engine = engine or LocalEngine()
+
+    if engine is None:
+        # Load takeover config (test hook wins, else YAML, else defaults)
+        if _TAKEOVER_CONFIG_OVERRIDE is not None:
+            takeover_cfg = _TAKEOVER_CONFIG_OVERRIDE
+        else:
+            takeover_cfg = load_takeover_config(Path(".autoservice/config.local.yaml"))
+        engine = LocalEngine(config={"takeover": takeover_cfg})
+
+    app.state.engine = engine
+
+    # Wire takeover notifications to WS push
+    def _push_takeover_warning(payload: dict) -> None:
+        operator_id = payload["operator_id"]
+        frame = build_frame("takeover_warning", {
+            "conversation_id": payload["conversation_id"],
+            "remaining_ms": payload["remaining_ms"],
+            "reason": payload["reason"],
+        })
+        asyncio.create_task(_send_to_operator(operator_id, frame))
+
+    def _push_takeover_cancelled(payload: dict) -> None:
+        frame = build_frame("takeover_warning_cancelled", {
+            "conversation_id": payload["conversation_id"],
+        })
+        asyncio.create_task(_broadcast_cancelled(payload["conversation_id"], frame))
+
+    if hasattr(engine, "on_takeover_warning"):
+        engine.on_takeover_warning(_push_takeover_warning)
+    if hasattr(engine, "on_takeover_warning_cancelled"):
+        engine.on_takeover_warning_cancelled(_push_takeover_cancelled)
 
     app.add_middleware(
         CORSMiddleware,
@@ -210,6 +267,12 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
     if viewer_role == "admin":
         _admin_connections[session_id] = ws
 
+    # Track operator_id → sessions for targeted pushes
+    client_operator_id = env.payload.get("operator_id")
+    if viewer_role == "operator" and client_operator_id:
+        _operator_sessions.setdefault(client_operator_id, set()).add(session_id)
+        ws.state_operator_id = client_operator_id  # for finally cleanup
+
     await ws.send_json(
         build_frame(
             "server_hello",
@@ -252,6 +315,14 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
             )
         _ws_connections.pop(session_id, None)
         _admin_connections.pop(session_id, None)
+        # Clean operator_sessions index
+        op_id = getattr(ws, "state_operator_id", None)
+        if op_id:
+            sess_set = _operator_sessions.get(op_id)
+            if sess_set and session_id in sess_set:
+                sess_set.discard(session_id)
+                if not sess_set:
+                    _operator_sessions.pop(op_id, None)
 
 
 async def _process_frame(

@@ -72,6 +72,13 @@ _conv_created_at: dict[str, float] = {}
 _conv_first_reply_sent: set[str] = set()
 
 
+def _infer_operator_from_ws(ws) -> str | None:
+    """Best-effort operator_id lookup from WS state (set in web_gateway)."""
+    if ws is None:
+        return None
+    return getattr(ws, "state_operator_id", None)
+
+
 def _extract_hint(exc: BaseException) -> str | None:
     msg = str(exc) if exc.args else ""
     return msg if _HINT_RE.search(msg) else None
@@ -125,8 +132,17 @@ async def dispatch(
     if frame_type == "ping":
         return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
-    # client_ack — simple ack, no engine call
+    # client_ack — ack; if action=continue, reset the takeover timer
     if frame_type == "client_ack":
+        payload = env.payload or {}
+        if payload.get("action") == "continue":
+            conv_id = payload.get("conversation_id")
+            actor_id = payload.get("operator_id") or _infer_operator_from_ws(ws)
+            if conv_id and actor_id:
+                try:
+                    await engine.reset_takeover_timer(conv_id, actor_id=actor_id)
+                except Exception:
+                    logger.exception("client_ack continue reset failed")
         return [build_frame("ack", {}, ref=env.id)]
 
     # subscribe / unsubscribe — subscription registry (T6A.1)
