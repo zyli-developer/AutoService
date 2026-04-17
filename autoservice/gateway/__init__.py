@@ -14,9 +14,13 @@ from autoservice.gateway.envelope import (
     parse_envelope,
 )
 from autoservice.gateway.errors import (
-    ERR_AUTH_FAILED,
+    ERR_AUTH,
+    ERR_AUTH_FAILED,  # deprecated alias
+    ERR_ENGINE,
     ERR_INTERNAL,
-    ERR_PERMISSION_DENIED,
+    ERR_PERMISSION,
+    ERR_PERMISSION_DENIED,  # deprecated alias
+    ERR_SCHEMA,
     ERR_VALIDATION,
     ERR_VERSION_INCOMPATIBLE,
     make_error_payload,
@@ -33,9 +37,13 @@ __all__ = [
     "generate_frame_id",
     "generate_session_id",
     "now_iso_ms",
+    "ERR_AUTH",
     "ERR_AUTH_FAILED",
+    "ERR_ENGINE",
     "ERR_INTERNAL",
+    "ERR_PERMISSION",
     "ERR_PERMISSION_DENIED",
+    "ERR_SCHEMA",
     "ERR_VALIDATION",
     "ERR_VERSION_INCOMPATIBLE",
     "make_error_payload",

@@ -5,7 +5,7 @@ Handles error mapping per T0.2 §6.1:
   - command frames (operator_command / admin_command) whose Engine call fails
     → S11 command_response{ok:false}
   - other frames that fail → S4 error frame
-  - NotImplementedError (T0.4 skeleton state) → 5000_INTERNAL + details.engine_hint
+  - NotImplementedError (T0.4 skeleton state) → 5010_INTERNAL + details.engine_hint
 """
 
 from __future__ import annotations
