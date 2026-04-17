@@ -42,16 +42,16 @@ def _get_sla():
     if _sla is None:
         from autoservice.sla_aggregator import SLAAggregator
         _sla = SLAAggregator()
-        # Seed with some initial data so dashboard isn't empty
-        from autoservice.sla_aggregator import MetricType
-        _sla.record(MetricType.FIRST_REPLY_MS, 2100.0)
-        _sla.record(MetricType.ACCEPT_MS, 850.0)
-        _sla.record(MetricType.CSAT_SCORE, 4.6)
-        _sla.record(MetricType.RESOLUTION_RATE, 0.873)
-        _sla.record(MetricType.DIGEST_RATE, 0.82)
-        _sla.record(MetricType.COMPLAINT_RATE, 0.03)
-        _sla.record(MetricType.TTFB_MS, 420.0)
     return _sla
+
+
+def get_sla_aggregator():
+    """Return the shared SLAAggregator singleton.
+
+    Use this to pass the instance to message_router hooks so that
+    conversation events feed real SLA data (T6D.1).
+    """
+    return _get_sla()
 
 
 def _get_billing():
@@ -61,6 +61,17 @@ def _get_billing():
         from autoservice.billing_metrics import BillingMetrics
         _billing = TieredBilling()
         _billing_metrics = BillingMetrics()
+        # Seed operator leaderboard with demo data (T6D.4)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2800)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=4, response_ms=3100)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2600)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=4, response_ms=3400)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2900)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=4, response_ms=3500)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=5, response_ms=3200)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=4, response_ms=3800)
+        _billing_metrics.record_operator_handle("op_wang", name="王芳", csat=5, response_ms=2100)
+        _billing_metrics.record_operator_handle("op_wang", name="王芳", csat=5, response_ms=2300)
     return _billing, _billing_metrics
 
 
@@ -209,6 +220,28 @@ async def billing_invoices() -> list[dict[str, Any]]:
         bill = billing.generate_bill(metrics, period)
         invoices.append(bill)
     return invoices
+
+
+# ---------------------------------------------------------------------------
+# Metrics — Takeover Trend (T6D.3)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/metrics/takeover-trend")
+async def takeover_trend(period: str = "week") -> list[dict[str, Any]]:
+    """Return takeover counts grouped by date for the last week or month."""
+    _, metrics = _get_billing()
+    return metrics.get_takeover_trend(period)
+
+
+# ---------------------------------------------------------------------------
+# Operator Leaderboard (T6D.4)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/metrics/operator-leaderboard")
+async def operator_leaderboard() -> list[dict[str, Any]]:
+    """Return operator performance data sorted by handled count descending."""
+    _, metrics = _get_billing()
+    return metrics.get_operator_leaderboard()
 
 
 # ---------------------------------------------------------------------------
@@ -606,7 +639,7 @@ async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
             ("配送查询", "delivery_inquiry", "焦急客户",
              "我的快递到哪了？已经等了三天了", "请提供您的订单号，我帮您查询物流状态..."),
             ("账户问题", "account_issue", "技术小白",
-             "我登不上账号了，密码忘记了", "请点击登录页的"忘记密码"，我引导您重置..."),
+             "我登不上账号了，密码忘记了", '请点击登录页的"忘记密码"，我引导您重置...'),
             ("功能咨询", "feature_inquiry", "企业客户",
              "你们支持批量导入吗？有API吗？", "支持的，我们提供批量导入和完整的API接口..."),
             ("优惠活动", "promotion", "促销敏感客户",
