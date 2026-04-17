@@ -329,7 +329,7 @@ tasks:
       3. BillingMetrics.record_csat() 被调用，数据可查
     estimated_effort: medium
     estimated_lines: 190
-    status: in_progress
+    status: completed
     owner: DevA
 
   - id: T6C.2

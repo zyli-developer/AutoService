@@ -217,7 +217,7 @@
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
-| T6C.1 | CSAT 评分全链路 | 🟡 | 🟦 | Dev | T6A.1 | MISS-07 |
+| T6C.1 | CSAT 评分全链路 | 🟡 | 🟩 | Dev | T6A.1 | MISS-07 |
 | T6C.2 | Metrics→Billing 联通 | 🟢 | ⬜ | Agent | — | DEV-10 |
 | T6C.3 | /approve /reject 真实执行 | 🟡 | 🟩 | Dev | — | BRK-09 |
 
