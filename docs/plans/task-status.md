@@ -207,19 +207,19 @@
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
-| T6B.1 | Upload → soul 生成接线 | 🟢 | ⬜ | Agent | — | BRK-05 |
+| T6B.1 | Upload → soul 生成接线 | 🟢 | 🟩 | Agent | — | BRK-05 |
 | T6B.2 | Activate 返回可用 URL | 🟢 | ⬜ | Agent | — | BRK-06 |
 | T6B.3 | 虚拟预演传正确参数 | 🟢 | ⬜ | Agent | T6B.1 | BRK-07 |
 | T6B.4 | 合规预检传真实 config | 🟢 | ⬜ | Agent | T6B.2 | BRK-08 |
-| T6B.5 | 向导步骤校验 + 持久化 | 🟢 | ⬜ | Agent | — | DEV-01 |
+| T6B.5 | 向导步骤校验 + 持久化 | 🟢 | 🟩 | Agent | — | DEV-01 |
 
 ### Phase 6C · 计费链路打通（P0 · M6.1）
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
-| T6C.1 | CSAT 评分全链路 | 🟡 | ⬜ | Dev | T6A.1 | MISS-07 |
+| T6C.1 | CSAT 评分全链路 | 🟡 | 🟦 | Dev | T6A.1 | MISS-07 |
 | T6C.2 | Metrics→Billing 联通 | 🟢 | ⬜ | Agent | — | DEV-10 |
-| T6C.3 | /approve /reject 真实执行 | 🟡 | ⬜ | Dev | — | BRK-09 |
+| T6C.3 | /approve /reject 真实执行 | 🟡 | 🟩 | Dev | — | BRK-09 |
 
 ### Phase 6D · 仪表盘补全（P1 · M6.2）
 

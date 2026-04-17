@@ -329,8 +329,8 @@ tasks:
       3. BillingMetrics.record_csat() 被调用，数据可查
     estimated_effort: medium
     estimated_lines: 190
-    status: pending
-    owner: null
+    status: in_progress
+    owner: DevA
 
   - id: T6C.2
     name: "Metrics Plugin → BillingMetrics 联通"
@@ -393,8 +393,8 @@ tasks:
       3. 无效 ID → 返回错误提示
     estimated_effort: small
     estimated_lines: 40
-    status: pending
-    owner: null
+    status: completed
+    owner: Dev
 
   # ─── Phase 6D: 仪表盘补全 (P1) ─────────────────────────
 
