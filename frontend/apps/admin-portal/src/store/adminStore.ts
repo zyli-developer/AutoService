@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface Notification {
   id: string;
@@ -156,45 +157,56 @@ export const initialState = {
   canaryState: null as CanaryStateUI | null,
 };
 
-export const useAdminStore = create<AdminState>((set) => ({
-  ...initialState,
+export const useAdminStore = create<AdminState>()(
+  persist(
+    (set) => ({
+      ...initialState,
 
-  login: (tenantId) => set({ tenantId, isLoggedIn: true }),
+      login: (tenantId) => set({ tenantId, isLoggedIn: true }),
 
-  logout: () => set({ ...initialState }),
+      logout: () => set({ ...initialState }),
 
-  setActiveTab: (activeTab) => set({ activeTab }),
+      setActiveTab: (activeTab) => set({ activeTab }),
 
-  addNotification: (n) => set((state) => ({ notifications: [...state.notifications, n] })),
+      addNotification: (n) => set((state) => ({ notifications: [...state.notifications, n] })),
 
-  clearNotifications: () => set({ notifications: [] }),
+      clearNotifications: () => set({ notifications: [] }),
 
-  setWizardStep: (wizardStep) => set({ wizardStep }),
+      setWizardStep: (wizardStep) => set({ wizardStep }),
 
-  setWizardFormData: (data) =>
-    set((state) => ({ wizardFormData: { ...state.wizardFormData, ...data } })),
+      setWizardFormData: (data) =>
+        set((state) => ({ wizardFormData: { ...state.wizardFormData, ...data } })),
 
-  setGenerating: (generating) => set({ generating }),
+      setGenerating: (generating) => set({ generating }),
 
-  setGenerationResult: (generationResult) => set({ generationResult }),
+      setGenerationResult: (generationResult) => set({ generationResult }),
 
-  setRehearsalDialogs: (rehearsalDialogs) => set({ rehearsalDialogs }),
-  setRehearsalLoading: (rehearsalLoading) => set({ rehearsalLoading }),
-  updateDialogReviewStatus: (dialogId, status) =>
-    set((state) => ({
-      rehearsalDialogs: state.rehearsalDialogs.map((d) =>
-        d.id === dialogId ? { ...d, review_status: status } : d
-      ),
-    })),
+      setRehearsalDialogs: (rehearsalDialogs) => set({ rehearsalDialogs }),
+      setRehearsalLoading: (rehearsalLoading) => set({ rehearsalLoading }),
+      updateDialogReviewStatus: (dialogId, status) =>
+        set((state) => ({
+          rehearsalDialogs: state.rehearsalDialogs.map((d) =>
+            d.id === dialogId ? { ...d, review_status: status } : d
+          ),
+        })),
 
-  setProposals: (proposals) => set({ proposals }),
-  setProposalsLoading: (proposalsLoading) => set({ proposalsLoading }),
-  updateProposalStatus: (proposalId, status) =>
-    set((state) => ({
-      proposals: state.proposals.map((p) =>
-        p.id === proposalId ? { ...p, status } : p
-      ),
-    })),
+      setProposals: (proposals) => set({ proposals }),
+      setProposalsLoading: (proposalsLoading) => set({ proposalsLoading }),
+      updateProposalStatus: (proposalId, status) =>
+        set((state) => ({
+          proposals: state.proposals.map((p) =>
+            p.id === proposalId ? { ...p, status } : p
+          ),
+        })),
 
-  setCanaryState: (canaryState) => set({ canaryState }),
-}));
+      setCanaryState: (canaryState) => set({ canaryState }),
+    }),
+    {
+      name: 'admin-wizard-state',
+      partialize: (state) => ({
+        wizardStep: state.wizardStep,
+        generationResult: state.generationResult,
+      }),
+    },
+  ),
+);

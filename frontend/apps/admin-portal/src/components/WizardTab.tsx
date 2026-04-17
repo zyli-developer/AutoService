@@ -6,6 +6,32 @@ import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
 
 const STEPS = ['上传', '权限', '预演', '合规', '可用'] as const;
 
+/** Check whether the given wizard step is considered complete. */
+function useStepComplete(step: number): boolean {
+  const generationResult = useAdminStore((s) => s.generationResult);
+  const rehearsalDialogs = useAdminStore((s) => s.rehearsalDialogs);
+
+  switch (step) {
+    // Step 0 (Upload): agents must have been generated
+    case 0:
+      return generationResult !== null;
+    // Step 1 (Channel): always completable (channel defaults to 'web' selected)
+    case 1:
+      return true;
+    // Step 2 (Rehearsal): all dialogs must be reviewed (none pending)
+    case 2:
+      return (
+        rehearsalDialogs.length > 0 &&
+        rehearsalDialogs.every((d) => d.review_status !== 'pending')
+      );
+    // Step 3 (Compliance): no gate — can proceed with warnings per PRD
+    case 3:
+      return true;
+    default:
+      return true;
+  }
+}
+
 function SandboxReady() {
   const tenantId = useAdminStore((s) => s.tenantId);
   return (
@@ -21,6 +47,7 @@ function SandboxReady() {
 
 export function WizardTab() {
   const { tenantId, wizardStep, setWizardStep } = useAdminStore();
+  const currentStepComplete = useStepComplete(wizardStep);
 
   return (
     <div data-testid="tab-wizard">
@@ -53,7 +80,16 @@ export function WizardTab() {
           <button className="cs-btn" onClick={() => setWizardStep(wizardStep - 1)}>上一步</button>
         )}
         {wizardStep < STEPS.length - 1 && (
-          <button className="cs-btn ok" onClick={() => setWizardStep(wizardStep + 1)} data-testid="wizard-next">下一步</button>
+          <button
+            className="cs-btn ok"
+            onClick={() => setWizardStep(wizardStep + 1)}
+            disabled={!currentStepComplete}
+            data-testid="wizard-next"
+            title={currentStepComplete ? undefined : '请先完成当前步骤'}
+            style={currentStepComplete ? undefined : { opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            下一步
+          </button>
         )}
       </div>
     </div>
