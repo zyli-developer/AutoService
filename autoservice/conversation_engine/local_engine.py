@@ -109,6 +109,15 @@ class LocalEngine:
 
     def __init__(self, config: Mapping[str, Any] | None = None) -> None:
         self._config = dict(config or {})
+        # Takeover config (loaded from app or defaults)
+        from autoservice.takeover_config import DEFAULT_TAKEOVER_CONFIG, TakeoverConfig
+        tk_cfg = self._config.get("takeover")
+        self._takeover_config: TakeoverConfig = (
+            tk_cfg if isinstance(tk_cfg, TakeoverConfig) else DEFAULT_TAKEOVER_CONFIG
+        )
+        # Notification callbacks (set externally via on_takeover_warning / on_takeover_warning_cancelled)
+        self._takeover_warning_cb = None
+        self._takeover_cancel_cb = None
         # Core storage
         self._conversations: dict[str, Conversation] = {}
         self._participants: dict[str, list[Participant]] = {}  # conv_id → [Participant]
@@ -122,6 +131,8 @@ class LocalEngine:
         self._events: dict[str, list[Event]] = {}  # conv_id → [Event]
         # Timer storage: conv_id → name → (Timer, asyncio.Task)
         self._timers: dict[str, dict[str, tuple[Timer, asyncio.Task]]] = {}
+        # Takeover timer tasks: conv_id → state dict with warning_task, release_task, warning_fired
+        self._takeover_tasks: dict[str, dict[str, Any]] = {}
         # Plugin hooks with Q8c isolation (T1A.3)
         self._hooks: list[PluginHook] = []
 
@@ -480,6 +491,11 @@ class LocalEngine:
         if conv.state == ConversationState.CREATED:
             self._update_conv(conversation_id, state=ConversationState.ACTIVE)
             self._emit(EventType.CONVERSATION_ACTIVATED, conversation_id, {})
+        # Auto-release reset: if takeover operator is the sender, reset timer
+        if (conv.mode == ConversationMode.TAKEOVER
+                and conv.takeover_operator_id is not None
+                and source == conv.takeover_operator_id):
+            await self.reset_takeover_timer(conversation_id, actor_id=source)
         return msg
 
     async def edit_message(
@@ -552,6 +568,90 @@ class LocalEngine:
             msgs = msgs[:limit]
         return msgs
 
+    # ---------- Takeover timer (auto-release) ----------
+
+    def on_takeover_warning(self, cb) -> None:
+        """Register callback invoked when takeover warning phase fires.
+
+        Callback receives dict: {conversation_id, operator_id, remaining_ms, reason}.
+        """
+        self._takeover_warning_cb = cb
+
+    def on_takeover_warning_cancelled(self, cb) -> None:
+        """Register callback invoked when a fired warning is subsequently cancelled."""
+        self._takeover_cancel_cb = cb
+
+    def _arm_takeover_timer(self, conversation_id: str, operator_id: str) -> None:
+        """Schedule warning and release tasks. Cancels any existing ones first."""
+        self._cancel_takeover_timer(conversation_id)
+        cfg = self._takeover_config
+        warning_delay = max(0, cfg.idle_timeout_ms - cfg.warning_ms) / 1000.0
+        release_delay = cfg.warning_ms / 1000.0
+
+        state: dict[str, Any] = {"warning_fired": False}
+
+        async def _warning():
+            try:
+                await asyncio.sleep(warning_delay)
+            except asyncio.CancelledError:
+                return
+            state["warning_fired"] = True
+            if self._takeover_warning_cb:
+                try:
+                    self._takeover_warning_cb({
+                        "conversation_id": conversation_id,
+                        "operator_id": operator_id,
+                        "remaining_ms": cfg.warning_ms,
+                        "reason": "idle",
+                    })
+                except Exception:
+                    log.exception("takeover_warning callback failed")
+            state["release_task"] = asyncio.create_task(
+                _release(), name=f"takeover-release-{conversation_id}",
+            )
+
+        async def _release():
+            try:
+                await asyncio.sleep(release_delay)
+            except asyncio.CancelledError:
+                return
+            try:
+                await self.switch_mode(
+                    conversation_id, ConversationMode.COPILOT,
+                    triggered_by="__system__", trigger="auto:idle_timeout",
+                )
+            except Exception:
+                log.exception("auto-release switch_mode failed")
+
+        state["warning_task"] = asyncio.create_task(
+            _warning(), name=f"takeover-warning-{conversation_id}",
+        )
+        self._takeover_tasks[conversation_id] = state
+
+    def _cancel_takeover_timer(self, conversation_id: str) -> bool:
+        """Cancel any pending warning/release tasks. Returns True if warning had fired."""
+        state = self._takeover_tasks.pop(conversation_id, None)
+        if state is None:
+            return False
+        for key in ("warning_task", "release_task"):
+            t = state.get(key)
+            if t and not t.done():
+                t.cancel()
+        return bool(state.get("warning_fired"))
+
+    async def reset_takeover_timer(self, conversation_id: str, *, actor_id: str) -> None:
+        """Re-arm the timer; notify cancellation callback if warning had already fired."""
+        conv = self._get_conv(conversation_id)
+        if conv.mode != ConversationMode.TAKEOVER or conv.takeover_operator_id != actor_id:
+            return
+        warning_had_fired = self._cancel_takeover_timer(conversation_id)
+        if warning_had_fired and self._takeover_cancel_cb:
+            try:
+                self._takeover_cancel_cb({"conversation_id": conversation_id})
+            except Exception:
+                log.exception("takeover_cancel callback failed")
+        self._arm_takeover_timer(conversation_id, actor_id)
+
     # ---------- Commands (T2A.1) ----------
 
     # Commands that require operator or admin role
@@ -588,17 +688,21 @@ class LocalEngine:
                 triggered_by=actor_id, trigger="/hijack",
                 takeover_operator_id=actor_id,
             )
+            self._arm_takeover_timer(conversation_id, actor_id)
         elif command == "/release":
+            self._cancel_takeover_timer(conversation_id)
             await self.switch_mode(
                 conversation_id, ConversationMode.AUTO,
                 triggered_by=actor_id, trigger="/release",
             )
         elif command == "/copilot":
+            self._cancel_takeover_timer(conversation_id)
             await self.switch_mode(
                 conversation_id, ConversationMode.COPILOT,
                 triggered_by=actor_id, trigger="/copilot",
             )
         elif command == "/resolve":
+            self._cancel_takeover_timer(conversation_id)
             reason = (args or {}).get("reason")
             await self.close_conversation(
                 conversation_id,
@@ -607,6 +711,7 @@ class LocalEngine:
                 reason=reason,
             )
         elif command == "/abandon":
+            self._cancel_takeover_timer(conversation_id)
             reason = (args or {}).get("reason")
             await self.close_conversation(
                 conversation_id,
