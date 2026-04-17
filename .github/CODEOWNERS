@@ -8,3 +8,7 @@
 /autoservice/        @h2oslabs/app-team
 /plugins/            @h2oslabs/app-team
 /skills/             @h2oslabs/app-team
+
+# NFR-4: Co-location constraint — changes require product + SRE dual approval
+/deploy/docker-compose.tmpl.yaml  @h2oslabs/product-owner @h2oslabs/sre-lead
+/deploy/tenants/                  @h2oslabs/product-owner @h2oslabs/sre-lead

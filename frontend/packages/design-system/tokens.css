@@ -1,0 +1,84 @@
+/* Design tokens extracted from docs/prd/autoservice-full-journey.html */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Surface — soft warm light */
+  --cream: #fafaf7;
+  --paper: #ffffff;
+  --oat: rgba(24,24,27,.08);
+  --oat-l: rgba(24,24,27,.04);
+
+  /* Text */
+  --silver: rgba(24,24,27,.45);
+  --charcoal: rgba(24,24,27,.88);
+  --ink: #18181b;
+
+  /* M-scale: Merchant / Primary (blue) */
+  --m300: #dbeafe;
+  --m600: #1b61c9;
+  --m800: #181d26;
+
+  /* S-scale: Customer (cyan) */
+  --s500: #3bd3fd;
+  --s800: #0089ad;
+
+  /* L-scale: Warning (yellow/amber) */
+  --l400: #f8cc65;
+  --l500: #fbbd41;
+  --l700: #d08a11;
+  --l800: #9d6a09;
+
+  /* U-scale: Platform (purple) */
+  --u300: #c1b0ff;
+  --u500: #8a5cf6;
+  --u800: #43089f;
+  --u900: #32037d;
+
+  /* Accent: Urgent (pink) */
+  --p: #fc7981;
+
+  /* Aurora palette — Customer */
+  --aurora-1: #6ee7b7;          /* mint */
+  --aurora-2: #67e8f9;          /* cyan */
+  --aurora-3: #a78bfa;          /* violet */
+  --role-primary: #6ee7b7;
+  --role-primary-dim: rgba(110,231,183,.15);
+  --role-glow: rgba(110,231,183,.25);
+
+  /* Aurora palette — Operator */
+  --role-op-primary: #67e8f9;
+  --role-op-dim: rgba(103,232,249,.15);
+
+  /* Aurora palette — Admin */
+  --role-admin-primary: #a78bfa;
+  --role-admin-dim: rgba(167,139,250,.15);
+
+  /* Glass */
+  --glass-bg: rgba(255,255,255,.6);
+  --glass-border: rgba(24,24,27,.06);
+  --glass-bg-hover: rgba(255,255,255,.85);
+
+  /* Shadow — refined, layered */
+  --shd: 0 1px 2px rgba(24,24,27,.04), 0 2px 8px rgba(24,24,27,.04);
+  --shd-md: 0 4px 12px rgba(24,24,27,.06), 0 2px 4px rgba(24,24,27,.04);
+  --shd-hover: 0 8px 24px rgba(24,24,27,.08), 0 4px 8px rgba(24,24,27,.04);
+  --shd-btn: 0 1px 2px rgba(24,24,27,.06), 0 2px 6px rgba(24,24,27,.08);
+  --shd-btn-hover: 0 2px 4px rgba(24,24,27,.08), 0 6px 16px rgba(24,24,27,.12);
+
+  /* Typography */
+  --font-display: 'DM Sans', 'Noto Sans SC', sans-serif;
+  --font-sans: 'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--charcoal);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

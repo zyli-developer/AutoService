@@ -23,6 +23,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
@@ -120,6 +121,8 @@ class PoolConfig(_BasePoolConfig):
     permission_mode: str = "bypassPermissions"
     model: str | None = None
     cli_path: str | None = None
+    # Enable partial/delta streaming events for progressive UI updates.
+    include_partial_messages: bool = False
 
 
 def load_pool_config(cwd: str | None = None) -> PoolConfig:
@@ -207,6 +210,7 @@ async def create_cc_client(
         permission_mode=config.permission_mode,
         model=config.model,
         cli_path=config.cli_path,
+        include_partial_messages=config.include_partial_messages,
     )
 
     if mcp_servers:
@@ -238,6 +242,7 @@ class CCPool(AsyncPool[CCClient]):
         config: PoolConfig | None = None,
         mcp_servers: dict | None = None,
         system_prompt: str | None = None,
+        on_sticky_release: Callable[[str], Awaitable[None]] | None = None,
     ):
         cfg = config or PoolConfig()
         super().__init__(
@@ -246,6 +251,7 @@ class CCPool(AsyncPool[CCClient]):
                                               system_prompt=system_prompt),
             instance_prefix="cc",
             logger=log,
+            on_sticky_release=on_sticky_release,
         )
 
     async def query(self, prompt: str, **kwargs: Any) -> AsyncIterator[Message]:

@@ -1,0 +1,27 @@
+# Lead Collection Agent configuration
+# T1A.4 产出 | 2026-04-16
+
+role: lead
+name: "Lead Collection Agent"
+name_zh: "线索收集 Agent"
+
+pool:
+  model: sonnet
+  max_size: 5
+  skill: marketing
+  permission_mode: default
+
+routing:
+  intent_types: ["purchase_intent", "pricing_inquiry", "demo_request", "partnership"]
+  priority: high      # 商机优先
+  fallback_to: customer
+
+mode_behavior:
+  auto: active        # 主动收集线索
+  copilot: active     # 继续对话，operator 旁听
+  takeover: side      # 辅助 operator 提供客户画像
+
+timers:
+  first_reply_sla: 3s
+  slow_query_threshold: 5s
+  idle_timeout: 600s    # 线索对话允许更长思考时间

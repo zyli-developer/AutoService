@@ -1,0 +1,12 @@
+# Portuguese customer service terminology
+language: pt
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    pt: "Olá, como posso ajudá-lo?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    pt: "Vou transferi-lo para um atendente."
+  - id: thank_you
+    en: "Thank you for your patience."
+    pt: "Obrigado pela sua paciência."

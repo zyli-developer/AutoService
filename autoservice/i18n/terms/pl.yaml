@@ -1,0 +1,12 @@
+# Polish customer service terminology
+language: pl
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    pl: "Dzień dobry, w czym mogę pomóc?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    pl: "Połączę Panią/Pana z konsultantem."
+  - id: thank_you
+    en: "Thank you for your patience."
+    pl: "Dziękuję za cierpliwość."

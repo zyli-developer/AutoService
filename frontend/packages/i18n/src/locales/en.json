@@ -1,0 +1,18 @@
+{
+  "app.title": "AutoService",
+  "app.placeholder": "TODO placeholder — see task T1B.x / T2B.x / T3B.x",
+  "connection.lost": "Connection lost",
+  "connection.reconnecting": "Reconnecting...",
+  "connection.replaying": "Syncing messages ({{count}})...",
+  "connection.replaying_no_count": "Syncing messages...",
+  "chat.input.placeholder": "Type a message...",
+  "chat.input.placeholder.connecting": "Connecting...",
+  "chat.input.send": "Send",
+  "typing.indicator": "Typing...",
+  "message.status.sending": "Sending",
+  "message.status.failed": "Failed to send",
+  "message.status.retry": "Retry",
+  "image.error": "Image unavailable",
+  "time.yesterday": "Yesterday",
+  "time.format.yesterday": "Yesterday {{time}}"
+}

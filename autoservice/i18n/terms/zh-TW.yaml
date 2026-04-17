@@ -1,0 +1,12 @@
+# Traditional Chinese customer service terminology
+language: zh-TW
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    zh-TW: "您好，有什麼可以幫您？"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    zh-TW: "我幫您轉接真人客服。"
+  - id: thank_you
+    en: "Thank you for your patience."
+    zh-TW: "感謝您的耐心等待。"

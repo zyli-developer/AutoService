@@ -1,0 +1,95 @@
+# Japanese customer service terminology
+# Source: IATE / MS Terminology Portal
+language: ja
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ja: "こんにちは、どのようなご用件でしょうか？"
+
+  - id: goodbye
+    en: "Thank you for contacting us. Goodbye!"
+    ja: "お問い合わせいただきありがとうございます。失礼いたします。"
+
+  - id: welcome
+    en: "Welcome! We're happy to assist you."
+    ja: "ようこそ！お手伝いできてうれしいです。"
+
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ja: "担当者におつなぎいたします。"
+
+  - id: please_wait
+    en: "Please wait a moment while I look into this."
+    ja: "少々お待ちください、確認いたします。"
+
+  - id: issue_resolved
+    en: "Your issue has been resolved. Is there anything else?"
+    ja: "問題が解決いたしました。他にお手伝いできることはございますか？"
+
+  - id: anything_else
+    en: "Is there anything else I can help you with?"
+    ja: "他にお手伝いできることはございますか？"
+
+  - id: order_status
+    en: "Let me check your order status."
+    ja: "ご注文状況を確認いたします。"
+
+  - id: refund_status
+    en: "Let me look up your refund status."
+    ja: "返金状況を確認いたします。"
+
+  - id: shipping_info
+    en: "Here is your shipping information."
+    ja: "配送情報はこちらです。"
+
+  - id: csat_request
+    en: "Would you mind rating your experience today?"
+    ja: "本日のサービスについてご評価いただけますか？"
+
+  - id: thank_you
+    en: "Thank you for your patience."
+    ja: "お待ちいただきありがとうございます。"
+
+  - id: apology
+    en: "I apologize for the inconvenience."
+    ja: "ご不便をおかけして申し訳ございません。"
+
+  - id: account_settings
+    en: "I can help you with your account settings."
+    ja: "アカウント設定のお手伝いをいたします。"
+
+  - id: password_reset
+    en: "I'll help you reset your password."
+    ja: "パスワードのリセットをお手伝いいたします。"
+
+  - id: billing_inquiry
+    en: "Let me look into your billing inquiry."
+    ja: "請求に関するお問い合わせを確認いたします。"
+
+  - id: subscription
+    en: "I can help you manage your subscription."
+    ja: "サブスクリプションの管理をお手伝いいたします。"
+
+  - id: cancellation
+    en: "I'll process your cancellation request."
+    ja: "キャンセルのお手続きを進めます。"
+
+  - id: escalation_notice
+    en: "I'm escalating this to a specialist team."
+    ja: "専門チームにエスカレーションいたします。"
+
+  - id: manager_request
+    en: "I'll connect you with a manager right away."
+    ja: "すぐにマネージャーにおつなぎいたします。"
+
+  - id: complaint_received
+    en: "Your complaint has been received and logged."
+    ja: "お客様のご意見を承り、記録いたしました。"
+
+  - id: business_hours
+    en: "Our business hours are Monday to Friday, 9 AM to 6 PM."
+    ja: "営業時間は月曜日から金曜日、午前9時から午後6時までです。"
+
+  - id: privacy_notice
+    en: "Your data is protected under our privacy policy."
+    ja: "お客様のデータはプライバシーポリシーに基づき保護されています。"

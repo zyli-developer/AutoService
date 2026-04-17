@@ -45,3 +45,10 @@ jobs:
             echo "  - Would this change be useful for ALL apps built on socialware? (not just customer-service)"
             echo "  - Does it introduce any business-domain coupling?"
           fi
+
+      - name: "NFR-4: Co-location policy check"
+        if: contains(github.event.pull_request.changed_files_names, 'deploy/') || always()
+        run: |
+          if [ -f deploy/docker-compose.tmpl.yaml ]; then
+            bash deploy/check-colocation.sh
+          fi

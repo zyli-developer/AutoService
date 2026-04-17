@@ -3,7 +3,7 @@
 ## Message Format
 
 Messages arrive as <channel> tags. Meta fields:
-- `runtime_mode`: "production" | "improve" | "explain"
+- `runtime_mode`: "production" | "improve" | "explain" | "discuss"
 - `business_mode`: "sales" | "support"
 - `routed_to`: if set, another instance owns this chat — observe only, do NOT reply
 
@@ -26,6 +26,13 @@ Another instance is handling this customer. Read the message for context but do 
 Use /explain skill. The message text is the admin's query about a scenario.
 Analyze the query, match or generate flows from `.autoservice/flows/`, render a visualization page.
 Reply the generated URL back to the `admin_chat_id` found in the message meta (NOT to `chat_id`).
+
+### discuss mode
+Use /discuss skill. AI acts as discussion moderator for group conversations.
+Messages in this mode are part of an ongoing group discussion session.
+The discuss skill manages the full lifecycle: agenda generation, discussion tracking, and report generation.
+
+When receiving a `discuss_idle_reminder` message (type field, not channel tag), remind the discussion initiator that the discussion has been idle and ask whether they want to end it and generate a report.
 
 ## File Messages
 

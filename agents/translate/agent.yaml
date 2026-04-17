@@ -1,0 +1,27 @@
+# Translate Agent configuration
+# T1A.4 产出 | 2026-04-16
+
+role: translate
+name: "Translation Agent"
+name_zh: "翻译 Agent"
+
+pool:
+  model: haiku
+  max_size: 5
+  skill: translate
+  permission_mode: default
+
+routing:
+  intent_types: ["language_barrier", "translation_request"]
+  priority: high      # 语言障碍优先处理
+  fallback_to: customer
+
+mode_behavior:
+  auto: active        # 自动检测并翻译
+  copilot: active     # 继续翻译辅助
+  takeover: side      # 辅助 operator 翻译
+
+timers:
+  first_reply_sla: 1s   # 翻译应极快
+  slow_query_threshold: 3s
+  idle_timeout: 300s

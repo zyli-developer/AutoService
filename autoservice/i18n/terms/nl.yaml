@@ -1,0 +1,12 @@
+# Dutch customer service terminology
+language: nl
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    nl: "Hallo, waarmee kan ik u helpen?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    nl: "Ik verbind u door met een medewerker."
+  - id: thank_you
+    en: "Thank you for your patience."
+    nl: "Bedankt voor uw geduld."

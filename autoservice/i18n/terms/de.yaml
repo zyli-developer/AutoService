@@ -1,0 +1,12 @@
+# German customer service terminology
+language: de
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    de: "Hallo, wie kann ich Ihnen helfen?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    de: "Ich verbinde Sie mit einem Mitarbeiter."
+  - id: thank_you
+    en: "Thank you for your patience."
+    de: "Vielen Dank für Ihre Geduld."

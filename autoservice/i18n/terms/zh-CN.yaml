@@ -1,0 +1,95 @@
+# Simplified Chinese customer service terminology
+# Source: IATE / MS Terminology Portal
+language: zh-CN
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    zh-CN: "您好，有什么可以帮您？"
+
+  - id: goodbye
+    en: "Thank you for contacting us. Goodbye!"
+    zh-CN: "感谢您的联系，再见！"
+
+  - id: welcome
+    en: "Welcome! We're happy to assist you."
+    zh-CN: "欢迎！很高兴为您服务。"
+
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    zh-CN: "我帮您转接人工客服。"
+
+  - id: please_wait
+    en: "Please wait a moment while I look into this."
+    zh-CN: "请稍等，我来帮您查一下。"
+
+  - id: issue_resolved
+    en: "Your issue has been resolved. Is there anything else?"
+    zh-CN: "您的问题已解决。还有其他需要帮助的吗？"
+
+  - id: anything_else
+    en: "Is there anything else I can help you with?"
+    zh-CN: "还有其他可以帮您的吗？"
+
+  - id: order_status
+    en: "Let me check your order status."
+    zh-CN: "我帮您查一下订单状态。"
+
+  - id: refund_status
+    en: "Let me look up your refund status."
+    zh-CN: "我帮您查询退款进度。"
+
+  - id: shipping_info
+    en: "Here is your shipping information."
+    zh-CN: "以下是您的物流信息。"
+
+  - id: csat_request
+    en: "Would you mind rating your experience today?"
+    zh-CN: "方便对本次服务做个评价吗？"
+
+  - id: thank_you
+    en: "Thank you for your patience."
+    zh-CN: "感谢您的耐心等待。"
+
+  - id: apology
+    en: "I apologize for the inconvenience."
+    zh-CN: "给您带来不便，非常抱歉。"
+
+  - id: account_settings
+    en: "I can help you with your account settings."
+    zh-CN: "我可以帮您处理账户设置。"
+
+  - id: password_reset
+    en: "I'll help you reset your password."
+    zh-CN: "我来帮您重置密码。"
+
+  - id: billing_inquiry
+    en: "Let me look into your billing inquiry."
+    zh-CN: "我帮您查一下账单问题。"
+
+  - id: subscription
+    en: "I can help you manage your subscription."
+    zh-CN: "我可以帮您管理订阅服务。"
+
+  - id: cancellation
+    en: "I'll process your cancellation request."
+    zh-CN: "我来帮您处理取消请求。"
+
+  - id: escalation_notice
+    en: "I'm escalating this to a specialist team."
+    zh-CN: "我将此问题升级到专业团队处理。"
+
+  - id: manager_request
+    en: "I'll connect you with a manager right away."
+    zh-CN: "我马上为您转接主管。"
+
+  - id: complaint_received
+    en: "Your complaint has been received and logged."
+    zh-CN: "您的投诉已收到并记录。"
+
+  - id: business_hours
+    en: "Our business hours are Monday to Friday, 9 AM to 6 PM."
+    zh-CN: "我们的工作时间为周一至周五，上午9点至下午6点。"
+
+  - id: privacy_notice
+    en: "Your data is protected under our privacy policy."
+    zh-CN: "您的数据受我们隐私政策保护。"

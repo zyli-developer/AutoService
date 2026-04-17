@@ -15,9 +15,11 @@ import signal
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import websockets
 from websockets.asyncio.server import ServerConnection
@@ -25,6 +27,7 @@ from websockets.asyncio.server import ServerConnection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CREDENTIALS_PATH = PROJECT_ROOT / ".feishu-credentials.json"
 ACK_EMOJI = "OnIt"
+DISCUSS_IDLE_TIMEOUT = 15 * 60  # 15 minutes
 
 log = logging.getLogger("channel-server")
 
@@ -45,6 +48,59 @@ class Instance:
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+def _extract_partial_text(json_buf: str) -> str | None:
+    """Best-effort extract the 'text' field value from incomplete JSON.
+
+    Handles standard JSON escapes (\\n, \\t, \\", \\\\, \\uXXXX).
+    Returns None if the 'text' key hasn't appeared yet.
+    Returns partial decoded text even before the closing quote.
+    """
+    import re
+    m = re.search(r'"text"\s*:\s*"', json_buf)
+    if not m:
+        return None
+    start = m.end()
+    out = []
+    i = start
+    n = len(json_buf)
+    while i < n:
+        c = json_buf[i]
+        if c == '"':
+            break  # end of text value
+        if c == '\\':
+            if i + 1 >= n:
+                break  # incomplete escape — stop here (next delta will complete)
+            nc = json_buf[i + 1]
+            simple = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f'}
+            if nc in simple:
+                out.append(simple[nc])
+                i += 2
+            elif nc == 'u':
+                if i + 6 > n:
+                    break  # incomplete unicode escape
+                try:
+                    out.append(chr(int(json_buf[i + 2:i + 6], 16)))
+                    i += 6
+                except ValueError:
+                    break
+            else:
+                out.append(nc)
+                i += 2
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
+
+
+@dataclass
+class PoolRoute:
+    """Virtual route backed by a CC Pool sticky session."""
+    pool: Any  # CCPool — use Any to avoid circular import
+    chat_id: str
+    instance_id: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 # ---------------------------------------------------------------------------
 # Channel Server
 # ---------------------------------------------------------------------------
@@ -58,19 +114,38 @@ class ChannelServer:
         host: str = "localhost",
         port: int = 9999,
         feishu_enabled: bool = True,
-        admin_chat_id: str | None = None,
+        admin_chat_id: str | Iterable[str] | None = None,
         pool_mode: bool = False,
     ) -> None:
         self.host = host
         self.port = port
         self.feishu_enabled = feishu_enabled
-        self.admin_chat_id = admin_chat_id
+        # admin_chat_id accepts a single id (back-compat), an iterable of ids,
+        # or a single comma-separated string. Internally stored as a set so
+        # private + group chats can both act as admin.
+        if admin_chat_id is None:
+            ids: list[str] = []
+        elif isinstance(admin_chat_id, str):
+            ids = [p.strip() for p in admin_chat_id.split(",") if p.strip()]
+        else:
+            ids = [p.strip() for p in admin_chat_id if p and p.strip()]
+        self.admin_chat_ids: set[str] = set(ids)
+        # Primary admin id used for outbound notifications / pass-through tagging.
+        # First configured id wins; None if nothing configured.
+        self.admin_chat_id: str | None = ids[0] if ids else None
         self.pool_mode = pool_mode
 
         # Route tables
         self.exact_routes: dict[str, Instance] = {}      # chat_id -> Instance
         self.prefix_routes: dict[str, Instance] = {}     # prefix  -> Instance
         self.wildcard_instances: list[Instance] = []      # role=developer, chat_ids=["*"]
+
+        # Pool virtual routes (pool_mode only)
+        self.pool_routes: dict[str, PoolRoute] = {}   # chat_id -> PoolRoute
+
+        # Streaming state per chat_id (pool_mode + streaming)
+        # keys: msg_id, last_sent, buffer, last_edit_ts, current_index
+        self._stream_states: dict[str, dict] = {}
 
         # ws -> Instance reverse lookup (for disconnect cleanup)
         self._ws_to_instance: dict[ServerConnection, Instance] = {}
@@ -106,6 +181,10 @@ class ChannelServer:
         if self.feishu_enabled:
             task = asyncio.create_task(self._run_feishu_safe(), name="feishu-ws")
             self._tasks.append(task)
+
+        # Discuss idle checker — runs every 60 seconds
+        idle_task = asyncio.create_task(self._run_discuss_idle_checker(), name="discuss-idle")
+        self._tasks.append(idle_task)
 
         mode_str = " (pool_mode)" if self.pool_mode else ""
         await self._notify_admin(f"Channel-Server online{mode_str}")
@@ -194,8 +273,98 @@ class ChannelServer:
         log.info("CC Pool started in pool_mode (min=%d, max=%d)",
                  config.min_size, config.max_size)
 
+    async def _handle_stream_event(self, chat_id: str, msg) -> None:
+        """Process an Anthropic stream event for progressive Feishu updates.
+
+        Watches `content_block_delta` events carrying `input_json_delta` chunks
+        of the `reply` tool call, extracts the progressively-building `text`
+        field, and edits the Feishu message in place (throttled).
+        """
+        state = self._stream_states.get(chat_id)
+        if state is None:
+            return
+
+        event = getattr(msg, "event", None)
+        if not event or not isinstance(event, dict):
+            return
+
+        etype = event.get("type")
+
+        if etype == "content_block_start":
+            block = event.get("content_block", {}) or {}
+            index = event.get("index")
+            if block.get("type") == "tool_use" and (block.get("name") or "").endswith("reply"):
+                # Start tracking reply tool streaming
+                state["current_index"] = index
+                state["buffer"] = ""
+                state["last_sent"] = ""
+                state["msg_id"] = None
+                state["last_edit_ts"] = 0.0
+            return
+
+        if etype == "content_block_delta":
+            if state.get("current_index") is None or event.get("index") != state["current_index"]:
+                return
+            delta = event.get("delta", {}) or {}
+            if delta.get("type") != "input_json_delta":
+                return
+            partial = delta.get("partial_json") or ""
+            if not partial:
+                return
+            state["buffer"] += partial
+
+            text = _extract_partial_text(state["buffer"])
+            if not text or text == state["last_sent"]:
+                return
+
+            now = time.monotonic()
+            # Minimum chars before first emit (avoid sending "" or "你")
+            if state["msg_id"] is None and len(text) < 4:
+                return
+            # Throttle: at least 500ms between edits
+            if state["msg_id"] is not None and (now - state["last_edit_ts"]) < 0.5:
+                return
+
+            if state["msg_id"] is None:
+                # First emit: create Feishu message
+                msg_id = await self._reply_feishu_sync(chat_id, text)
+                if msg_id:
+                    state["msg_id"] = msg_id
+                    state["last_sent"] = text
+                    state["last_edit_ts"] = now
+            else:
+                # Edit existing message
+                ok = await self._edit_feishu_message(state["msg_id"], text)
+                if ok:
+                    state["last_sent"] = text
+                    state["last_edit_ts"] = now
+            return
+
+        if etype == "content_block_stop":
+            if state.get("current_index") is not None and event.get("index") == state["current_index"]:
+                # Final flush will be done by _pool_reply_callback when the tool call commits
+                state["current_index"] = None
+            return
+
     async def _pool_reply_callback(self, chat_id: str, text: str) -> None:
         """Callback for pool-managed instances: route reply back to Feishu/web."""
+        # If streaming already created/edited the message for this turn,
+        # do a final edit with the authoritative text and suppress duplicate send.
+        stream_state = self._stream_states.get(chat_id) if hasattr(self, "_stream_states") else None
+        if stream_state and stream_state.get("msg_id"):
+            msg_id = stream_state["msg_id"]
+            # Only finalize if the streamed text differs from final text
+            if stream_state.get("last_sent") != text:
+                ok = await self._edit_feishu_message(msg_id, text)
+                if not ok:
+                    # Edit failed (e.g. rate-limited) — send as new message
+                    await self._reply_feishu(chat_id, text)
+            # Mark this turn's streaming done so next reply call gets a fresh message
+            stream_state["msg_id"] = None
+            stream_state["last_sent"] = ""
+            stream_state["buffer"] = ""
+            return
+
         if chat_id.startswith("oc_"):
             await self._reply_feishu(chat_id, text)
         elif chat_id.startswith("web_"):
@@ -217,10 +386,18 @@ class ChannelServer:
             except Exception as e:
                 log.warning("Pool react failed: %s", e)
 
+    async def _on_pool_route_expired(self, chat_id: str) -> None:
+        """Called when a pool sticky binding expires or is released."""
+        removed = self.pool_routes.pop(chat_id, None)
+        if removed:
+            log.info("Pool route expired: chat_id=%s (was %s)", chat_id, removed.instance_id)
+
     async def _handle_pool_message(self, chat_id: str, message: dict) -> None:
         """Route a message through the CC Pool instead of WebSocket instances.
 
-        Called when pool_mode is enabled and no registered instance handles this chat_id.
+        Called by route_message when a PoolRoute exists or is newly created.
+        Formats the message as a <channel> prompt and sends via session_query.
+        Responses arrive via _pool_reply_callback (MCP tool callback).
         """
         try:
             # Format prompt as channel notification content
@@ -238,13 +415,32 @@ class ChannelServer:
 
             prompt = f"<channel {' '.join(meta_parts)}>\n{text}\n</channel>"
 
-            log.info("Pool routing: chat_id=%s user=%s text=%s",
-                     chat_id, user, text[:40])
+            log.info("Pool routing: chat_id=%s user=%s text=%.40s",
+                     chat_id, user, text)
+
+            # Initialize streaming state for this chat (Feishu only)
+            stream_enabled = chat_id.startswith("oc_") and self._feishu_client is not None
+            if stream_enabled:
+                self._stream_states[chat_id] = {
+                    "msg_id": None,           # Feishu message_id for current streaming reply
+                    "last_sent": "",          # last text pushed to Feishu
+                    "buffer": "",             # accumulated input_json_delta JSON
+                    "last_edit_ts": 0.0,      # throttle timestamp
+                    "current_index": None,    # content block index currently streaming
+                }
 
             async for msg in self._pool.session_query(chat_id, prompt):
-                # Responses are handled by the reply_callback in the MCP tools
-                # We just need to consume the stream here
-                pass
+                cls = type(msg).__name__
+
+                if cls == "StreamEvent" and stream_enabled:
+                    try:
+                        await self._handle_stream_event(chat_id, msg)
+                    except Exception as e:
+                        log.debug("stream event handling error: %s", e)
+                    continue
+
+                log.info("[pool msg] chat_id=%s type=%s content=%.200r",
+                         chat_id, cls, msg)
 
         except Exception as e:
             log.error("Pool message handling failed for chat_id=%s: %s", chat_id, e)
@@ -261,6 +457,8 @@ class ChannelServer:
     _recent_sent: set[str] = set()
     _user_cache: dict[str, str] = {}          # open_id -> display name
     _chat_modes: dict[str, str] = {}          # chat_id -> "production" | "improve"
+    _discuss_prev_modes: dict[str, str] = {}   # chat_id → mode before discuss
+    _discuss_sessions: dict[str, float] = {}   # chat_id → last_message_timestamp
     _known_chats: dict[str, dict] = {}         # chat_id → {"user": ..., "source": ..., "label": ...}
     _msg_counter: dict[str, int] = {"sent": 0, "received": 0}
     _ack_reactions: dict[str, str] = {}        # message_id → reaction_id (for removal after reply)
@@ -502,6 +700,86 @@ class ChannelServer:
             await self._reply_feishu(msg["chat_id"], f"Injected to {target_chat_id}")
             return
 
+        if text.startswith("/discuss"):
+            args = text[len("/discuss"):].strip()
+
+            # /discuss (no args) — show usage
+            if not args:
+                await self._reply_feishu(msg["chat_id"], (
+                    "Usage:\n"
+                    '  /discuss "话题描述"  — Start a discussion\n'
+                    "  /discuss @docs/file.md  — Discuss a document\n"
+                    '  /discuss @docs/file.md "聚焦方向"  — Document + focus\n'
+                    "  /discuss end  — End discussion, generate report\n"
+                    "  /discuss status  — Check discussion progress"
+                ))
+                return
+
+            chat_id = msg["chat_id"]
+
+            # /discuss end — route to skill, then restore mode
+            if args == "end":
+                discuss_msg = {
+                    "type": "message",
+                    "chat_id": chat_id,
+                    "text": "/discuss end",
+                    "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                    "user": "admin",
+                    "user_id": "",
+                    "runtime_mode": "discuss",
+                    "business_mode": "customer_service",
+                    "source": "admin",
+                    "admin_chat_id": self.admin_chat_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.route_message(chat_id, discuss_msg)
+                # Restore previous mode
+                prev_mode = self._discuss_prev_modes.pop(chat_id, "production")
+                self._chat_modes[chat_id] = prev_mode
+                # Clean up idle tracking
+                self._discuss_sessions.pop(chat_id, None)
+                return
+
+            # /discuss status — route to skill
+            if args == "status":
+                discuss_msg = {
+                    "type": "message",
+                    "chat_id": chat_id,
+                    "text": "/discuss status",
+                    "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                    "user": "admin",
+                    "user_id": "",
+                    "runtime_mode": "discuss",
+                    "business_mode": "customer_service",
+                    "source": "admin",
+                    "admin_chat_id": self.admin_chat_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.route_message(chat_id, discuss_msg)
+                return
+
+            # /discuss "topic" or /discuss @file — start discussion
+            prev_mode = self._chat_modes.get(chat_id, "production")
+            self._discuss_prev_modes[chat_id] = prev_mode
+            self._chat_modes[chat_id] = "discuss"
+
+            await self._reply_feishu(chat_id, f"📋 正在启动讨论...")
+            discuss_msg = {
+                "type": "message",
+                "chat_id": chat_id,
+                "text": text,
+                "message_id": f"discuss_{datetime.now(timezone.utc).timestamp():.0f}",
+                "user": "admin",
+                "user_id": "",
+                "runtime_mode": "discuss",
+                "business_mode": "customer_service",
+                "source": "admin",
+                "admin_chat_id": self.admin_chat_id,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.route_message(chat_id, discuss_msg)
+            return
+
         if text.startswith("/explain"):
             query = text[len("/explain"):].strip()
             if not query:
@@ -555,6 +833,58 @@ class ChannelServer:
                 log.warning("_reply_feishu error: %s", e)
 
         threading.Thread(target=_do_send, daemon=True).start()
+
+    async def _reply_feishu_sync(self, chat_id: str, text: str) -> str | None:
+        """Send a text message and return the created message_id (for streaming edits)."""
+        if self._feishu_client is None:
+            return None
+
+        def _do_send():
+            try:
+                from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+                body = (
+                    CreateMessageRequestBody.builder()
+                    .receive_id(chat_id)
+                    .msg_type("text")
+                    .content(json.dumps({"text": text}))
+                    .build()
+                )
+                req = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(body).build()
+                resp = self._feishu_client.im.v1.message.create(req)
+                if resp.success() and resp.data and resp.data.message_id:
+                    self._recent_sent.add(resp.data.message_id)
+                    self._msg_counter["sent"] += 1
+                    return resp.data.message_id
+            except Exception as e:
+                log.warning("_reply_feishu_sync error: %s", e)
+            return None
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_send)
+
+    async def _edit_feishu_message(self, message_id: str, text: str) -> bool:
+        """Edit an existing Feishu text message. Best-effort; returns success flag."""
+        if self._feishu_client is None or not message_id:
+            return False
+
+        def _do_edit():
+            try:
+                from lark_oapi.api.im.v1 import UpdateMessageRequest, UpdateMessageRequestBody
+                body = (
+                    UpdateMessageRequestBody.builder()
+                    .msg_type("text")
+                    .content(json.dumps({"text": text}))
+                    .build()
+                )
+                req = UpdateMessageRequest.builder().message_id(message_id).request_body(body).build()
+                resp = self._feishu_client.im.v1.message.update(req)
+                return bool(resp.success())
+            except Exception as e:
+                log.debug("_edit_feishu_message exception: %s", e)
+                return False
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _do_edit)
 
     # -- Main Feishu loop -----------------------------------------------
 
@@ -670,7 +1000,7 @@ class ChannelServer:
             if is_new_chat:
                 # Determine label
                 label = display_name.split(" (")[0] if display_name else "unknown"
-                if chat_id == self.admin_chat_id:
+                if chat_id in self.admin_chat_ids:
                     label = "管理群"
                 self._known_chats[chat_id] = {
                     "user": label,
@@ -743,7 +1073,7 @@ class ChannelServer:
             self._msg_counter["received"] += 1
 
             # Notify admin about new user's first message
-            if is_new_chat and self.admin_chat_id and chat_id != self.admin_chat_id:
+            if is_new_chat and self.admin_chat_ids and chat_id not in self.admin_chat_ids:
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
                     {"_admin_notify": f"New chat: {chat_id} from {display_name}"},
@@ -858,13 +1188,14 @@ class ChannelServer:
 
                 chat_id = msg.get("chat_id", "")
 
-                # Admin group: intercept slash commands, pass through normal messages
-                if self.admin_chat_id and chat_id == self.admin_chat_id:
+                # Admin chat(s): intercept slash commands, pass through normal messages.
+                # Any chat_id configured via ADMIN_CHAT_ID (private or group) is treated as admin.
+                if self.admin_chat_ids and chat_id in self.admin_chat_ids:
                     text = msg.get("text", "").strip()
                     if text.startswith("/"):
                         await self._handle_admin_message(msg)
                         continue
-                    # Non-command messages in admin group → route normally
+                    # Non-command messages in admin chats → route normally
                     # so Claude Code can assist the admin
 
                 # Normal routing
@@ -983,53 +1314,126 @@ class ChannelServer:
     # ------------------------------------------------------------------
 
     async def route_message(self, chat_id: str, message: dict) -> None:
-        """Route a message to the appropriate instance(s)."""
-        routed_instance: Instance | None = None
+        """Route a message to the appropriate instance(s).
 
-        # 1. Exact match
+        Priority: exact > prefix > pool_route > pool_assign > wildcard(observe).
+        When pool_mode is active, wildcard instances only receive observation copies.
+        """
+        # Track discuss session activity for idle detection
+        if message.get("runtime_mode") == "discuss":
+            self._discuss_sessions[chat_id] = time.time()
+
+        routed = False
+        routed_by: str | None = None  # instance_id for observation tagging
+
+        # 1. Exact match (WebSocket)
         if chat_id in self.exact_routes:
-            routed_instance = self.exact_routes[chat_id]
-            await self._send(routed_instance.ws, message)
+            inst = self.exact_routes[chat_id]
+            await self._send(inst.ws, message)
+            routed = True
+            routed_by = inst.instance_id
 
-        # 2. Prefix match (only if no exact match)
-        if routed_instance is None:
+        # 2. Prefix match
+        if not routed:
             for prefix, inst in self.prefix_routes.items():
                 if chat_id.startswith(prefix):
-                    routed_instance = inst
                     await self._send(inst.ws, message)
+                    routed = True
+                    routed_by = inst.instance_id
                     break
 
-        # 3. Wildcard -- always receives a copy
-        for inst in self.wildcard_instances:
-            # Skip if this wildcard instance is also the exact/prefix match
-            if routed_instance is not None and inst.ws is routed_instance.ws:
-                continue
-            # Add routed_to hint when message was also sent to a specific instance
-            if routed_instance is not None:
-                wc_msg = {**message, "routed_to": routed_instance.instance_id}
-            else:
-                wc_msg = message
-            await self._send(inst.ws, wc_msg)
-
-        # 4. Pool mode fallback — route to CC Pool if no registered instance
-        if routed_instance is None and not self.wildcard_instances and self._pool is not None:
+        # 3. Pool route (existing sticky binding)
+        if not routed and chat_id in self.pool_routes:
+            route = self.pool_routes[chat_id]
             asyncio.create_task(
                 self._handle_pool_message(chat_id, message),
                 name=f"pool-msg-{chat_id}",
             )
-            return
+            routed = True
+            routed_by = route.instance_id
 
-        # 5. Log actionable info when no dedicated instance exists
-        if routed_instance is None and self.wildcard_instances:
+        # 4. Pool auto-assign (first message, pool_mode enabled, not admin)
+        if (not routed
+                and self.pool_mode
+                and self._pool is not None
+                and chat_id != self.admin_chat_id):
+            try:
+                instance = await self._pool.acquire_sticky(chat_id)
+                self.pool_routes[chat_id] = PoolRoute(
+                    pool=self._pool, chat_id=chat_id, instance_id=instance.id,
+                )
+                asyncio.create_task(
+                    self._handle_pool_message(chat_id, message),
+                    name=f"pool-msg-{chat_id}",
+                )
+                routed = True
+                routed_by = instance.id
+                log.info("Pool assigned: chat_id=%s -> %s", chat_id, instance.id)
+            except Exception as e:
+                log.error("Pool assign failed for chat_id=%s: %s", chat_id, e)
+
+        # 5. Wildcard — always send observation copy
+        for inst in self.wildcard_instances:
+            if routed_by and routed_by == inst.instance_id:
+                continue  # don't double-send to the handler
+            if routed:
+                wc_msg = {**message, "routed_to": routed_by}
+            else:
+                wc_msg = message
+            await self._send(inst.ws, wc_msg)
+
+        # 6. Nothing handled
+        if not routed and not self.wildcard_instances:
+            log.warning("No route for chat_id=%s, message dropped", chat_id)
+        elif not routed and self.wildcard_instances:
             user = message.get("user", "unknown")
             source = message.get("source", "?")
             log.info(
-                "💬 [%s] %s → wildcard (no dedicated instance)\n"
-                "   To start dedicated instance:  ./autoservice.sh %s",
+                "No dedicated instance for [%s] %s -> wildcard\n"
+                "   To start dedicated: ./autoservice.sh %s",
                 source, user, chat_id,
             )
-        elif routed_instance is None and not self.wildcard_instances and self._pool is None:
-            log.warning("No route for chat_id=%s, message dropped", chat_id)
+
+    # ------------------------------------------------------------------
+    # Discuss idle detection
+    # ------------------------------------------------------------------
+
+    async def _check_discuss_idle(self) -> None:
+        """Check for idle discuss sessions and send reminders."""
+        now = time.time()
+        idle_chats = [
+            (chat_id, now - last_ts)
+            for chat_id, last_ts in self._discuss_sessions.items()
+            if now - last_ts > DISCUSS_IDLE_TIMEOUT
+        ]
+        for chat_id, idle_secs in idle_chats:
+            idle_minutes = int(idle_secs // 60)
+            reminder = {
+                "type": "discuss_idle_reminder",
+                "chat_id": chat_id,
+                "idle_minutes": idle_minutes,
+            }
+            # Route to all instances that handle this chat_id
+            for inst in self.wildcard_instances:
+                await self._send(inst.ws, reminder)
+            if chat_id in self.exact_routes:
+                await self._send(self.exact_routes[chat_id].ws, reminder)
+            log.info("Discuss idle reminder sent for %s (%d min)", chat_id, idle_minutes)
+            # Update timestamp to avoid spamming — next reminder after another timeout period
+            self._discuss_sessions[chat_id] = now
+
+    async def _run_discuss_idle_checker(self) -> None:
+        """Periodically check for idle discuss sessions."""
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=60)
+                break  # stop_event was set
+            except asyncio.TimeoutError:
+                pass  # 60 seconds elapsed, do the check
+            try:
+                await self._check_discuss_idle()
+            except Exception as e:
+                log.warning("Discuss idle check error: %s", e)
 
     # ------------------------------------------------------------------
     # Message handlers
@@ -1182,6 +1586,9 @@ class ChannelServer:
             "  Example: /inject #1 注意当前活动打八折\n"
             "/explain <场景描述> — Generate flow visualization\n"
             "  Example: /explain 用户问DID号码的价格\n"
+            "/discuss <话题> — Start a group discussion\n"
+            "  /discuss end — End discussion and generate report\n"
+            "  /discuss status — Check discussion progress\n"
             "\n"
             "Non-command messages → forwarded to Claude Code\n"
             "\n"
@@ -1213,11 +1620,12 @@ class ChannelServer:
 
     async def _notify_admin(self, text: str) -> None:
         """Fire-and-forget admin notification. Degrades gracefully."""
-        if not self.admin_chat_id:
+        if not self.admin_chat_ids:
             log.info("[admin] %s", text)
             return
         # Placeholder: would send via Feishu API
-        log.info("[admin → %s] %s", self.admin_chat_id, text)
+        for cid in self.admin_chat_ids:
+            log.info("[admin → %s] %s", cid, text)
 
 
 # ---------------------------------------------------------------------------
@@ -1243,15 +1651,40 @@ async def _async_main() -> None:
     admin_chat_id = os.environ.get("ADMIN_CHAT_ID")
     feishu_enabled = os.environ.get("FEISHU_ENABLED", "true").lower() in ("true", "1", "yes")
 
+    # Read pool_mode from config.local.yaml (repo root)
+    pool_mode = os.environ.get("POOL_MODE", "").lower() in ("true", "1", "yes")
+    if not pool_mode:
+        # Walk up from PROJECT_ROOT to find repo root (.git marker)
+        repo_root = PROJECT_ROOT
+        for ancestor in [PROJECT_ROOT] + list(PROJECT_ROOT.parents):
+            if (ancestor / ".git").exists():
+                repo_root = ancestor
+                break
+        config_local = repo_root / ".autoservice" / "config.local.yaml"
+        if config_local.exists():
+            try:
+                import yaml
+                cfg = yaml.safe_load(config_local.read_text(encoding="utf-8")) or {}
+                pool_mode = bool(cfg.get("pool_mode", False))
+                log.info("Loaded pool_mode=%s from %s", pool_mode, config_local)
+            except Exception as e:
+                log.warning("Failed to read config.local.yaml: %s", e)
+
     server = ChannelServer(
         port=port,
         feishu_enabled=feishu_enabled,
         admin_chat_id=admin_chat_id,
+        pool_mode=pool_mode,
     )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler in asyncio.
+            # Fall back to signal.signal() — less graceful but functional.
+            signal.signal(sig, lambda *_: asyncio.create_task(server.stop()))
 
     await server.start()
 
@@ -1260,8 +1693,10 @@ async def _async_main() -> None:
     print("  AutoService Channel Server")
     print(f"  Listening  : ws://localhost:{port}")
     print(f"  Feishu     : {'enabled' if feishu_enabled else 'disabled'}")
-    if admin_chat_id:
-        print(f"  Admin group: {admin_chat_id}")
+    print(f"  Pool mode  : {'enabled' if pool_mode else 'disabled'}")
+    if server.admin_chat_ids:
+        admin_list = ", ".join(sorted(server.admin_chat_ids))
+        print(f"  Admin chats: {admin_list}")
     print()
     print("  Next steps:")
     print(f"    1. Start Claude Code:  ./autoservice.sh")

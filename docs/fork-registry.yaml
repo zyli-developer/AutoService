@@ -10,7 +10,7 @@ upstream:
   l1: h2oslabs/socialware
   l2: h2oslabs/AutoService
 
-forks: []
+forks:
   # Example entry:
   # - name: cinnox
   #   repo: cinnox/AutoService
@@ -19,3 +19,10 @@ forks: []
   #   contact: alice@cinnox.com
   #   created: 2026-04-01
   #   notes: "CINNOX customer service demo"
+  - name: cinnox
+    repo: ezagent42/AutoService-Cinnox
+    layer: L3
+    status: active
+    contact: hjj.gemini@gmail.com
+    notes: "CINNOX customer service demo"
+    created: 2026-04-14

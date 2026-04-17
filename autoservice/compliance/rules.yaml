@@ -1,0 +1,324 @@
+# AutoService 合规预置规则 v1.0
+# T3A.5 产出 | 2026-04-16 | Schema: docs/compliance/rule-schema.md
+# EU 6 (GDPR + EU AI Act) + US 4 (CCPA + COPPA) + CN 6 (PIPL + 网信办) = 16 条
+#
+# blocking 策略按 severity 统一映射:
+#   critical → sandbox:false, production:true,  dream_engine:true
+#   high     → sandbox:false, production:true,  dream_engine:false
+#   medium   → sandbox:false, production:false, dream_engine:false
+
+# ============================================================
+# EU 区 (6 条) — GDPR + EU AI Act
+# ============================================================
+
+- rule_id: eu-01
+  name: "Disclosure of AI identity"
+  name_zh: "AI 身份披露"
+  region: EU
+  regulation: "EU AI Act Art.52(1)"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "soul.disclosure_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "AI systems interacting with users must clearly disclose their AI identity"
+  description_zh: "AI 系统与用户交互时必须明确披露 AI 身份"
+  remediation_doc: "docs/compliance/eu-01.md"
+  tags: ["disclosure", "transparency"]
+
+- rule_id: eu-02
+  name: "Privacy policy link"
+  name_zh: "隐私政策链接"
+  region: EU
+  regulation: "GDPR Art.13"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.privacy_policy_url"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "A link to the privacy policy must be provided to data subjects before data collection"
+  description_zh: "在收集数据前必须向用户提供隐私政策链接"
+  remediation_doc: "docs/compliance/eu-02.md"
+  tags: ["privacy", "disclosure"]
+
+- rule_id: eu-03
+  name: "Consent mechanism for data processing"
+  name_zh: "数据处理同意机制"
+  region: EU
+  regulation: "GDPR Art.6(1)(a)"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.consent_mechanism_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Explicit user consent must be obtained before processing personal data"
+  description_zh: "处理个人数据前必须获得用户明确同意"
+  remediation_doc: "docs/compliance/eu-03.md"
+  tags: ["consent", "data-processing"]
+
+- rule_id: eu-04
+  name: "Data retention period declaration"
+  name_zh: "数据留存期限声明"
+  region: EU
+  regulation: "GDPR Art.13(2)(a)"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.data_retention_days"
+    condition: "must_exist"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "The data retention period must be declared and configured"
+  description_zh: "必须声明并配置数据留存期限"
+  remediation_doc: "docs/compliance/eu-04.md"
+  tags: ["data-retention", "transparency"]
+
+- rule_id: eu-05
+  name: "Right to erasure"
+  name_zh: "用户删除权"
+  region: EU
+  regulation: "GDPR Art.17"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.right_to_erasure_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Users must be able to request deletion of their personal data"
+  description_zh: "用户必须能够请求删除其个人数据"
+  remediation_doc: "docs/compliance/eu-05.md"
+  tags: ["erasure", "user-rights"]
+
+- rule_id: eu-06
+  name: "Right to human intervention"
+  name_zh: "人工介入权"
+  region: EU
+  regulation: "EU AI Act Art.14"
+  severity: medium
+  trigger:
+    type: config_check
+    field: "soul.human_escalation_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: false
+    dream_engine: false
+  description: "Users must have the option to request human intervention during AI interactions"
+  description_zh: "用户必须有权在 AI 交互中请求人工介入"
+  remediation_doc: "docs/compliance/eu-06.md"
+  tags: ["human-oversight", "user-rights"]
+
+# ============================================================
+# US 区 (4 条) — CCPA + COPPA
+# ============================================================
+
+- rule_id: us-01
+  name: "Data collection disclosure"
+  name_zh: "数据收集披露"
+  region: US
+  regulation: "CCPA §1798.100(b)"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.data_collection_disclosure"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Businesses must disclose the categories of personal information collected"
+  description_zh: "企业必须披露所收集的个人信息类别"
+  remediation_doc: "docs/compliance/us-01.md"
+  tags: ["disclosure", "data-collection"]
+
+- rule_id: us-02
+  name: "Right to opt out of data sale"
+  name_zh: "数据出售退出权"
+  region: US
+  regulation: "CCPA §1798.120"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.opt_out_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Consumers must have the right to opt out of the sale of their personal information"
+  description_zh: "消费者必须有权退出其个人信息的出售"
+  remediation_doc: "docs/compliance/us-02.md"
+  tags: ["opt-out", "user-rights"]
+
+- rule_id: us-03
+  name: "Children's privacy protection"
+  name_zh: "未成年人隐私保护"
+  region: US
+  regulation: "COPPA §312.2"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.coppa_compliant"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Services directed at children under 13 must comply with COPPA requirements"
+  description_zh: "面向 13 岁以下儿童的服务必须符合 COPPA 要求"
+  remediation_doc: "docs/compliance/us-03.md"
+  tags: ["children", "consent"]
+
+- rule_id: us-04
+  name: "Automated decision-making notice"
+  name_zh: "AI 自动决策通知"
+  region: US
+  regulation: "CCPA §1798.185(a)(16)"
+  severity: medium
+  trigger:
+    type: config_check
+    field: "soul.automated_decision_notice"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: false
+    dream_engine: false
+  description: "Consumers must be informed when automated decision-making is used"
+  description_zh: "当使用自动决策时必须通知消费者"
+  remediation_doc: "docs/compliance/us-04.md"
+  tags: ["automated-decision", "transparency"]
+
+# ============================================================
+# CN 区 (6 条) — PIPL + 网信办
+# ============================================================
+
+- rule_id: cn-01
+  name: "AI service provider registration"
+  name_zh: "AI 服务提供者实名备案"
+  region: CN
+  regulation: "网信办《生成式 AI 管理暂行办法》§7"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.provider_registration_id"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "AI service providers must complete real-name registration before going live"
+  description_zh: "AI 服务提供者上线前须完成实名备案"
+  remediation_doc: "docs/compliance/cn-01.md"
+  tags: ["registration", "provider"]
+
+- rule_id: cn-02
+  name: "AI-generated content labeling"
+  name_zh: "AI 生成内容标识"
+  region: CN
+  regulation: "网信办《生成式 AI 管理暂行办法》§12"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "soul.ai_content_labeling"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "AI-generated content must be clearly labeled as such"
+  description_zh: "AI 生成的内容必须明确标注"
+  remediation_doc: "docs/compliance/cn-02.md"
+  tags: ["labeling", "transparency"]
+
+- rule_id: cn-03
+  name: "Cross-border data transfer restriction"
+  name_zh: "个人信息跨境限制"
+  region: CN
+  regulation: "PIPL §38-39"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.data_cross_border_enabled"
+    condition: "must_be_false"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Personal data must not be transferred across borders without proper authorization"
+  description_zh: "未经合规授权不得跨境传输个人数据"
+  remediation_doc: "docs/compliance/cn-03.md"
+  tags: ["cross-border", "data-transfer"]
+
+- rule_id: cn-04
+  name: "User identity verification"
+  name_zh: "用户真实身份验证"
+  region: CN
+  regulation: "网信办《互联网用户账号管理》§8"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.user_identity_verification"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Internet service providers must verify user real-name identity"
+  description_zh: "互联网服务提供者须验证用户真实身份"
+  remediation_doc: "docs/compliance/cn-04.md"
+  tags: ["identity", "verification"]
+
+- rule_id: cn-05
+  name: "Complaint and reporting mechanism"
+  name_zh: "投诉举报机制"
+  region: CN
+  regulation: "网信办《生成式 AI 管理暂行办法》§15"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.complaint_channel_url"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "A complaint and reporting channel must be provided and accessible"
+  description_zh: "必须提供可访问的投诉举报渠道"
+  remediation_doc: "docs/compliance/cn-05.md"
+  tags: ["complaint", "user-rights"]
+
+- rule_id: cn-06
+  name: "Training data compliance declaration"
+  name_zh: "训练数据合规声明"
+  region: CN
+  regulation: "PIPL §24 + 网信办《生成式 AI 管理暂行办法》§7"
+  severity: medium
+  trigger:
+    type: config_check
+    field: "tenant.training_data_compliance"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: false
+    dream_engine: false
+  description: "Training data sources and processing must comply with regulations"
+  description_zh: "训练数据来源及处理须符合法规要求"
+  remediation_doc: "docs/compliance/cn-06.md"
+  tags: ["training-data", "compliance"]

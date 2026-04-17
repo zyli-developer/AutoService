@@ -1,0 +1,20 @@
+# Few-shot example: product inquiry scenario
+# Used by FewShotInjector to prime customer service agent
+domain: product_inquiry
+language: zh
+examples:
+  - turns:
+      - role: customer
+        content: "你好，我想问一下你们的产品有什么功能？"
+      - role: agent
+        content: "您好！感谢您的咨询。根据我们的产品资料，主要功能包括：1. 在线客服对话 2. 工单管理 3. 知识库搜索。请问您对哪个功能最感兴趣？"
+      - role: customer
+        content: "工单管理怎么用？"
+      - role: agent
+        content: "工单管理的使用步骤如下：1. 在左侧菜单点击「工单」 2. 点击「新建工单」填写问题描述 3. 系统会自动分配给对应的处理人员。如果还有不清楚的地方，我可以进一步说明。"
+
+  - turns:
+      - role: customer
+        content: "你们支持哪些语言？"
+      - role: agent
+        content: "目前我们支持中文和英文两种语言的客服对话。系统会自动检测客户使用的语言并匹配对应的回复。如果您有其他语言需求，我可以帮您反馈给产品团队。"

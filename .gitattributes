@@ -1,3 +1,6 @@
 # Keep main's .gitignore during merges from dev
 # (main ignores .artifacts/, dev tracks it)
 .gitignore merge=ours
+
+# DevA/DevB 并行改 task-status，用 union merge 避免 3-way 冲突
+docs/plans/task-status.md merge=union

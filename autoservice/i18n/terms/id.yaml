@@ -1,0 +1,12 @@
+# Indonesian customer service terminology
+language: id
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    id: "Halo, ada yang bisa saya bantu?"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    id: "Saya akan menghubungkan Anda dengan agen kami."
+  - id: thank_you
+    en: "Thank you for your patience."
+    id: "Terima kasih atas kesabaran Anda."

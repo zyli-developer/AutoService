@@ -1,0 +1,72 @@
+# English customer service terminology
+# Source: IATE / MS Terminology Portal
+language: en
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+
+  - id: goodbye
+    en: "Thank you for contacting us. Goodbye!"
+
+  - id: welcome
+    en: "Welcome! We're happy to assist you."
+
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+
+  - id: please_wait
+    en: "Please wait a moment while I look into this."
+
+  - id: issue_resolved
+    en: "Your issue has been resolved. Is there anything else?"
+
+  - id: anything_else
+    en: "Is there anything else I can help you with?"
+
+  - id: order_status
+    en: "Let me check your order status."
+
+  - id: refund_status
+    en: "Let me look up your refund status."
+
+  - id: shipping_info
+    en: "Here is your shipping information."
+
+  - id: csat_request
+    en: "Would you mind rating your experience today?"
+
+  - id: thank_you
+    en: "Thank you for your patience."
+
+  - id: apology
+    en: "I apologize for the inconvenience."
+
+  - id: account_settings
+    en: "I can help you with your account settings."
+
+  - id: password_reset
+    en: "I'll help you reset your password."
+
+  - id: billing_inquiry
+    en: "Let me look into your billing inquiry."
+
+  - id: subscription
+    en: "I can help you manage your subscription."
+
+  - id: cancellation
+    en: "I'll process your cancellation request."
+
+  - id: escalation_notice
+    en: "I'm escalating this to a specialist team."
+
+  - id: manager_request
+    en: "I'll connect you with a manager right away."
+
+  - id: complaint_received
+    en: "Your complaint has been received and logged."
+
+  - id: business_hours
+    en: "Our business hours are Monday to Friday, 9 AM to 6 PM."
+
+  - id: privacy_notice
+    en: "Your data is protected under our privacy policy."

@@ -1,0 +1,12 @@
+# Urdu customer service terminology (RTL)
+language: ur
+terms:
+  - id: greeting
+    en: "Hello, how can I help you?"
+    ur: "السلام علیکم، میں آپ کی کیسے مدد کر سکتا ہوں؟"
+  - id: transfer_to_agent
+    en: "Let me connect you with a human agent."
+    ur: "میں آپ کو ایک نمائندے سے جوڑ رہا ہوں۔"
+  - id: thank_you
+    en: "Thank you for your patience."
+    ur: "آپ کے صبر کا شکریہ۔"

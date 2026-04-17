@@ -1,0 +1,27 @@
+# Customer Agent configuration
+# T1A.4 产出 | 2026-04-16
+
+role: customer
+name: "Customer Service Agent"
+name_zh: "客服 Agent"
+
+pool:
+  model: sonnet
+  max_size: 10
+  skill: customer-service
+  permission_mode: default
+
+routing:
+  intent_types: ["product_inquiry", "complaint", "account_issue", "general_question"]
+  priority: normal
+  fallback_to: triage
+
+mode_behavior:
+  auto: active        # 自主回复客户
+  copilot: active     # 继续回复，operator 旁听
+  takeover: side      # 转为副驾驶，仅 side channel 建议
+
+timers:
+  first_reply_sla: 3s
+  slow_query_threshold: 5s
+  idle_timeout: 300s

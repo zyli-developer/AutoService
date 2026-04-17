@@ -5,28 +5,383 @@
   "artifacts": [
     {
       "id": "coverage-matrix-001",
-      "name": "Initial coverage matrix",
+      "name": "Initial coverage matrix (v1.0 architecture, pre-zchat)",
       "type": "coverage-matrix",
-      "status": "draft",
+      "status": "archived",
       "producer": "skill-0",
       "consumers": [],
       "path": ".artifacts/coverage/coverage-matrix.md",
       "created_at": "2026-04-10T08:36:26Z",
-      "updated_at": "2026-04-10T08:36:26Z",
+      "updated_at": "2026-04-15T10:30:00Z",
+      "archived_reason": "Superseded by PRD v1.1 (zchat + Web-first). Regenerate via skill-0 when Phase 0 契约 frozen.",
       "related_ids": []
     },
     {
       "id": "bootstrap-report-001",
-      "name": "Bootstrap execution report",
+      "name": "Bootstrap execution report (v1.0)",
       "type": "e2e-report",
-      "status": "executed",
+      "status": "archived",
       "producer": "skill-0",
       "consumers": [],
       "path": ".artifacts/bootstrap/bootstrap-report.md",
       "created_at": "2026-04-10T08:48:47Z",
-      "updated_at": "2026-04-10T08:48:47Z",
+      "updated_at": "2026-04-15T10:30:00Z",
+      "archived_reason": "Pre-v1.1 bootstrap; new bootstrap will be produced after M0 contract freeze.",
       "related_ids": [
         "coverage-matrix-001"
+      ]
+    },
+    {
+      "id": "eval-doc-001",
+      "name": "T0.4 LocalEngine skeleton (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": [
+        "test-plan-001"
+      ],
+      "path": ".artifacts/eval-docs/eval-T0.4-local-engine-skeleton.md",
+      "created_at": "2026-04-15T10:45:00Z",
+      "updated_at": "2026-04-15T11:10:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "test-plan-001",
+      "name": "T0.4 LocalEngine skeleton test-plan",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-001"
+      ],
+      "path": ".artifacts/test-plans/test-plan-T0.4-local-engine-skeleton.md",
+      "created_at": "2026-04-15T11:10:00Z",
+      "updated_at": "2026-04-15T11:35:00Z",
+      "related_ids": [
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "test-diff-001",
+      "name": "T0.4 LocalEngine skeleton test-diff",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "skill-3",
+      "consumers": [
+        "e2e-report-001"
+      ],
+      "path": ".artifacts/test-diffs/test-diff-T0.4-local-engine-skeleton.md",
+      "created_at": "2026-04-15T11:35:00Z",
+      "updated_at": "2026-04-15T11:50:00Z",
+      "related_ids": [
+        "test-plan-001",
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "eval-doc-003",
+      "name": "T0.6 ws-client missing client_hello handshake (verify)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": [
+        "issue-001"
+      ],
+      "path": ".artifacts/eval-docs/eval-T0.6-ws-client-missing-handshake.md",
+      "created_at": "2026-04-16T00:45:00Z",
+      "updated_at": "2026-04-16T00:45:00Z",
+      "related_ids": [
+        "e2e-report-002"
+      ]
+    },
+    {
+      "id": "issue-001",
+      "name": "Issue #30 · T0.6 ws-client missing client_hello",
+      "type": "issue",
+      "status": "open",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/issues/issue-T0.6-ws-client-handshake.md",
+      "created_at": "2026-04-16T00:50:00Z",
+      "updated_at": "2026-04-16T00:50:00Z",
+      "related_ids": [
+        "eval-doc-003"
+      ]
+    },
+    {
+      "id": "eval-doc-002",
+      "name": "T0.5 WS gateway skeleton (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": [
+        "test-plan-002"
+      ],
+      "path": ".artifacts/eval-docs/eval-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:00:00Z",
+      "updated_at": "2026-04-15T12:00:00Z",
+      "related_ids": [
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "test-plan-002",
+      "name": "T0.5 WS gateway skeleton test-plan",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-002",
+        "e2e-report-002"
+      ],
+      "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:15:00Z",
+      "updated_at": "2026-04-15T12:15:00Z",
+      "related_ids": [
+        "eval-doc-002"
+      ]
+    },
+    {
+      "id": "test-diff-002",
+      "name": "T0.5 WS gateway skeleton code + tests",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "skill-3",
+      "consumers": [
+        "e2e-report-002"
+      ],
+      "path": ".artifacts/test-plans/test-plan-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:30:00Z",
+      "updated_at": "2026-04-15T12:40:00Z",
+      "related_ids": [
+        "test-plan-002",
+        "eval-doc-002"
+      ]
+    },
+    {
+      "id": "e2e-report-002",
+      "name": "T0.5 WS gateway skeleton e2e-report (all green)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-T0.5-ws-gateway-skeleton.md",
+      "created_at": "2026-04-15T12:40:00Z",
+      "updated_at": "2026-04-15T12:40:00Z",
+      "related_ids": [
+        "test-diff-002",
+        "test-plan-002",
+        "eval-doc-002"
+      ]
+    },
+    {
+      "id": "eval-doc-004",
+      "name": "T1A.3 EventBus 最小实现 (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": [
+        "test-plan-003"
+      ],
+      "path": ".artifacts/eval-docs/eval-T1A.3-eventbus.md",
+      "created_at": "2026-04-16T09:00:00Z",
+      "updated_at": "2026-04-16T09:15:00Z",
+      "related_ids": [
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "test-diff-003",
+      "name": "T1A.3 EventBus test-diff (22 cases)",
+      "type": "test-diff",
+      "status": "draft",
+      "producer": "skill-3",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-T1A.3-eventbus.md",
+      "created_at": "2026-04-16T09:30:00Z",
+      "updated_at": "2026-04-16T09:30:00Z",
+      "related_ids": [
+        "test-plan-003",
+        "eval-doc-004"
+      ]
+    },
+    {
+      "id": "test-plan-003",
+      "name": "T1A.3 EventBus test-plan (24 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-003"
+      ],
+      "path": ".artifacts/test-plans/plan-T1A.3-eventbus.md",
+      "created_at": "2026-04-16T09:15:00Z",
+      "updated_at": "2026-04-16T09:30:00Z",
+      "related_ids": [
+        "eval-doc-004"
+      ]
+    },
+    {
+      "id": "e2e-report-001",
+      "name": "T0.4 LocalEngine skeleton e2e-report (all green)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-T0.4-local-engine-skeleton.md",
+      "created_at": "2026-04-15T11:50:00Z",
+      "updated_at": "2026-04-15T11:50:00Z",
+      "related_ids": [
+        "test-diff-001",
+        "test-plan-001",
+        "eval-doc-001"
+      ]
+    },
+    {
+      "id": "eval-T3A.2",
+      "name": "T3A.2 虚拟客户生成 pipeline (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T3A.2-sim-customer-pipeline.md",
+      "created_at": "2026-04-16T14:00:00Z",
+      "updated_at": "2026-04-16T14:00:00Z",
+      "related_ids": [
+        "test-plan-T3A.2"
+      ]
+    },
+    {
+      "id": "test-plan-T3A.2",
+      "name": "T3A.2 虚拟客户生成 pipeline test-plan (20 cases)",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [],
+      "path": ".artifacts/test-plans/plan-T3A.2-sim-customer-pipeline.md",
+      "created_at": "2026-04-16T14:30:00Z",
+      "updated_at": "2026-04-16T14:30:00Z",
+      "related_ids": [
+        "eval-T3A.2"
+      ]
+    },
+    {
+      "id": "eval-T3A.1",
+      "name": "T3A.1 soul.md 自动生成器 (simulate)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T3A.1-soul-generator.md",
+      "created_at": "2026-04-16T15:00:00Z",
+      "updated_at": "2026-04-16T15:00:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "eval-T3A.3",
+      "name": "T3A.3 Few-shot 注入机制 (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T3A.3-fewshot-injection.md",
+      "created_at": "2026-04-16T16:00:00Z",
+      "updated_at": "2026-04-16T16:00:00Z",
+      "related_ids": [
+        "eval-T3A.2"
+      ]
+    },
+    {
+      "id": "eval-T4A.10",
+      "name": "T4A.10 阶梯计费 billing.py (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-T4A.10-tiered-billing.md",
+      "created_at": "2026-04-16T18:00:00Z",
+      "updated_at": "2026-04-16T18:00:00Z",
+      "related_ids": [
+        "eval-T3A.3"
+      ]
+    },
+    {
+      "id": "test-plan-T4A.10",
+      "name": "T4A.10 阶梯计费 billing.py test-plan (12 cases)",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [],
+      "path": ".artifacts/test-plans/plan-T4A.10-tiered-billing.md",
+      "created_at": "2026-04-16T18:10:00Z",
+      "updated_at": "2026-04-16T18:10:00Z",
+      "related_ids": [
+        "eval-T4A.10"
+      ]
+    },
+    {
+      "id": "eval-T5B.1",
+      "name": "Eval: docker-compose multi-tenant template (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [
+        "skill-2"
+      ],
+      "path": ".artifacts/eval-docs/eval-T5B.1-docker-compose-multi-tenant.md",
+      "created_at": "2026-04-16T14:00:00Z",
+      "updated_at": "2026-04-16T14:00:00Z",
+      "related_ids": [
+        "T5B.1"
+      ]
+    },
+    {
+      "id": "plan-T5B.1",
+      "name": "Test Plan: docker-compose multi-tenant template",
+      "type": "test-plan",
+      "status": "draft",
+      "producer": "skill-2",
+      "consumers": [
+        "skill-3"
+      ],
+      "path": ".artifacts/test-plans/plan-T5B.1-docker-compose-multi-tenant.md",
+      "created_at": "2026-04-16T14:30:00Z",
+      "updated_at": "2026-04-16T14:30:00Z",
+      "related_ids": [
+        "eval-T5B.1"
+      ]
+    },
+    {
+      "id": "eval-T3B.2",
+      "name": "Eval: wizard Step1 material upload (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [
+        "skill-2"
+      ],
+      "path": ".artifacts/eval-docs/eval-T3B.2-wizard-step1-upload.md",
+      "created_at": "2026-04-16T19:00:00Z",
+      "updated_at": "2026-04-16T19:00:00Z",
+      "related_ids": [
+        "T3B.2"
+      ]
+    },
+    {
+      "id": "eval-T3B.4",
+      "name": "Eval: wizard Step3 virtual rehearsal UI (simulate)",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "skill-5",
+      "consumers": [
+        "skill-2"
+      ],
+      "path": ".artifacts/eval-docs/eval-T3B.4-wizard-step3-rehearsal.md",
+      "created_at": "2026-04-16T20:00:00Z",
+      "updated_at": "2026-04-16T20:00:00Z",
+      "related_ids": [
+        "T3B.4",
+        "eval-T3A.2"
       ]
     }
   ]

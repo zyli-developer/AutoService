@@ -1,0 +1,14 @@
+.env
+.feishu-credentials.json
+.autoservice/
+node_modules/
+.git/
+.artifacts/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
