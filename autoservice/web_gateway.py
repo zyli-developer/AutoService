@@ -84,9 +84,10 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
 
     # Mount REST APIs
     from autoservice.onboarding import onboard_router
-    from autoservice.api_routes import api_router
+    from autoservice.api_routes import api_router, _set_engine
     app.include_router(onboard_router)
     app.include_router(api_router)
+    _set_engine(app.state.engine)
 
     for role in ("customer", "operator", "admin"):
         app.add_api_websocket_route(

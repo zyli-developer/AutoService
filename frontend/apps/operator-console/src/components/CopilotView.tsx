@@ -18,26 +18,23 @@ export function CopilotView({ send }: CopilotViewProps) {
   const isTakeover = conv?.mode === 'takeover';
 
   const operatorId = useOperatorStore((s) => s.operatorId);
+  const updateConversation = useOperatorStore((s) => s.updateConversation);
 
-  const handleHijack = () => {
-    // First join the conversation, then hijack
-    send({
-      v: 1,
-      type: 'operator_join',
-      id: crypto.randomUUID(),
-      ts: new Date().toISOString(),
-      payload: { conversation_id: activeCopilotConvId, operator_id: operatorId },
-    } as Envelope);
-    // Then send hijack command
-    setTimeout(() => {
-      send({
-        v: 1,
-        type: 'operator_command',
-        id: crypto.randomUUID(),
-        ts: new Date().toISOString(),
-        payload: { conversation_id: activeCopilotConvId, operator_id: operatorId, command: '/hijack' },
-      } as Envelope);
-    }, 500);
+  const handleHijack = async () => {
+    try {
+      const API = `http://${window.location.hostname}:8000`;
+      const resp = await fetch(
+        `${API}/api/command/hijack?conversation_id=${encodeURIComponent(activeCopilotConvId!)}&operator_id=${encodeURIComponent(operatorId || 'operator')}`,
+        { method: 'POST' },
+      );
+      const result = await resp.json();
+      console.log('[Hijack] result:', result);
+      if (result.ok) {
+        updateConversation(activeCopilotConvId!, { mode: result.mode });
+      }
+    } catch (err) {
+      console.error('[Hijack] failed:', err);
+    }
   };
 
   return (

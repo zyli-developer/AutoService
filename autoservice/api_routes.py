@@ -7,11 +7,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
 
 logger = logging.getLogger("autoservice.api")
+
+# Global engine reference (set by web_gateway on startup)
+_engine_ref = None
+
+def _set_engine(engine):
+    global _engine_ref
+    _engine_ref = engine
+
+def _ws_engine():
+    return _engine_ref
 
 api_router = APIRouter(prefix="/api", tags=["api"])
 
@@ -158,6 +169,49 @@ async def canary_status() -> dict[str, Any]:
         "history": status.get("history", []),
         "monitor": check,
     }
+
+
+# ---------------------------------------------------------------------------
+# Commands (hijack/release) via REST — fallback when WS is flaky
+# ---------------------------------------------------------------------------
+
+@api_router.post("/command/hijack")
+async def command_hijack(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
+    """Join conversation + hijack via REST API."""
+    from autoservice.web_gateway import create_app
+    import importlib
+    # Get the global engine from the running app
+    from autoservice.gateway.message_router import _ws_engine
+    engine = _ws_engine()
+    if engine is None:
+        return {"ok": False, "error": "no engine"}
+    try:
+        now = datetime.now(timezone.utc)
+        from autoservice.conversation_engine.types import Participant, ParticipantRole
+        participant = Participant(id=operator_id, role=ParticipantRole.OPERATOR, joined_at=now)
+        try:
+            await engine.join(conversation_id, participant)
+        except Exception:
+            pass
+        await engine.handle_command(conversation_id, actor_id=operator_id, command="/hijack")
+        conv = await engine.get_conversation(conversation_id)
+        return {"ok": True, "mode": conv.mode.value}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@api_router.post("/command/release")
+async def command_release(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
+    """Release hijack via REST API."""
+    engine = _ws_engine()
+    if engine is None:
+        return {"ok": False, "error": "no engine"}
+    try:
+        await engine.handle_command(conversation_id, actor_id=operator_id, command="/release")
+        conv = await engine.get_conversation(conversation_id)
+        return {"ok": True, "mode": conv.mode.value}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @api_router.post("/canary/advance")
