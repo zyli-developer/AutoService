@@ -56,15 +56,23 @@ function MetricRow({ metricKey, m }: { metricKey: string; m: SLAMetric }) {
   );
 }
 
+const PERIOD_OPTIONS = [
+  { value: '5m', label: '近5分钟' },
+  { value: '1h', label: '近1小时' },
+  { value: '24h', label: '近24小时' },
+] as const;
+
 export function DashboardTab() {
   const [sla, setSla] = useState<Record<string, SLAMetric> | null>(null);
   const [error, setError] = useState('');
+  const [period, setPeriod] = useState<string>('5m');
 
   useEffect(() => {
-    fetchJSON<Record<string, SLAMetric>>('/api/sla/summary')
+    const url = period === '5m' ? '/api/sla/summary' : `/api/sla/summary?period=${period}`;
+    fetchJSON<Record<string, SLAMetric>>(url)
       .then(setSla)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [period]);
 
   const primaryEntries = sla
     ? PRIMARY_METRICS.filter((k) => k in sla).map((k) => [k, sla[k]] as const)
@@ -75,6 +83,28 @@ export function DashboardTab() {
 
   return (
     <div data-testid="tab-dashboard">
+      {/* --- Time Slice Selector (T6D.5) --- */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+        {PERIOD_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            data-testid={`period-${opt.value}`}
+            onClick={() => setPeriod(opt.value)}
+            style={{
+              fontSize: 11,
+              padding: '2px 8px',
+              border: '1px solid var(--silver, #ccc)',
+              borderRadius: 4,
+              background: period === opt.value ? 'var(--m600, #2563eb)' : 'transparent',
+              color: period === opt.value ? '#fff' : 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* --- Top Section: Agent Status --- */}
       <div className="cs-card">
         <div className="cs-ct">🤖 Agent 状态</div>

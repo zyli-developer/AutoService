@@ -194,14 +194,26 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 # SLA
 # ---------------------------------------------------------------------------
 
+_PERIOD_TO_WINDOW: dict[str, str] = {"5m": "5m", "1h": "1h", "24h": "24h"}
+
+
 @api_router.get("/sla/summary")
-async def sla_summary() -> dict[str, Any]:
-    """Return current SLA metrics across all 7 types."""
+async def sla_summary(period: str = "5m") -> dict[str, Any]:
+    """Return current SLA metrics across all 7 types for a given time window."""
     from autoservice.sla_aggregator import MetricType, WindowSize
+    from fastapi.responses import JSONResponse
+
+    if period not in _PERIOD_TO_WINDOW:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Invalid period '{period}'. Must be one of: 5m, 1h, 24h"},
+        )
+
+    window = WindowSize(period)
     agg = _get_sla()
     result = {}
     for metric in MetricType:
-        p = agg.get_percentiles(metric, WindowSize.FIVE_MIN)
+        p = agg.get_percentiles(metric, window)
         result[metric.value] = {
             "p50": p.p50, "p95": p.p95, "count": p.count,
             "min": p.min_val, "max": p.max_val,
