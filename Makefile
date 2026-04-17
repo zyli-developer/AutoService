@@ -1,4 +1,4 @@
-.PHONY: setup run-channel run-web run-server check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
+.PHONY: setup run-channel run-web run-gateway run-server start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
 
 # --- Setup ---
 # Create symlinks from .claude/ to top-level dirs, discover plugin skills,
@@ -31,8 +31,74 @@ run-web:
 	@mkdir -p .autoservice/logs
 	uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
+# Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
+run-gateway:
+	@mkdir -p .autoservice/logs
+	uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
+
 run-server:
 	uv run python3 channels/feishu/channel_server.py
+
+# --- Dev stack: gateway + 3 frontend dev servers ---
+# `make start` launches everything in the background; `make stop` kills them.
+# Logs: .autoservice/logs/{gateway,customer,operator,admin}.log
+# PIDs: .autoservice/run/{gateway,customer,operator,admin}.pid
+start: stop
+	@mkdir -p .autoservice/logs .autoservice/run
+	@echo "==> Starting backend gateway (port 8000)..."
+	@uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port 8000 --log-level info > .autoservice/logs/gateway.log 2>&1 & echo $$! > .autoservice/run/gateway.pid
+	@echo "==> Starting customer-chat (port 5173)..."
+	@bash -c 'cd frontend; pnpm dev:customer > ../.autoservice/logs/customer.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/customer.pid'
+	@echo "==> Starting operator-console (port 5174)..."
+	@bash -c 'cd frontend; pnpm dev:operator > ../.autoservice/logs/operator.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/operator.pid'
+	@echo "==> Starting admin-portal (port 5175)..."
+	@bash -c 'cd frontend; pnpm dev:admin > ../.autoservice/logs/admin.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/admin.pid'
+	@echo ""
+	@echo "  backend:          http://localhost:8000  (gateway)"
+	@echo "  customer-chat:    http://localhost:5173"
+	@echo "  operator-console: http://localhost:5174"
+	@echo "  admin-portal:     http://localhost:5175"
+	@echo ""
+	@echo "  logs: .autoservice/logs/{gateway,customer,operator,admin}.log"
+	@echo "  stop: make stop"
+
+stop:
+	@if [ -d .autoservice/run ]; then \
+		for name in gateway customer operator admin; do \
+			pidfile=".autoservice/run/$$name.pid"; \
+			if [ -f "$$pidfile" ]; then \
+				pid=$$(cat "$$pidfile"); \
+				if kill -0 "$$pid" 2>/dev/null; then \
+					echo "  stopping $$name (pid=$$pid)"; \
+					kill "$$pid" 2>/dev/null || true; \
+				fi; \
+				rm -f "$$pidfile"; \
+			fi; \
+		done; \
+	fi
+	@# Fallback: kill anything still holding our ports (Windows + Unix)
+	@for port in 8000 5173 5174 5175; do \
+		pids=$$(netstat -ano 2>/dev/null | grep LISTENING | grep ":$$port " | awk '{print $$NF}' | sort -u); \
+		if [ -z "$$pids" ]; then \
+			pids=$$(lsof -ti tcp:$$port 2>/dev/null); \
+		fi; \
+		for pid in $$pids; do \
+			[ -z "$$pid" ] && continue; \
+			echo "  freeing port $$port (pid=$$pid)"; \
+			taskkill //F //PID "$$pid" > /dev/null 2>&1 || kill -9 "$$pid" 2>/dev/null || true; \
+		done; \
+	done
+
+status:
+	@echo "==> Port status"
+	@for port in 8000 5173 5174 5175; do \
+		line=$$(netstat -ano 2>/dev/null | grep LISTENING | grep ":$$port " | head -1); \
+		if [ -n "$$line" ]; then \
+			echo "  :$$port  UP    $$line"; \
+		else \
+			echo "  :$$port  DOWN"; \
+		fi; \
+	done
 
 # --- E2E Tests ---
 e2e-web:
