@@ -642,10 +642,13 @@ async def replay_messages(
     conv_seq = last_seen.get("conv_seq")
     if not conv_seq or not isinstance(conv_seq, dict):
         # Nothing to replay — send replay_complete with count=0
-        await ws.send_json(build_frame("replay_complete", {"count": 0}))
+        await ws.send_json(build_frame("replay_complete", {"count": 0, "until_sequence": 0}))
         return 0
 
     total = 0
+    max_sequence = 0
+    last_conv_id: str | None = None
+
     for conv_id, cursors in conv_seq.items():
         if not isinstance(cursors, dict):
             continue
@@ -670,11 +673,18 @@ async def replay_messages(
             try:
                 await ws.send_json(frame)
                 total += 1
+                seq = getattr(msg, "sequence_number", 0) or 0
+                if seq > max_sequence:
+                    max_sequence = seq
+                last_conv_id = conv_id
             except Exception:
                 logger.warning("replay: send failed for conv=%s", conv_id)
                 break
 
-    await ws.send_json(build_frame("replay_complete", {"count": total}))
+    payload: dict[str, Any] = {"count": total, "until_sequence": max_sequence}
+    if last_conv_id is not None and len(conv_seq) == 1:
+        payload["conversation_id"] = last_conv_id
+    await ws.send_json(build_frame("replay_complete", payload))
     return total
 
 
