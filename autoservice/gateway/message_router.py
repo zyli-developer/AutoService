@@ -103,7 +103,7 @@ async def dispatch(
 
     # ping → pong (no ack, no engine call)
     if frame_type == "ping":
-        return [build_frame("pong", {"server_time": _now_iso_ms()})]
+        return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
     # client_ack / subscribe / unsubscribe — skeleton acks only (Phase 1+ implements)
     if frame_type in {"client_ack", "subscribe", "unsubscribe"}:
