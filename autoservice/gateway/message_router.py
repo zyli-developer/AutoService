@@ -243,13 +243,30 @@ async def _call_engine(
                 conv_id,
                 Participant(id="agent", role=ParticipantRole.AGENT, joined_at=now),
             )
+            # Trigger squad assignment
+            try:
+                from autoservice.web_gateway import _get_squad_plugin
+                sp = _get_squad_plugin()
+                if sp:
+                    await sp.on_conversation_created(conv)
+            except Exception:
+                pass
         msg = await engine.send_message(
             conv_id, source=source, content=payload["content"],
         )
 
-        # Broadcast customer message to operator connections
+        # Broadcast customer message to operator connections (with squad_id)
         customer_frame = _message_frame(msg)
         customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
+        try:
+            from autoservice.web_gateway import _get_squad_plugin
+            sp = _get_squad_plugin()
+            if sp:
+                squad = sp.get_squad(conv_id)
+                if squad:
+                    customer_frame["payload"]["squad_id"] = squad
+        except Exception:
+            pass
         from autoservice.web_gateway import _ws_connections
         for sid, ows in list(_ws_connections.items()):
             if ows is not ws:

@@ -61,35 +61,14 @@ export function WorkspacePage() {
             <>
               <div className="im-main-header">
                 <div className="im-main-title">
-                  {activeSquadId ?? '工作台'}
+                  {activeSquadId ? `# ${activeSquadId}` : '# 全部对话'}
                 </div>
                 <div className="im-main-subtitle">
-                  {squads.length === 0
-                    ? '请添加 Squad ID'
-                    : `${Object.keys(useOperatorStore.getState().conversations).length} 个对话`}
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }} data-testid="add-squad-form">
-                  <input
-                    data-testid="input-squad-id"
-                    placeholder="输入 Squad ID"
-                    value={newSquadId}
-                    onChange={(e) => setNewSquadId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddSquad()}
-                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }}
-                  />
-                  <button
-                    data-testid="btn-add-squad"
-                    onClick={handleAddSquad}
-                    disabled={!newSquadId.trim()}
-                    className="cs-btn ok"
-                    style={{ padding: '6px 14px', fontSize: 13 }}
-                  >
-                    添加
-                  </button>
+                  {`${Object.values(useOperatorStore.getState().conversations).filter(c => !activeSquadId || c.squadId === activeSquadId).length} 个对话`}
                 </div>
               </div>
               <ConversationFeed
-                squadId={null}
+                squadId={activeSquadId}
                 onCardClick={handleOpenCopilot}
               />
               <div className="im-input">

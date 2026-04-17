@@ -21,7 +21,14 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         </div>
       </div>
 
-      <div className="im-section-title">{'频道'}</div>
+      <div className="im-section-title">频道</div>
+      <div
+        className={`im-channel ${!activeSquadId ? 'active' : ''}`}
+        data-testid="channel-all"
+        onClick={() => setActiveSquad(null as any)}
+      >
+        全部对话
+      </div>
       {squads.map((squadId) => {
         const unread = unreadCounts[squadId] ?? 0;
         return (

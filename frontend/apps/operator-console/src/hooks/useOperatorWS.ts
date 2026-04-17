@@ -142,13 +142,18 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
           const ts = (msg?.timestamp as string) ?? new Date().toISOString();
 
           if (convId) {
+            const squadId = (p.squad_id as string) ?? 'web-support';
             // Auto-create conversation if not exists
             const state = useOperatorStore.getState();
+            // Auto-add squad to sidebar if not present
+            if (!state.squads.includes(squadId)) {
+              useOperatorStore.getState().addSquad(squadId);
+            }
             if (!state.conversations[convId]) {
               addConversation({
                 id: convId,
                 customerId: role === 'customer' ? (srcDisplay?.id as string ?? 'customer') : 'customer',
-                squadId: state.activeSquadId ?? 'default',
+                squadId,
                 mode: 'auto',
                 lastMessage: content,
                 lastActivityTs: ts,

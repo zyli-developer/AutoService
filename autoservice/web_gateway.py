@@ -49,6 +49,12 @@ _pool = None
 _pool_lock = asyncio.Lock()
 
 
+_squad_plugin_ref = None
+
+def _get_squad_plugin():
+    return _squad_plugin_ref
+
+
 async def _get_pool():
     """Lazy-init the CCPool singleton. Returns None if pool_mode is off."""
     global _pool
@@ -81,6 +87,20 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Register squad plugin
+    from autoservice.plugins.squad_plugin import SquadPlugin
+    _squad_plugin = SquadPlugin(squad_config={
+        "default_squad": "general",
+        "channel_routing": {"web": "web-support", "feishu": "feishu-support"},
+    })
+    global _squad_plugin_ref
+    app.state.squad_plugin = _squad_plugin
+    _squad_plugin_ref = _squad_plugin
+    try:
+        app.state.engine.register_hook(_squad_plugin)
+    except Exception:
+        pass  # engine may not support register_hook
 
     # Mount REST APIs
     from autoservice.onboarding import onboard_router
