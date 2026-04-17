@@ -422,7 +422,7 @@ async def _call_engine(
             conv_id, source=source, content=payload["content"],
         )
 
-        # Broadcast customer message to operator connections (with squad_id)
+        # Broadcast customer message to operator connections subscribed to this squad (T6A.2)
         customer_frame = _message_frame(msg)
         customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
         try:
@@ -434,13 +434,7 @@ async def _call_engine(
                     customer_frame["payload"]["squad_id"] = squad
         except Exception:
             pass
-        from autoservice.web_gateway import _ws_connections
-        for sid, ows in list(_ws_connections.items()):
-            if ows is not ws:
-                try:
-                    await ows.send_json(customer_frame)
-                except Exception:
-                    pass
+        await _broadcast_to_squad(customer_frame, conv_id, exclude_ws=ws)
 
         # Fire-and-forget: trigger agent response via CCPool
         if ws is not None:
@@ -564,6 +558,67 @@ def _message_frame(msg: Any, *, event_type: str = "message") -> dict[str, Any]:
     )
 
 
+async def _broadcast_to_squad(
+    frame: dict[str, Any],
+    conv_id: str,
+    *,
+    exclude_ws: WebSocket | None = None,
+) -> int:
+    """Broadcast a frame to operator/admin connections subscribed to the conversation's squad.
+
+    Uses the subscription registry (T6A.1) to find connections that subscribed
+    to the matching squad scope. Falls back to broadcasting to all connections
+    if no squad is assigned (backward compatible).
+
+    Returns the number of connections the frame was sent to.
+    """
+    from autoservice.web_gateway import _ws_connections, _get_squad_plugin
+
+    # Determine squad for this conversation
+    squad_id: str | None = None
+    try:
+        sp = _get_squad_plugin()
+        if sp:
+            squad_id = sp.get_squad(conv_id)
+    except Exception:
+        pass
+
+    sent = 0
+
+    if squad_id:
+        # Look up sessions subscribed to this squad
+        squad_subs = _registry.get_by_scope(f"squad:{squad_id}")
+        # Also include sessions subscribed to the specific conversation
+        conv_subs = _registry.get_by_scope(f"conv:{conv_id}")
+        # Also include global subscribers (admin)
+        global_subs = _registry.get_by_scope("global")
+
+        target_sessions = {
+            e.session_id for e in (*squad_subs, *conv_subs, *global_subs)
+        }
+
+        for session_id in target_sessions:
+            target_ws = _ws_connections.get(session_id)
+            if target_ws is None or target_ws is exclude_ws:
+                continue
+            try:
+                await target_ws.send_json(frame)
+                sent += 1
+            except Exception:
+                pass
+    else:
+        # No squad assigned — fallback to broadcast to all (backward compatible)
+        for sid, ows in list(_ws_connections.items()):
+            if ows is not exclude_ws:
+                try:
+                    await ows.send_json(frame)
+                    sent += 1
+                except Exception:
+                    pass
+
+    return sent
+
+
 def _now_iso_ms() -> str:
     from .connection import now_iso_ms
     return now_iso_ms()
@@ -595,23 +650,18 @@ async def _collect_operator_suggestions(
 # ---------------------------------------------------------------------------
 
 async def _push_csat_request(conversation_id: str) -> None:
-    """Push S10 csat_request frame to all customer WS connections.
+    """Push S10 csat_request frame to customer + subscribed operator connections.
 
-    Called fire-and-forget after /resolve succeeds.  Iterates the global
-    WS connection registry and sends csat_request to each connection.
+    Called fire-and-forget after /resolve succeeds.  Uses squad-filtered
+    broadcast (T6A.2) so only relevant operators see the CSAT event.
     """
     try:
-        from autoservice.web_gateway import _ws_connections
         frame = build_frame("csat_request", {
             "conversation_id": conversation_id,
             "prompt": "How would you rate this conversation?",
             "options": [1, 2, 3, 4, 5],
         })
-        for _sid, ws in list(_ws_connections.items()):
-            try:
-                await ws.send_json(frame)
-            except Exception:
-                pass  # connection may be closed
+        await _broadcast_to_squad(frame, conversation_id)
     except Exception:
         logger.debug("csat_request push failed for conv=%s", conversation_id)
 
@@ -678,14 +728,8 @@ async def _generate_agent_reply(
         await ws.send_json(frame)
         logger.info("Agent reply pushed: conv=%s len=%d", conv_id, len(reply_text))
 
-        # Also broadcast to operator connections
-        from autoservice.web_gateway import _ws_connections
-        for sid, ows in list(_ws_connections.items()):
-            if ows is not ws:
-                try:
-                    await ows.send_json(frame)
-                except Exception:
-                    pass
+        # Broadcast to operator connections subscribed to this squad (T6A.2)
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
 
     except Exception:
         logger.exception("Agent reply FAILED for conv=%s", conv_id)

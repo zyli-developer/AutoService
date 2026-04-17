@@ -84,8 +84,8 @@ tasks:
       3. vip 对话消息 → 仅 B 收到
     estimated_effort: small
     estimated_lines: 60
-    status: pending
-    owner: null
+    status: completed
+    owner: Dev
 
   - id: T6A.3
     name: "重连消息回放"
