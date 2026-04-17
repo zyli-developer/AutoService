@@ -383,6 +383,90 @@
         "T3B.4",
         "eval-T3A.2"
       ]
+    },
+    {
+      "id": "plan-T6A.1",
+      "name": "T6A.1 Subscription Registry test-plan (8 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-phase6-pb"],
+      "path": ".artifacts/test-plans/plan-T6A.1-subscription-registry.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "plan-T6A.2",
+      "name": "T6A.2 Squad-Filtered Broadcast test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-phase6-pb"],
+      "path": ".artifacts/test-plans/plan-T6A.2-squad-filtered-broadcast.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": ["plan-T6A.1"]
+    },
+    {
+      "id": "plan-T6C.1",
+      "name": "T6C.1 CSAT Rating E2E test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-phase6-pb"],
+      "path": ".artifacts/test-plans/plan-T6C.1-csat-rating-e2e.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": ["plan-T6A.1"]
+    },
+    {
+      "id": "plan-T6C.2",
+      "name": "T6C.2 Metrics→Billing Wiring test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-phase6-pb"],
+      "path": ".artifacts/test-plans/plan-T6C.2-metrics-billing-wiring.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "plan-T6C.3",
+      "name": "T6C.3 /approve /reject Commands test-plan (6 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-phase6-pb"],
+      "path": ".artifacts/test-plans/plan-T6C.3-approve-reject-commands.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "test-diff-phase6-pb",
+      "name": "Phase 6 Protocol+Billing test-diff (29 cases across 5 files)",
+      "type": "test-diff",
+      "status": "draft",
+      "producer": "skill-3",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-phase6-protocol-billing.md",
+      "created_at": "2026-04-17T17:30:00Z",
+      "updated_at": "2026-04-17T17:30:00Z",
+      "related_ids": ["plan-T6A.1", "plan-T6A.2", "plan-T6C.1", "plan-T6C.2", "plan-T6C.3"]
+    },
+    {
+      "id": "e2e-report-phase6-pb",
+      "name": "Phase 6 Protocol+Billing e2e-report (29/29 passed)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-phase6-protocol-billing.md",
+      "created_at": "2026-04-17T17:45:00Z",
+      "updated_at": "2026-04-17T17:45:00Z",
+      "related_ids": ["test-diff-phase6-pb", "plan-T6A.1", "plan-T6A.2", "plan-T6C.1", "plan-T6C.2", "plan-T6C.3"]
     }
   ]
 }
