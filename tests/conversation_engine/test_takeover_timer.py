@@ -117,3 +117,25 @@ async def test_continue_ack_resets_timer(engine_with_conv):
     await asyncio.sleep(0.05)
     conv = await eng.get_conversation(cid)
     assert conv.mode == ConversationMode.TAKEOVER
+
+
+@pytest.mark.asyncio
+async def test_close_conversation_cancels_takeover_timer(engine_with_conv):
+    """Closing a conversation directly (not via /resolve) must cancel takeover timer."""
+    from autoservice.conversation_engine.types import Outcome
+
+    eng, cid = engine_with_conv
+    warnings: list[dict] = []
+    eng.on_takeover_warning(lambda ev: warnings.append(ev))
+
+    await eng.handle_command(cid, actor_id="op42", command="/hijack")
+    # Close directly without going through /resolve or /abandon command dispatch
+    await eng.close_conversation(cid, outcome=Outcome.RESOLVED, resolved_by="op42")
+
+    # Wait past where warning/release would have fired
+    await asyncio.sleep(0.2)
+
+    assert warnings == []  # timer was cancelled, warning never fired
+    # Underlying state: conversation closed, mode=TAKEOVER frozen (can't change on closed conv)
+    conv = await eng.get_conversation(cid)
+    assert conv.state.value == "closed"

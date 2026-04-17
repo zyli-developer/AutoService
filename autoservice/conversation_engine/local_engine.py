@@ -325,6 +325,8 @@ class LocalEngine:
         # Cancel all active timers for this conversation
         for name in list(self._timers.get(conversation_id, {})):
             self._cancel_timer_internal(conversation_id, name)
+        # Also cancel any active takeover release timer (T6 takeover-release feature)
+        self._cancel_takeover_timer(conversation_id)
         resolution = Resolution(outcome=outcome, resolved_by=resolved_by)
         conv = self._update_conv(
             conversation_id,
