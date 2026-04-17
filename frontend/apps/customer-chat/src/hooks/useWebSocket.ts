@@ -167,6 +167,13 @@ export function useWebSocket(url: string, clientApp: string) {
             });
           }
 
+        } else if (frame.type === 'csat_request') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string;
+          const prompt = p.prompt as string | undefined;
+          const options = (p.options as number[]) ?? [1, 2, 3, 4, 5];
+          store.setCsatRequest({ conversationId: convId, prompt, options });
+
         } else if (frame.type === 'error') {
           const p = frame.payload as Record<string, unknown>;
           if (p.code === '4041_REPLAY_GAP') {

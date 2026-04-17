@@ -260,3 +260,81 @@ html, body, #root { height: 100%; margin: 0; font-family: 'Inter', 'Noto Sans SC
 .web-connection-banner.replaying {
   background: var(--l500);
 }
+
+/* ===== CSAT Rating (T6C.1) ===== */
+.csat-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.csat-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px 28px;
+  text-align: center;
+  box-shadow: rgba(0, 0, 0, 0.12) 0 4px 20px;
+  max-width: 300px;
+  width: 100%;
+}
+
+.csat-prompt {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--charcoal, #1a1a2e);
+  margin: 0 0 16px;
+}
+
+.csat-stars {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.csat-star {
+  border: none;
+  background: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--oat, #e2e8f0);
+  transition: color 0.15s, transform 0.15s;
+}
+
+.csat-star:hover { transform: scale(1.15); }
+
+.csat-star.active {
+  color: #f59e0b;
+}
+
+.csat-star:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.csat-label {
+  font-size: 12px;
+  color: var(--silver, #94a3b8);
+  margin: 4px 0 12px;
+}
+
+.csat-submit {
+  border: none;
+  background: var(--m800, #181d26);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.csat-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

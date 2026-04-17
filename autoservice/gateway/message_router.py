@@ -179,7 +179,13 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
                 ref=env.id,
             )
         ]
-    # Skeleton never reaches "success" because no Engine implements handle_command yet.
+    # On /resolve success, push csat_request to customer connections (T6C.1)
+    if command == "/resolve" and conversation_id:
+        asyncio.create_task(
+            _push_csat_request(conversation_id),
+            name=f"csat-request-{conversation_id}",
+        )
+
     return [
         build_frame(
             "command_response",
@@ -461,7 +467,17 @@ async def _call_engine(
         return [_message_frame(msg)]
 
     if frame_type == "csat_response":
-        await engine.set_csat(payload["conversation_id"], int(payload["score"]))
+        conv_id = payload["conversation_id"]
+        score = int(payload["score"])
+        await engine.set_csat(conv_id, score)
+        # Record in BillingMetrics (T6C.1)
+        try:
+            from autoservice.api_routes import get_billing_metrics
+            bm = get_billing_metrics()
+            if bm is not None:
+                bm.record_csat(conv_id, score)
+        except Exception:
+            logger.warning("Failed to record CSAT in BillingMetrics for conv=%s", conv_id)
         return []
 
     if frame_type == "history_request":
@@ -572,6 +588,32 @@ async def _collect_operator_suggestions(
         return "<operator_suggestions>\n" + "\n".join(lines) + "\n</operator_suggestions>"
     except Exception:
         return ""
+
+
+# ---------------------------------------------------------------------------
+# CSAT request push (T6C.1)
+# ---------------------------------------------------------------------------
+
+async def _push_csat_request(conversation_id: str) -> None:
+    """Push S10 csat_request frame to all customer WS connections.
+
+    Called fire-and-forget after /resolve succeeds.  Iterates the global
+    WS connection registry and sends csat_request to each connection.
+    """
+    try:
+        from autoservice.web_gateway import _ws_connections
+        frame = build_frame("csat_request", {
+            "conversation_id": conversation_id,
+            "prompt": "How would you rate this conversation?",
+            "options": [1, 2, 3, 4, 5],
+        })
+        for _sid, ws in list(_ws_connections.items()):
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                pass  # connection may be closed
+    except Exception:
+        logger.debug("csat_request push failed for conv=%s", conversation_id)
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,12 @@ export interface ChatMessage {
   justEdited?: boolean;    // transient: true for 500ms after message_edited arrives
 }
 
+interface CsatRequest {
+  conversationId: string;
+  prompt?: string;
+  options: number[];
+}
+
 interface ChatState {
   connectionStatus: 'idle' | 'connecting' | 'open' | 'closed';
   sessionId: string | null;
@@ -31,6 +37,8 @@ interface ChatState {
   isReplaying: boolean;
   replayCount: number;
   lastSeenCursor: LastSeenCursor;
+  csatRequest: CsatRequest | null;
+  csatSubmitted: boolean;
   // Actions
   addMessage: (msg: ChatMessage) => void;
   addMessageDedup: (msg: ChatMessage) => void;
@@ -44,6 +52,8 @@ interface ChatState {
   setReplaying: (v: boolean) => void;
   setReplayCount: (n: number) => void;
   updateCursor: (cursor: LastSeenCursor) => void;
+  setCsatRequest: (req: CsatRequest) => void;
+  setCsatSubmitted: () => void;
 }
 
 export const initialState: Omit<
@@ -60,6 +70,8 @@ export const initialState: Omit<
   | 'setReplaying'
   | 'setReplayCount'
   | 'updateCursor'
+  | 'setCsatRequest'
+  | 'setCsatSubmitted'
 > = {
   connectionStatus: 'idle',
   sessionId: null,
@@ -69,6 +81,8 @@ export const initialState: Omit<
   isReplaying: false,
   replayCount: 0,
   lastSeenCursor: {},
+  csatRequest: null,
+  csatSubmitted: false,
 };
 
 export const useChatStore = create<ChatState>()((set) => ({
@@ -133,4 +147,8 @@ export const useChatStore = create<ChatState>()((set) => ({
   setReplayCount: (n) => set({ replayCount: n }),
 
   updateCursor: (cursor) => set({ lastSeenCursor: cursor }),
+
+  setCsatRequest: (req) => set({ csatRequest: req, csatSubmitted: false }),
+
+  setCsatSubmitted: () => set({ csatRequest: null, csatSubmitted: true }),
 }));
