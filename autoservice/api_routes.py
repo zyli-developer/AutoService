@@ -178,10 +178,6 @@ async def canary_status() -> dict[str, Any]:
 @api_router.post("/command/hijack")
 async def command_hijack(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
     """Join conversation + hijack via REST API."""
-    from autoservice.web_gateway import create_app
-    import importlib
-    # Get the global engine from the running app
-    from autoservice.gateway.message_router import _ws_engine
     engine = _ws_engine()
     if engine is None:
         return {"ok": False, "error": "no engine"}
