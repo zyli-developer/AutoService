@@ -44,6 +44,9 @@ _CLOSE_CODE_VERSION = 4040
 # Global WebSocket connection registry: session_id → WebSocket
 _ws_connections: dict[str, WebSocket] = {}
 
+# Admin WS connections for alert push (T6E.7): session_id → WebSocket
+_admin_connections: dict[str, WebSocket] = {}
+
 # Global CCPool reference (lazily initialized)
 _pool = None
 _pool_lock = asyncio.Lock()
@@ -73,6 +76,23 @@ async def _get_pool():
         except Exception as exc:
             logger.warning("CCPool init failed, running without AI agent: %s", exc)
             return None
+
+
+async def _push_alert_to_admins(alert) -> None:
+    """Push a FiredAlert to all connected admin WebSocket sessions (T6E.7)."""
+    from autoservice.gateway.connection import build_frame
+    from dataclasses import asdict
+
+    frame = build_frame("sla_alert", asdict(alert))
+    stale: list[str] = []
+    for sid, ws in list(_admin_connections.items()):
+        try:
+            await ws.send_json(frame)
+        except Exception:
+            logger.debug("admin ws %s unreachable, removing", sid)
+            stale.append(sid)
+    for sid in stale:
+        _admin_connections.pop(sid, None)
 
 
 def create_app(engine: ConversationEngine | None = None) -> FastAPI:
@@ -108,6 +128,22 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     app.include_router(onboard_router)
     app.include_router(api_router)
     _set_engine(app.state.engine)
+
+    # Wire SLA alert push to admin WebSocket connections (T6E.7)
+    try:
+        from autoservice.alert_engine import AlertEngine
+        from autoservice.sla_aggregator import SLAAggregator
+
+        aggregator = getattr(app.state, "sla_aggregator", None)
+        if aggregator is None:
+            aggregator = SLAAggregator()
+            app.state.sla_aggregator = aggregator
+        alert_engine = AlertEngine(aggregator)
+        alert_engine.set_notify(_push_alert_to_admins)
+        app.state.alert_engine = alert_engine
+        logger.info("AlertEngine wired with admin WS push")
+    except Exception:
+        logger.warning("AlertEngine init failed, alerts disabled", exc_info=True)
 
     for role in ("customer", "operator", "admin"):
         app.add_api_websocket_route(
@@ -171,6 +207,8 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
 
     session_id = generate_session_id()
     _ws_connections[session_id] = ws
+    if viewer_role == "admin":
+        _admin_connections[session_id] = ws
 
     await ws.send_json(
         build_frame(
@@ -213,6 +251,7 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
                 "evicted %d subscription(s) for session %s", len(evicted), session_id,
             )
         _ws_connections.pop(session_id, None)
+        _admin_connections.pop(session_id, None)
 
 
 async def _process_frame(

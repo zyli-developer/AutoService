@@ -6,7 +6,7 @@
 **状态图例**: ⬜ pending · 🟦 in_progress · 🟩 completed · ⚠️ blocked · 🟥 failed(需重做)
 **类型图例**: 🟢 Green(AI 独立) · 🟡 Yellow(AI+人审) · 🔴 Red(人主导)
 
-**最后更新**: 2026-04-17 · **整体进度**: 87/100 (87%) · ⚠️ 9 tasks blocked on zchat · 25 Phase 6 gap-fix tasks added
+**最后更新**: 2026-04-17 · **整体进度**: 92/100 (92%) · ⚠️ 9 tasks blocked on zchat · 25 Phase 6 gap-fix tasks added
 
 ## ⚡ AI 快车道时间表
 
@@ -240,11 +240,11 @@
 | T6E.3 | 老客户上下文问候 | 🟢 | 🟩 | Agent | — | DEV-05 |
 | T6E.4 | Canary advance 修复 | 🟢 | 🟩 | Agent | — | DEV-03 |
 | T6E.5 | Memory Pool 自动录入 | 🟢 | 🟩 | Agent | — | DEV-12 |
-| T6E.6 | 旧 WS 栈标记 deprecated | 🟢 | ⬜ | Agent | — | DEV-09 |
-| T6E.7 | SLA 告警 WS 推送 | 🟡 | ⬜ | Dev | T6A.1,T6D.1 | MISS-06 |
-| T6E.8 | Agent 草稿展示 | 🟡 | ⬜ | Dev | T6A.1 | MISS-09 |
-| T6E.9 | Dream Engine 对话式配置 | 🟡 | ⬜ | Dev | — | MISS-05 |
-| T6E.10 | Proposal analyzer 替换 | 🟡 | ⬜ | Dev | — | DEV-11 |
+| T6E.6 | 旧 WS 栈标记 deprecated | 🟢 | 🟩 | Agent | — | DEV-09 |
+| T6E.7 | SLA 告警 WS 推送 | 🟡 | 🟩 | Dev | T6A.1,T6D.1 | MISS-06 |
+| T6E.8 | Agent 草稿展示 | 🟡 | 🟩 | Dev | T6A.1 | MISS-09 |
+| T6E.9 | Dream Engine 对话式配置 | 🟡 | 🟩 | Dev | — | MISS-05 |
+| T6E.10 | Proposal analyzer 替换 | 🟡 | 🟩 | Dev | — | DEV-11 |
 
 ---
 
@@ -262,8 +262,8 @@
 | **P6B** | **5** | **0** | **0** | **5** | **0** |
 | **P6C** | **3** | **0** | **0** | **3** | **0** |
 | **P6D** | **5** | **1** | **0** | **4** | **0** |
-| **P6E** | **10** | **5** | **0** | **5** | **0** |
-| **合计** | **100** | **4** | **0** | **87** | **9** |
+| **P6E** | **10** | **0** | **0** | **10** | **0** |
+| **合计** | **100** | **1** | **0** | **92** | **9** | <!-- T6D.5 pending (you) -->
 
 **P0-P5**: A 线 43 / B 线 29 / 协作 3
 **P6**: Dev 亲做 8 (Yellow) / Agent 并行 17 (Green)

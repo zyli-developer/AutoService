@@ -13,7 +13,9 @@ export function CopilotView({ send }: CopilotViewProps) {
 
   if (!activeCopilotConvId) return null;
 
-  const messages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  const allMessages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  const draftMessages = allMessages.filter((m) => m.visibility === 'side');
+  const messages = allMessages.filter((m) => m.visibility !== 'side');
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
@@ -55,6 +57,16 @@ export function CopilotView({ send }: CopilotViewProps) {
         </div>
       </div>
       <div className="im-feed" data-testid="copilot-sidebar">
+        {draftMessages.length > 0 && (
+          <div data-testid="copilot-draft-section" className="im-draft-section" style={{ margin: '8px 0', padding: '8px 12px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#d48806', marginBottom: 4 }}>Draft</div>
+            {draftMessages.map((msg) => (
+              <div key={msg.id} className="im-draft-line" data-testid={`copilot-draft-${msg.id}`} style={{ padding: '2px 0', fontSize: 13, color: '#595959' }}>
+                {msg.sender}: {msg.text}
+              </div>
+            ))}
+          </div>
+        )}
         {messages.map((msg) => {
           if (msg.sender === 'customer') {
             return (

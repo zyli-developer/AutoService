@@ -824,6 +824,19 @@ async def _generate_agent_reply(
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
 
         # Store agent reply in engine
+        # T6E.8: Send a SIDE-visibility draft to operator connections before final reply
+        from autoservice.conversation_engine.types import MessageVisibility
+        draft_msg = await engine.send_message(
+            conv_id, source="agent", content=reply_text.strip(),
+            requested_visibility=MessageVisibility.SIDE,
+            metadata={"draft": True},
+        )
+        draft_frame = _message_frame(draft_msg)
+        draft_frame["payload"]["message"]["visibility"] = "side"
+        await _broadcast_to_squad(draft_frame, conv_id, exclude_ws=None)
+        logger.info("Agent draft pushed to operators: conv=%s len=%d", conv_id, len(reply_text))
+
+        # Store agent reply in engine (PUBLIC visibility for customer)
         agent_msg = await engine.send_message(
             conv_id, source="agent", content=reply_text.strip(),
         )

@@ -31,6 +31,7 @@ export interface CopilotMessage {
   text: string;
   sender: 'operator' | 'agent' | 'customer';
   ts: string;
+  visibility?: 'public' | 'side' | 'system';
 }
 
 export interface OperatorState {

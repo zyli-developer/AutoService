@@ -351,6 +351,20 @@ async def command_send_message(
 
 
 # ---------------------------------------------------------------------------
+# Dream Engine config dialog (T6E.9)
+# ---------------------------------------------------------------------------
+_dream_config_session: Any = None
+
+
+def _get_dream_session():
+    global _dream_config_session
+    if _dream_config_session is None:
+        from autoservice.dream_config_dialog import DreamConfigSession
+        _dream_config_session = DreamConfigSession()
+    return _dream_config_session
+
+
+# ---------------------------------------------------------------------------
 # Management Chat (Dream Engine conversational interface)
 # ---------------------------------------------------------------------------
 
@@ -359,7 +373,19 @@ async def management_chat(message: str = "") -> dict[str, Any]:
     """Process a management chat message. Routes slash commands to backend functions."""
     text = message.strip()
     if not text:
-        return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback"}
+        return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback, @Dream Engine"}
+
+    # Dream Engine config dialog — check if session is active first (T6E.9)
+    dream_session = _get_dream_session()
+    if dream_session.is_active():
+        response, done = dream_session.process_input(text)
+        return {"role": "dream_engine", "content": response}
+
+    # @Dream Engine or /dream-config — start config dialog (T6E.9)
+    from autoservice.dream_config_dialog import is_dream_config_trigger
+    if is_dream_config_trigger(text):
+        prompt = dream_session.start()
+        return {"role": "dream_engine", "content": prompt}
 
     # /rules — show current rules
     if text.startswith("/rules"):

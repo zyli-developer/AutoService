@@ -1,21 +1,30 @@
 """Proposal generation pipeline — Dream Engine core.
 
 T4A.4 产出 | 2026-04-16
+T6E.10 — LLM-based analyzer replaces stub | 2026-04-17
 
 Replays historical conversations from MemoryPool, uses LLM analysis
-(stubbed), generates structured improvement proposals as JSON, and
-stores them in SQLite.
+to extract talk-track suggestions and knowledge gaps, generates
+structured improvement proposals as JSON, and stores them in SQLite.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Awaitable
 
+try:
+    import anthropic
+except ImportError:  # pragma: no cover – allow import without SDK installed
+    anthropic = None  # type: ignore[assignment]
+
 from autoservice.memory_pool import MemoryPool
+
+logger = logging.getLogger(__name__)
 
 PROPOSALS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS proposals (
@@ -35,25 +44,102 @@ VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_STATUSES = {"draft", "accepted", "rejected", "implemented"}
 
 
-def _default_stub_analyzer(text: str) -> list[dict]:
-    """Default stub analyzer for testing.
+# ── LLM analyzer constants ────────────────────────────────────────────────
 
-    Returns a single suggestion based on the number of lines (proxy for
-    turn count).
+_ANALYZER_MODEL = "claude-sonnet-4-20250514"
+_ANALYZER_MAX_TOKENS = 4096
+
+_ANALYZER_SYSTEM_PROMPT = """\
+You are a customer-service QA analyst. You receive transcripts of \
+conversations between an AI agent and customers.
+
+Analyse the conversation and return a JSON **array** of improvement \
+proposals. Each element must have exactly these fields:
+
+- "category": one of "response_quality", "workflow", "knowledge_gap", "tone"
+- "title": short summary (≤80 chars)
+- "description": 1-3 sentence explanation of the issue
+- "suggestion": actionable recommendation for the agent team
+- "evidence": list of strings — verbatim quotes from the transcript that \
+  support the finding (may be empty if the finding is structural)
+
+Focus on:
+1. **Talk-track suggestions** — places where the agent's phrasing, flow, or \
+   strategy could be improved.
+2. **Knowledge blind spots** — questions the agent could not answer or \
+   answered incorrectly / vaguely.
+
+Return ONLY the JSON array, no markdown fences, no commentary.\
+"""
+
+
+def _llm_analyzer(text: str) -> list[dict]:
+    """LLM-based analyzer: sends replay text to Claude, returns structured proposals.
+
+    Falls back to a minimal stub result with a warning when the LLM is
+    unavailable (SDK missing, auth error, network issue, etc.).
     """
-    line_count = len(text.strip().splitlines()) if text.strip() else 0
-    if line_count == 0:
+    if not text.strip():
         return []
-    category = "response_quality" if line_count > 5 else "tone"
-    return [
-        {
-            "category": category,
-            "title": f"Improvement suggestion ({line_count} turns analysed)",
-            "description": f"Analysis of {line_count} conversation turns.",
-            "suggestion": "Consider reviewing agent response patterns.",
-            "evidence": [],
-        }
-    ]
+
+    line_count = len(text.strip().splitlines())
+
+    # ── Fallback result used when LLM call cannot be made ──
+    def _fallback(reason: str) -> list[dict]:
+        logger.warning("LLM analyzer unavailable (%s) — returning stub result", reason)
+        category = "response_quality" if line_count > 5 else "tone"
+        return [
+            {
+                "category": category,
+                "title": f"Improvement suggestion ({line_count} turns analysed)",
+                "description": (
+                    f"Analysis of {line_count} conversation turns. "
+                    f"(LLM unavailable: {reason})"
+                ),
+                "suggestion": "Consider reviewing agent response patterns.",
+                "evidence": [],
+            }
+        ]
+
+    if anthropic is None:
+        return _fallback("anthropic SDK not installed")
+
+    try:
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model=_ANALYZER_MODEL,
+            max_tokens=_ANALYZER_MAX_TOKENS,
+            temperature=0,
+            system=_ANALYZER_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": text}],
+        )
+        raw = message.content[0].text.strip()
+
+        # Parse the JSON array returned by the model
+        proposals = json.loads(raw)
+        if not isinstance(proposals, list):
+            proposals = [proposals]
+
+        # Validate / normalise each proposal
+        validated: list[dict] = []
+        for p in proposals:
+            cat = p.get("category", "response_quality")
+            if cat not in VALID_CATEGORIES:
+                cat = "response_quality"
+            validated.append({
+                "category": cat,
+                "title": str(p.get("title", "Untitled"))[:120],
+                "description": str(p.get("description", "")),
+                "suggestion": str(p.get("suggestion", "")),
+                "evidence": list(p.get("evidence", [])),
+            })
+
+        return validated if validated else _fallback("LLM returned empty result")
+
+    except json.JSONDecodeError as exc:
+        return _fallback(f"JSON parse error: {exc}")
+    except Exception as exc:  # noqa: BLE001 – intentional broad catch for resilience
+        return _fallback(str(exc))
 
 
 class ProposalPipeline:
@@ -68,7 +154,7 @@ class ProposalPipeline:
         db_path: str | None = None,
     ) -> None:
         self._memory_pool = memory_pool
-        self._analyzer = analyzer or _default_stub_analyzer
+        self._analyzer = analyzer or _llm_analyzer
         self._compliance_engine = compliance_engine
         self._batch_size = batch_size
 
