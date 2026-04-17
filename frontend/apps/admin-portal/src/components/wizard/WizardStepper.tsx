@@ -1,4 +1,4 @@
-const STEPS = ['\u4E0A\u4F20', '\u6743\u9650', '\u9884\u6F14', '\u5408\u89C4', '\u53EF\u7528'];
+const STEPS = ['上传', '权限', '预演', '合规', '可用'];
 
 interface WizardStepperProps {
   currentStep: number;

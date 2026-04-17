@@ -96,29 +96,95 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         // F6: subscribe for each squad
         const currentSquads = useOperatorStore.getState().squads;
         currentSquads.forEach((squadId) => {
-          client.send({
-            v: 1,
-            type: 'subscribe',
-            id: crypto.randomUUID(),
-            ts: new Date().toISOString(),
-            payload: { scope: { squad_id: squadId } },
-          } as Envelope);
+          client.send('subscribe' as any, { scope: { squad_id: squadId } }).catch(() => {});
         });
       },
       onClose: () => {
         setWsStatus('closed');
       },
       onFrame: (frame: Envelope) => {
+        // Handle history_snapshot — load messages into copilot
+        if (frame.type === 'history_snapshot') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string;
+          const msgs = (p.messages as Record<string, unknown>[]) ?? [];
+          if (convId && msgs.length > 0) {
+            for (const msg of msgs) {
+              const src = (msg.source as string) ?? '';
+              const sender = (src.includes('customer') || src.startsWith('cust')) ? 'customer' as const
+                : src.includes('operator') ? 'operator' as const
+                : 'agent' as const;
+              addCopilotMessage(convId, {
+                id: (msg.id as string) ?? crypto.randomUUID(),
+                text: (msg.content as string) ?? '',
+                sender,
+                ts: (msg.timestamp as string) ?? new Date().toISOString(),
+              });
+            }
+          }
+        }
+
         if (frame.type === 'subscription_added') {
           const p = frame.payload as { subscription_id: string; scope: { squad_id?: string } };
           if (p.scope?.squad_id) {
             addSubscription(p.scope.squad_id, p.subscription_id);
           }
         }
+
+        // Handle broadcast message frames (customer/agent messages from other connections)
+        if (frame.type === 'message') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string;
+          const msg = p.message as Record<string, unknown>;
+          const srcDisplay = p.source_display as Record<string, unknown> | undefined;
+          const role = (srcDisplay?.role as string) ?? 'agent';
+          const content = (msg?.content as string) ?? '';
+          const ts = (msg?.timestamp as string) ?? new Date().toISOString();
+
+          if (convId) {
+            const squadId = (p.squad_id as string) ?? 'web-support';
+            // Auto-create conversation if not exists
+            const state = useOperatorStore.getState();
+            // Auto-add squad to sidebar if not present
+            if (!state.squads.includes(squadId)) {
+              useOperatorStore.getState().addSquad(squadId);
+            }
+            if (!state.conversations[convId]) {
+              addConversation({
+                id: convId,
+                customerId: role === 'customer' ? (srcDisplay?.id as string ?? 'customer') : 'customer',
+                squadId,
+                mode: 'auto',
+                lastMessage: content,
+                lastActivityTs: ts,
+                unreadCount: 1,
+              });
+            } else {
+              updateConversation(convId, {
+                lastMessage: content,
+                lastActivityTs: ts,
+                unreadCount: (state.conversations[convId].unreadCount ?? 0) + 1,
+              });
+            }
+
+            // Add to copilot if this conversation is open
+            if (state.activeCopilotConvId === convId) {
+              const sender = role === 'customer' ? 'customer' as const
+                : role === 'operator' ? 'operator' as const
+                : 'agent' as const;
+              addCopilotMessage(convId, {
+                id: (msg?.id as string) ?? crypto.randomUUID(),
+                text: content,
+                sender,
+                ts,
+              });
+            }
+          }
+        }
+
         if (frame.type === 'event') {
           handleEventFrame(frame, addConversation, updateConversation);
 
-          // Also add to copilot messages if conversation is active in copilot
           const evtPayload = frame.payload as EventPayload;
           const evt = evtPayload?.event;
           if (evt?.type === 'message.sent' && evt.conversation_id) {
@@ -149,8 +215,23 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   }, [isLoggedIn, operatorId, url]);
 
   const send = (frame: Envelope) => {
-    clientRef.current?.send(frame);
+    if (!clientRef.current) {
+      console.warn('[OperatorWS] send: no client');
+      return;
+    }
+    console.log('[OperatorWS] send:', frame.type, frame.payload);
+    clientRef.current.send(frame.type as any, frame.payload).catch((err) => {
+      console.error('[OperatorWS] send error:', err);
+    });
   };
 
-  return { send };
+  const fetchHistory = (conversationId: string) => {
+    if (!clientRef.current) return;
+    clientRef.current.send(
+      'history_request' as any,
+      { conversation_id: conversationId, limit: 50 },
+    ).catch(() => {});
+  };
+
+  return { send, fetchHistory };
 }

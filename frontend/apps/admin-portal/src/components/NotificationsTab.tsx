@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useAdminStore, type Notification } from '../store/adminStore';
 
 const TYPE_STYLES: Record<Notification['type'], { bg: string; color: string; label: string }> = {
-  alert: { bg: 'var(--p)', color: '#fff', label: '\u544A\u8B66' },
-  info: { bg: 'var(--m300)', color: 'var(--m800)', label: '\u4FE1\u606F' },
-  command: { bg: 'var(--m800)', color: '#fff', label: '\u547D\u4EE4' },
+  alert: { bg: 'var(--p)', color: '#fff', label: '告警' },
+  info: { bg: 'var(--m300)', color: 'var(--m800)', label: '信息' },
+  command: { bg: 'var(--m800)', color: '#fff', label: '命令' },
 };
 
 function makeId(): string {
@@ -12,9 +12,9 @@ function makeId(): string {
 }
 
 const commandHandlers: Record<string, () => Pick<Notification, 'title' | 'description' | 'type'>> = {
-  '/rules': () => ({ type: 'command', title: '\u89C4\u5219\u914D\u7F6E\u5DF2\u66F4\u65B0', description: '\u5DF2\u6267\u884C /rules \u547D\u4EE4' }),
-  '/status': () => ({ type: 'command', title: '\u7CFB\u7EDF\u72B6\u6001\uFF1A\u6B63\u5E38', description: '\u5DF2\u6267\u884C /status \u547D\u4EE4' }),
-  '/review': () => ({ type: 'command', title: '\u5BA1\u67E5\u5DF2\u542F\u52A8', description: '\u5DF2\u6267\u884C /review \u547D\u4EE4' }),
+  '/rules': () => ({ type: 'command', title: '规则配置已更新', description: '已执行 /rules 命令' }),
+  '/status': () => ({ type: 'command', title: '系统状态：正常', description: '已执行 /status 命令' }),
+  '/review': () => ({ type: 'command', title: '审查已启动', description: '已执行 /review 命令' }),
 };
 
 export function NotificationsTab() {
@@ -39,7 +39,7 @@ export function NotificationsTab() {
         id: makeId(),
         type: 'info',
         title: trimmed,
-        description: '\u7528\u6237\u8F93\u5165',
+        description: '用户输入',
         ts: new Date().toISOString(),
       });
     }
@@ -50,7 +50,7 @@ export function NotificationsTab() {
     <div data-testid="tab-notifications">
       <div data-testid="notification-list">
         {notifications.length === 0 ? (
-          <div className="im-empty">{'\u6682\u65E0\u901A\u77E5'}</div>
+          <div className="im-empty">{'暂无通知'}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {notifications.map((item) => {
@@ -98,13 +98,13 @@ export function NotificationsTab() {
       <div className="cs-notification-input">
         <input
           data-testid="notification-input"
-          placeholder="\u8F93\u5165\u547D\u4EE4\uFF1A/rules, /status, /review"
+          placeholder="输入命令：/rules, /status, /review"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
         />
         <button data-testid="notification-send" onClick={handleSend}>
-          {'\u53D1\u9001'}
+          {'发送'}
         </button>
       </div>
     </div>

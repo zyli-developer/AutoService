@@ -1,123 +1,79 @@
-import { Card, Progress, Space, Steps, Table, Tag, Typography } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined } from '@ant-design/icons';
-import { useAdminStore } from '../store/adminStore';
-import type { CanaryStage } from '../store/adminStore';
+import { useEffect, useState } from 'react';
+import { fetchJSON, postJSON } from '../api';
 
-const STAGE_LABELS: Record<CanaryStage, string> = {
-  disabled: '未启动',
-  stage_5: '5%',
-  stage_25: '25%',
-  stage_100: '100%',
-};
-
-const STAGE_ORDER: CanaryStage[] = ['disabled', 'stage_5', 'stage_25', 'stage_100'];
-
-const columns = [
-  {
-    title: '指标',
-    dataIndex: 'name',
-    key: 'name',
-  },
-  {
-    title: '基线',
-    dataIndex: 'baseline',
-    key: 'baseline',
-    render: (v: number) => v.toFixed(2),
-  },
-  {
-    title: '当前',
-    dataIndex: 'current',
-    key: 'current',
-    render: (v: number) => v.toFixed(2),
-  },
-  {
-    title: '状态',
-    dataIndex: 'breached',
-    key: 'breached',
-    render: (breached: boolean) =>
-      breached ? (
-        <Tag color="red" icon={<CloseCircleOutlined />} data-testid="metric-breached">超阈值</Tag>
-      ) : (
-        <Tag color="green" icon={<CheckCircleOutlined />} data-testid="metric-ok">正常</Tag>
-      ),
-  },
-];
-
-const METRIC_LABELS: Record<string, string> = {
-  csat: 'CSAT 评分',
-  resolution_rate: '升级→结案率',
-  digest_rate: '对话摘要率',
-  accept_wait_ms: 'P95 响应时间(ms)',
-  complaint_rate: '投诉率',
-};
+interface CanaryData {
+  stage: number;
+  percentage: number;
+  can_advance: boolean;
+  history: unknown[];
+  monitor: { status: string; breaches?: { metric: string; baseline: number; current: number }[] };
+}
 
 export function CanaryProgress() {
-  const canaryState = useAdminStore((s) => s.canaryState);
+  const [data, setData] = useState<CanaryData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!canaryState) {
-    return (
-      <Card data-testid="canary-progress" size="small">
-        <Typography.Text type="secondary" data-testid="canary-empty">暂无灰度发布</Typography.Text>
-      </Card>
-    );
-  }
+  const load = () => {
+    fetchJSON<CanaryData>('/api/canary/status')
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
-  const currentStepIdx = STAGE_ORDER.indexOf(canaryState.stage);
-  const breachedCount = canaryState.metrics.filter((m) => m.breached).length;
+  useEffect(load, []);
 
-  const tableData = canaryState.metrics.map((m) => ({
-    ...m,
-    key: m.name,
-    name: METRIC_LABELS[m.name] || m.name,
-  }));
+  if (loading) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty">加载灰度状态...</div></div>;
+  if (!data) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty" data-testid="canary-empty">暂无灰度数据</div></div>;
+
+  const stages = [0, 5, 25, 100];
+  const currentIdx = stages.findIndex(s => s >= data.percentage);
 
   return (
-    <Card data-testid="canary-progress" size="small">
-      <Typography.Title level={5}>灰度发布进度</Typography.Title>
+    <div className="cs-card" data-testid="canary-progress" style={{ marginTop: 14 }}>
+      <div className="cs-ct">📈 灰度发布进度</div>
 
-      <Steps
-        current={currentStepIdx}
-        data-testid="canary-steps"
-        size="small"
-        style={{ marginBottom: 16 }}
-        items={STAGE_ORDER.map((stage) => ({
-          title: STAGE_LABELS[stage],
-        }))}
-      />
+      {/* Stage progress bar */}
+      <div className="bar" data-testid="canary-steps" style={{ marginBottom: 12 }}>
+        {stages.map((s, i) => (
+          <div key={s} style={{
+            background: i <= currentIdx ? 'var(--m600)' : 'var(--oat)',
+            flex: 1, height: 8, borderRadius: 4,
+          }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--silver)', marginBottom: 12 }}>
+        {stages.map(s => <span key={s}>{s}%</span>)}
+      </div>
 
-      <Space style={{ marginBottom: 16 }}>
-        <Progress
-          type="circle"
-          percent={canaryState.percentage}
-          size={80}
-          data-testid="canary-percentage"
-          status={canaryState.rolledBack ? 'exception' : undefined}
-        />
-        <div>
-          <div>
-            <Tag
-              color={canaryState.rolledBack ? 'red' : 'blue'}
-              icon={canaryState.rolledBack ? <CloseCircleOutlined /> : <SyncOutlined />}
-              data-testid="canary-status-tag"
-            >
-              {canaryState.rolledBack ? '已回滚' : `灰度中 (${canaryState.percentage}%)`}
-            </Tag>
+      <div className="cs-row" data-testid="canary-percentage">
+        <span>当前</span>
+        <span style={{ color: 'var(--m600)', fontWeight: 700 }} data-testid="canary-status-tag">
+          {data.percentage}% · {data.monitor.status}
+        </span>
+      </div>
+
+      {/* Monitor breaches */}
+      {data.monitor.breaches && data.monitor.breaches.length > 0 && (
+        <div style={{ marginTop: 12 }} data-testid="canary-metrics-table">
+          {data.monitor.breaches.map((b) => (
+            <div className="cs-row" key={b.metric}>
+              <span>{b.metric}</span>
+              <span style={{ color: 'var(--p)', fontWeight: 700 }} data-testid="metric-breached">
+                {b.baseline.toFixed(2)} → {b.current.toFixed(2)}
+              </span>
+            </div>
+          ))}
+          <div className="cs-pg warn" data-testid="breach-count" style={{ marginTop: 8 }}>
+            ⚠ {data.monitor.breaches.length} 项指标超阈值
           </div>
-          {breachedCount > 0 && (
-            <Tag color="red" style={{ marginTop: 4 }} data-testid="breach-count">
-              {breachedCount} 项指标超阈值
-            </Tag>
-          )}
         </div>
-      </Space>
+      )}
 
-      <Table
-        dataSource={tableData}
-        columns={columns}
-        pagination={false}
-        size="small"
-        data-testid="canary-metrics-table"
-      />
-    </Card>
+      {/* Controls */}
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <button className="cs-btn ok" onClick={() => postJSON('/api/canary/advance').then(load)}>Advance</button>
+        <button className="cs-btn" onClick={() => postJSON('/api/canary/rollback').then(load)} style={{ background: 'var(--p)', color: '#fff', border: 'none' }}>Rollback</button>
+      </div>
+    </div>
   );
 }

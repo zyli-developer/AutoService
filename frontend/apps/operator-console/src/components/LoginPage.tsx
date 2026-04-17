@@ -15,7 +15,7 @@ export function LoginPage() {
   return (
     <div className="im-login">
       <div className="im-login-card">
-        <h2>AutoService {'\u00B7'} {'\u5DE5\u4F5C\u53F0\u767B\u5F55'}</h2>
+        <h2>AutoService · 工作台登录</h2>
         <form onSubmit={handleSubmit}>
           <input
             data-testid="input-operator-id"
@@ -26,7 +26,7 @@ export function LoginPage() {
           <input
             data-testid="input-token"
             type="password"
-            placeholder="Token\uFF08\u53EF\u9009\uFF09"
+            placeholder="Token（可选）"
             value={token}
             onChange={(e) => setToken(e.target.value)}
           />
@@ -35,7 +35,7 @@ export function LoginPage() {
             disabled={!operatorId.trim()}
             data-testid="btn-login"
           >
-            {'\u767B\u5F55'}
+            登录
           </button>
         </form>
       </div>

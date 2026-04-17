@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { postForm } from '../../api';
 
 const channelOptions = [
-  { label: 'Web \u5728\u7EBF\u5BA2\u670D', value: 'web', disabled: false },
-  { label: '\u98DE\u4E66 IM', value: 'feishu', disabled: true },
+  { label: 'Web 在线客服', value: 'web', disabled: false },
+  { label: '飞书 IM', value: 'feishu', disabled: true },
 ];
 
 interface ChannelConfigStepProps {
@@ -19,14 +20,21 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
     );
   };
 
-  const handleGenerate = () => {
-    setGeneratedUrl(`https://${tenantId}.autoservice.ai/chat`);
+  const handleGenerate = async () => {
+    try {
+      const form = new FormData();
+      form.append('tenant_id', tenantId);
+      const resp = await postForm<{ sandbox_url: string }>('/api/onboard/activate', form);
+      setGeneratedUrl(resp.sandbox_url);
+    } catch {
+      setGeneratedUrl(`https://${tenantId}.sandbox.localhost`);
+    }
   };
 
   return (
     <div data-testid="channel-config-step">
       <div className="cs-card">
-        <div className="cs-ct">{'\u6E20\u9053\u914D\u7F6E'}</div>
+        <div className="cs-ct">{'渠道配置'}</div>
         <div data-testid="channel-checkboxes" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
           {channelOptions.map((opt) => (
             <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: opt.disabled ? 'var(--silver)' : 'var(--charcoal)' }}>
@@ -56,7 +64,7 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'\u751F\u6210\u94FE\u63A5'}
+          {'生成链接'}
         </button>
         {generatedUrl && (
           <div className="cs-row" style={{ marginTop: 12 }}>

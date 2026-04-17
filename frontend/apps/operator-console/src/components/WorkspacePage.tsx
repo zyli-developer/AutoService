@@ -7,10 +7,7 @@ import { ConversationFeed } from './ConversationFeed';
 import { CopilotView } from './CopilotView';
 import { IMInput } from './IMInput';
 
-const WS_URL =
-  typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL
-    ? (import.meta as any).env.VITE_WS_URL
-    : 'ws://localhost:9999/ws/operator';
+const WS_URL = `ws://${window.location.hostname}:8000/ws/operator`;
 
 export function WorkspacePage() {
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
@@ -23,7 +20,12 @@ export function WorkspacePage() {
 
   const [newSquadId, setNewSquadId] = useState('');
 
-  const { send } = useOperatorWS(WS_URL);
+  const { send, fetchHistory } = useOperatorWS(WS_URL);
+
+  const handleOpenCopilot = (convId: string) => {
+    openCopilot(convId);
+    fetchHistory(convId);
+  };
 
   const handleAddSquad = () => {
     if (!newSquadId.trim()) return;
@@ -44,7 +46,7 @@ export function WorkspacePage() {
             padding: '6px 16px',
           }}
         >
-          {wsStatus === 'connecting' ? '\u8FDE\u63A5\u4E2D...' : '\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u5C1D\u8BD5\u91CD\u8FDE'}
+          {wsStatus === 'connecting' ? '连接中...' : '连接已断开，尝试重连'}
         </div>
       )}
       <div className="im-body">
@@ -59,42 +61,19 @@ export function WorkspacePage() {
             <>
               <div className="im-main-header">
                 <div className="im-main-title">
-                  {activeSquadId ?? '\u5DE5\u4F5C\u53F0'}
+                  {activeSquadId ? `# ${activeSquadId}` : '# 全部对话'}
                 </div>
                 <div className="im-main-subtitle">
-                  {squads.length === 0
-                    ? '\u8BF7\u6DFB\u52A0 Squad ID'
-                    : `${Object.keys(useOperatorStore.getState().conversations).length} \u4E2A\u5BF9\u8BDD`}
+                  {`${Object.values(useOperatorStore.getState().conversations).filter(c => !activeSquadId || c.squadId === activeSquadId).length} 个对话`}
                 </div>
               </div>
               <ConversationFeed
                 squadId={activeSquadId}
-                onCardClick={openCopilot}
+                onCardClick={handleOpenCopilot}
               />
               <div className="im-input">
-                <div className="im-input-row">
-                  <input
-                    data-testid="input-squad-id"
-                    value={newSquadId}
-                    onChange={(e) => setNewSquadId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddSquad()}
-                    placeholder="Squad ID"
-                    style={{
-                      flex: 1,
-                      border: '1px solid var(--oat)',
-                      borderRadius: 13,
-                      padding: '9px 14px',
-                      fontSize: 12,
-                      fontFamily: 'var(--font-sans)',
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    data-testid="btn-add-squad"
-                    onClick={handleAddSquad}
-                  >
-                    +
-                  </button>
+                <div className="im-input-box">
+                  等待客户接入...
                 </div>
               </div>
             </>

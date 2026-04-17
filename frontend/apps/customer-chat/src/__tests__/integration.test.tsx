@@ -180,7 +180,7 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
     v: 1, type: 'message', id: 'f-ph', ts: new Date().toISOString(),
     payload: {
       conversation_id: 'cv1',
-      message: { id: 'ph-1', source: 'agent-1', content: '\u6B63\u5728\u67E5\u8BE2\u2026',
+      message: { id: 'ph-1', source: 'agent-1', content: '正在查询…',
         visibility: 'public', sequence_number: 1, timestamp: new Date().toISOString(),
         metadata: { is_placeholder: true } },
       source_display: { id: 'agent-1', role: 'agent', name: 'Bot' },
@@ -189,14 +189,14 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
 
   const pushEdited = (fake: FakeWSClient) => fake.pushFrame({
     v: 1, type: 'message_edited', id: 'f-edit', ts: new Date().toISOString(),
-    payload: { message_id: 'ph-1', new_content: '\u5957\u9910\u4EF7\u683C\u662F 199 \u5143', sequence_number: 2 },
+    payload: { message_id: 'ph-1', new_content: '套餐价格是 199 元', sequence_number: 2 },
   });
 
   it('TC-034: placeholder message shows streaming cursor', async () => {
     await openModal();
     act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
     await waitFor(() => expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument());
-    expect(screen.getByText('\u6B63\u5728\u67E5\u8BE2\u2026')).toBeInTheDocument();
+    expect(screen.getByText('正在查询…')).toBeInTheDocument();
   });
 
   it('TC-035: message_edited replaces content in-place, cursor disappears', async () => {
@@ -206,8 +206,8 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
 
     act(() => { if (fakeInstance) pushEdited(fakeInstance); });
     await waitFor(() => expect(screen.queryByTestId('streaming-cursor')).toBeNull());
-    expect(screen.getByText('\u5957\u9910\u4EF7\u683C\u662F 199 \u5143')).toBeInTheDocument();
-    expect(screen.queryByText('\u6B63\u5728\u67E5\u8BE2\u2026')).toBeNull();
+    expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument();
+    expect(screen.queryByText('正在查询…')).toBeNull();
     expect(useChatStore.getState().messages).toHaveLength(1);
   });
 
@@ -215,8 +215,8 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
     await openModal();
     act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
     act(() => { if (fakeInstance) pushEdited(fakeInstance); });
-    await waitFor(() => expect(screen.getByText('\u5957\u9910\u4EF7\u683C\u662F 199 \u5143')).toBeInTheDocument());
-    const bubble = screen.getByText('\u5957\u9910\u4EF7\u683C\u662F 199 \u5143').closest('.web-msg');
+    await waitFor(() => expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument());
+    const bubble = screen.getByText('套餐价格是 199 元').closest('.web-msg');
     expect(bubble?.className).toContain('edited');
   });
 
@@ -225,9 +225,9 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
     await openModal();
     act(() => { if (fakeInstance) pushPlaceholder(fakeInstance); });
     act(() => { if (fakeInstance) pushEdited(fakeInstance); });
-    await waitFor(() => expect(screen.getByText('\u5957\u9910\u4EF7\u683C\u662F 199 \u5143')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('套餐价格是 199 元')).toBeInTheDocument());
     act(() => { vi.advanceTimersByTime(500); });
-    const bubble = screen.getByText('\u5957\u9910\u4EF7\u683C\u662F 199 \u5143').closest('.web-msg');
+    const bubble = screen.getByText('套餐价格是 199 元').closest('.web-msg');
     expect(bubble?.className).not.toContain('edited');
   });
 
@@ -291,7 +291,7 @@ describe('TC-057~062: reconnect flow', () => {
     await waitFor(() => expect(useChatStore.getState().isReplaying).toBe(true));
     expect(screen.getByTestId('connection-banner')).toBeInTheDocument();
     const banner = screen.getByTestId('connection-banner');
-    expect(banner.textContent).toMatch(/\u540C\u6B65|Sync|\u56DE\u653E/i);
+    expect(banner.textContent).toMatch(/同步|Sync|回放/i);
   });
 
   it('TC-059: replay_complete removes banner', async () => {

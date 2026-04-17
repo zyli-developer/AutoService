@@ -1,185 +1,110 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Select, Space, Spin, Statistic, Tag, Typography, Row, Col } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { useAdminStore } from '../store/adminStore';
-import type { ProposalUI } from '../store/adminStore';
+import { fetchJSON, postJSON } from '../api';
 
-const CATEGORIES = ['response_quality', 'workflow', 'knowledge_gap', 'tone'] as const;
-const STATUSES = ['draft', 'accepted', 'rejected', 'implemented'] as const;
+interface Proposal {
+  id: string;
+  created_at: string;
+  category: string;
+  title: string;
+  priority: string;
+  status: string;
+  suggestion?: string;
+  source_conversations?: string[];
+  compliance_status?: string;
+}
 
-const CATEGORY_LABELS: Record<string, string> = {
-  response_quality: '回复质量',
-  workflow: '工作流程',
-  knowledge_gap: '知识缺口',
-  tone: '语气风格',
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: 'red',
-  medium: 'orange',
-  low: 'blue',
+const PRIORITY_STYLES: Record<string, { bg: string; color: string }> = {
+  high: { bg: 'var(--p)', color: '#fff' },
+  medium: { bg: 'var(--l500)', color: 'var(--l800)' },
+  low: { bg: 'var(--m300)', color: 'var(--m800)' },
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: '待审核',
-  accepted: '已接受',
-  rejected: '已拒绝',
-  implemented: '已实施',
+  draft: '待审核', accepted: '已接受', rejected: '已拒绝', blocked: '已阻止',
 };
 
-function mockLoadProposals(): Promise<ProposalUI[]> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const proposals: ProposalUI[] = [];
-      const cats = [...CATEGORIES];
-      const priorities: Array<'high' | 'medium' | 'low'> = ['high', 'medium', 'low'];
-      for (let i = 0; i < 6; i++) {
-        proposals.push({
-          id: `prop_${String(i + 1).padStart(3, '0')}`,
-          created_at: new Date(Date.now() - i * 3600000).toISOString(),
-          category: cats[i % cats.length],
-          title: `改进建议 #${i + 1}`,
-          description: `基于最近 ${(i + 1) * 5} 条对话分析得出的改进方向。`,
-          suggestion: `建议优化 ${CATEGORY_LABELS[cats[i % cats.length]]} 相关配置。`,
-          priority: priorities[i % priorities.length],
-          status: 'draft',
-          source_conversations: [`conv_${i * 2 + 1}`, `conv_${i * 2 + 2}`],
-          evidence: i % 2 === 0 ? ['证据片段A', '证据片段B'] : [],
-          compliance_check: { passed: true, flags: [] },
-        });
-      }
-      resolve(proposals);
-    }, 800);
-  });
-}
-
 export function ProposalsTab() {
-  const { proposals, proposalsLoading, setProposals, setProposalsLoading, updateProposalStatus } =
-    useAdminStore();
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
 
-  useEffect(() => {
-    if (proposals.length === 0 && !proposalsLoading) {
-      setProposalsLoading(true);
-      mockLoadProposals().then((data) => {
-        setProposals(data);
-        setProposalsLoading(false);
-      });
-    }
-  }, []);
+  const load = () => {
+    setLoading(true);
+    fetchJSON<Proposal[]>('/api/proposals')
+      .then(setProposals)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
-  const filtered = proposals.filter((p) => {
-    if (statusFilter && p.status !== statusFilter) return false;
-    if (categoryFilter && p.category !== categoryFilter) return false;
-    return true;
-  });
+  useEffect(load, []);
 
-  const draftCount = proposals.filter((p) => p.status === 'draft').length;
-  const acceptedCount = proposals.filter((p) => p.status === 'accepted').length;
-  const rejectedCount = proposals.filter((p) => p.status === 'rejected').length;
+  const handleGenerate = () => {
+    setGenerating(true);
+    postJSON<Proposal[]>('/api/proposals/run')
+      .then((newProps) => { setProposals((prev) => [...newProps, ...prev]); })
+      .catch(() => {})
+      .finally(() => setGenerating(false));
+  };
+
+  const filtered = proposals.filter((p) => !statusFilter || p.status === statusFilter);
 
   return (
     <div data-testid="tab-proposals">
-      <Typography.Title level={4}>提案审核</Typography.Title>
-
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={8}>
-          <Statistic title="待审核" value={draftCount} data-testid="stat-draft" />
-        </Col>
-        <Col span={8}>
-          <Statistic title="已接受" value={acceptedCount} data-testid="stat-accepted" />
-        </Col>
-        <Col span={8}>
-          <Statistic title="已拒绝" value={rejectedCount} data-testid="stat-rejected" />
-        </Col>
-      </Row>
-
-      <Space style={{ marginBottom: 16 }} data-testid="proposal-filters">
-        <Select
-          allowClear
-          placeholder="按状态筛选"
-          data-testid="filter-status"
-          style={{ width: 150 }}
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(v || null)}
-          options={STATUSES.map((s) => ({ label: STATUS_LABELS[s], value: s }))}
-        />
-        <Select
-          allowClear
-          placeholder="按分类筛选"
-          data-testid="filter-category"
-          style={{ width: 150 }}
-          value={categoryFilter}
-          onChange={(v) => setCategoryFilter(v || null)}
-          options={CATEGORIES.map((c) => ({ label: CATEGORY_LABELS[c], value: c }))}
-        />
-      </Space>
-
-      {proposalsLoading && (
-        <div data-testid="proposals-loading">
-          <Spin tip="加载提案..." />
+      <div className="cs-card" style={{ marginBottom: 14 }}>
+        <div className="cs-ct">📊 提案（来自 /api/proposals）</div>
+        <div className="cs-row">
+          <span>总数</span>
+          <span style={{ fontWeight: 700 }} data-testid="stat-draft">{proposals.length}</span>
         </div>
+        <button className="cs-btn ok" onClick={handleGenerate} disabled={generating} style={{ marginTop: 8, opacity: generating ? 0.6 : 1 }}>
+          {generating ? '生成中...' : '🔄 运行 Pipeline'}
+        </button>
+      </div>
+
+      <div style={{ marginBottom: 12, display: 'flex', gap: 6 }} data-testid="proposal-filters">
+        {['', 'draft', 'accepted', 'rejected', 'blocked'].map((s) => (
+          <button key={s} className={`cs-wiz-step ${statusFilter === s ? 'cur' : ''}`} onClick={() => setStatusFilter(s)}>
+            {s ? STATUS_LABELS[s] || s : '全部'}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="im-empty" data-testid="proposals-loading">加载中...</div>}
+
+      {!loading && filtered.length === 0 && (
+        <div className="im-empty">暂无提案，点击"运行 Pipeline"生成</div>
       )}
 
-      <div data-testid="proposal-list">
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          {filtered.map((proposal) => (
-            <Card
-              key={proposal.id}
-              size="small"
-              data-testid={`proposal-card-${proposal.id}`}
-              title={
-                <Space>
-                  <span>{proposal.title}</span>
-                  <Tag color={PRIORITY_COLORS[proposal.priority]} data-testid={`priority-tag-${proposal.id}`}>
-                    {proposal.priority}
-                  </Tag>
-                  <Tag>{CATEGORY_LABELS[proposal.category]}</Tag>
-                  <Tag color={proposal.status === 'accepted' ? 'green' : proposal.status === 'rejected' ? 'red' : 'default'}>
-                    {STATUS_LABELS[proposal.status]}
-                  </Tag>
-                </Space>
-              }
-              extra={
-                proposal.status === 'draft' ? (
-                  <Space>
-                    <Button
-                      size="small"
-                      type="primary"
-                      data-testid={`btn-accept-${proposal.id}`}
-                      icon={<CheckCircleOutlined />}
-                      onClick={() => updateProposalStatus(proposal.id, 'accepted')}
-                    >
-                      接受
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      data-testid={`btn-reject-${proposal.id}`}
-                      icon={<CloseCircleOutlined />}
-                      onClick={() => updateProposalStatus(proposal.id, 'rejected')}
-                    >
-                      拒绝
-                    </Button>
-                  </Space>
-                ) : null
-              }
-            >
-              <Typography.Paragraph>{proposal.description}</Typography.Paragraph>
-              <Typography.Text type="secondary">建议：</Typography.Text>
-              <Typography.Paragraph>{proposal.suggestion}</Typography.Paragraph>
-              {proposal.evidence.length > 0 && (
-                <div data-testid={`evidence-${proposal.id}`}>
-                  <Typography.Text type="secondary">证据：</Typography.Text>
-                  {proposal.evidence.map((e, idx) => (
-                    <Tag key={idx} style={{ marginTop: 4 }}>{e}</Tag>
-                  ))}
+      <div data-testid="proposal-list" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {filtered.map((p) => {
+          const priStyle = PRIORITY_STYLES[p.priority] || PRIORITY_STYLES.low;
+          return (
+            <div key={p.id} className="im-card" data-testid={`proposal-card-${p.id}`}>
+              <div className="im-avatar a1" style={{ background: priStyle.bg, color: priStyle.color, fontSize: 10 }}>
+                {(p.priority || 'L').charAt(0).toUpperCase()}
+              </div>
+              <div className="im-msg-body">
+                <div className="im-msg-meta">
+                  <span className="im-msg-author">{p.title || p.id}</span>
+                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: priStyle.bg, color: priStyle.color, fontWeight: 600 }}>
+                    {p.priority}
+                  </span>
+                  <span className="im-msg-time">{p.category}</span>
                 </div>
-              )}
-            </Card>
-          ))}
-        </Space>
+                <div className={`im-block ${p.status === 'draft' ? 'highlight' : ''}`}>
+                  <div className="im-block-title">
+                    {p.suggestion || p.title}
+                    <span className="im-block-status">{STATUS_LABELS[p.status] || p.status}</span>
+                  </div>
+                  {p.compliance_status && (
+                    <div className="im-block-meta">合规: {p.compliance_status}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

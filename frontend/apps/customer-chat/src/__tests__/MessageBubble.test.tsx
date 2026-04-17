@@ -76,7 +76,7 @@ describe('TC-027~030: streaming / justEdited states', () => {
 
   it('TC-027: isStreaming=true renders streaming-cursor', () => {
     render(<MessageBubble message={{ id: 'm1', source: 'agent-1', sourceRole: 'agent',
-      content: '\u2026', visibility: 'public', timestamp: new Date().toISOString(),
+      content: '…', visibility: 'public', timestamp: new Date().toISOString(),
       sequenceNumber: 1, status: 'sent', isStreaming: true }} />);
     expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument();
   });

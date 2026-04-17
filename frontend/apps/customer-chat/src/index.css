@@ -1,6 +1,153 @@
 @import '@autoservice/design-system';
 
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root { height: 100%; margin: 0; font-family: 'Inter', 'Noto Sans SC', sans-serif; }
+
+/* ===== Chat Modal (from PRD) ===== */
+.web-modal {
+  position: fixed;
+  right: 20px;
+  bottom: 80px;
+  width: 380px;
+  height: 560px;
+  background: #fff;
+  border: 1px solid var(--oat);
+  border-radius: 14px;
+  box-shadow: rgba(45,127,249,.28) 0 3px 14px, rgba(15,48,106,.08) 0 0 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 100;
+}
+
+.web-modal-header {
+  background: var(--m800, #181d26);
+  color: #fff;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.web-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.web-modal-title::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--m300, #dbeafe);
+}
+
+.web-modal-close {
+  font-size: 18px;
+  opacity: .8;
+  cursor: pointer;
+}
+
+.web-modal-close:hover { opacity: 1; }
+
+.web-modal-body {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.web-modal-input {
+  padding: 10px 16px;
+  border-top: 1px solid var(--oat);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+/* ===== FAB Buttons ===== */
+.web-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--m800, #181d26);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: rgba(45,127,249,.22) 0 3px 10px;
+  z-index: 99;
+  cursor: pointer;
+  user-select: none;
+}
+
+.web-fab.highlight {
+  animation: fp 1.6s infinite;
+}
+
+@keyframes fp {
+  0%,100% { box-shadow: rgba(45,127,249,.22) 0 4px 12px, 0 0 0 0 rgba(27,97,201,.5); }
+  50% { box-shadow: rgba(45,127,249,.22) 0 4px 12px, 0 0 0 14px rgba(27,97,201,0); }
+}
+
+.web-fab-call {
+  position: fixed;
+  right: 27px;
+  bottom: 82px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--m800);
+  color: var(--m800);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  z-index: 99;
+}
+
+/* ===== Message Bubbles ===== */
+.web-msg {
+  max-width: 80%;
+  padding: 9px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.web-msg.customer {
+  background: var(--m800, #181d26);
+  color: #fff;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.web-msg.agent {
+  background: #fff;
+  color: #000;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--oat);
+}
+
+.web-msg.system {
+  align-self: center;
+  background: transparent;
+  color: var(--silver);
+  font-size: 11px;
+  font-style: italic;
+}
 
 /* Custom scrollbar for message list */
 .web-modal-body::-webkit-scrollbar {
