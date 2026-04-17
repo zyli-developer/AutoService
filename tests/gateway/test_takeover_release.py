@@ -166,3 +166,39 @@ def test_client_ack_continue_from_customer_does_not_reset(fast_takeover_app):
             # the window but before auto-release would occur.
             cancelled = _wait_frame(ows, "takeover_warning_cancelled", timeout=0.04)
             assert cancelled is None, "customer should not be able to reset operator's timer"
+
+
+@pytest.fixture
+def offline_watcher_app(monkeypatch):
+    """App with a long idle timeout so the offline grace fires before idle release."""
+    import autoservice.web_gateway as wg
+    # offline_grace_ms (100) << idle_timeout_ms (2000), so WS disconnect → AUTO
+    # before the takeover idle timer has a chance to flip to COPILOT.
+    cfg = TakeoverConfig(idle_timeout_ms=2000, warning_ms=200, offline_grace_ms=100)
+    monkeypatch.setattr(wg, "_TAKEOVER_CONFIG_OVERRIDE", cfg, raising=False)
+    return create_app()
+
+
+def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_app):
+    """Closing the operator WS causes all their TAKEOVER conversations to go AUTO after grace."""
+    import asyncio
+
+    with TestClient(offline_watcher_app) as client:
+        with client.websocket_connect("/ws/customer") as cws:
+            with client.websocket_connect("/ws/operator") as ows:
+                _setup(cws, ows)
+                conv_id = _customer_start_conv(cws)
+                _operator_join(ows, conv_id, "op42")
+                _send_cmd(ows, conv_id, "/hijack", "op42")
+            # Operator WS closed here → offline grace begins (100ms)
+            # idle_timeout is 2000ms so won't fire before grace expires
+            time.sleep(0.3)  # wait past grace (100ms)
+
+        # TestClient context exited — ASGI lifespan shut down cleanly.
+
+    eng = getattr(offline_watcher_app.state, "engine", None)
+    assert eng is not None, "app.state.engine must be set for this test"
+
+    conv = asyncio.run(eng.get_conversation(conv_id))
+    assert conv.mode.value == "auto"
+    assert conv.takeover_operator_id is None

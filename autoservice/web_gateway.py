@@ -34,6 +34,7 @@ from autoservice.gateway.errors import (
     make_error_payload,
 )
 from autoservice.gateway.message_router import dispatch, get_subscription_registry, replay_messages
+from autoservice.gateway.offline_watcher import OfflineWatcher
 from autoservice.takeover_config import TakeoverConfig, load_takeover_config
 
 logger = logging.getLogger("autoservice.gateway")
@@ -133,6 +134,12 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         else:
             takeover_cfg = load_takeover_config(Path(".autoservice/config.local.yaml"))
         engine = LocalEngine(config={"takeover": takeover_cfg})
+    else:
+        # Engine provided externally — extract its takeover config if available
+        takeover_cfg = getattr(engine, "_takeover_config", None)
+        if takeover_cfg is None:
+            from autoservice.takeover_config import DEFAULT_TAKEOVER_CONFIG
+            takeover_cfg = DEFAULT_TAKEOVER_CONFIG
 
     app.state.engine = engine
 
@@ -169,6 +176,8 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         engine.on_takeover_warning(_push_takeover_warning)
     if hasattr(engine, "on_takeover_warning_cancelled"):
         engine.on_takeover_warning_cancelled(_push_takeover_cancelled)
+
+    app.state.offline_watcher = OfflineWatcher(engine, grace_ms=takeover_cfg.offline_grace_ms)
 
     app.add_middleware(
         CORSMiddleware,
@@ -285,6 +294,8 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
     if viewer_role == "operator" and client_operator_id:
         _operator_sessions.setdefault(client_operator_id, set()).add(session_id)
         ws.state_operator_id = client_operator_id  # for finally cleanup
+        # Tell the offline watcher this operator is online
+        ws.app.state.offline_watcher.on_connect(client_operator_id)
 
     await ws.send_json(
         build_frame(
@@ -336,6 +347,11 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
                 sess_set.discard(session_id)
                 if not sess_set:
                     _operator_sessions.pop(op_id, None)
+                    # Operator has no remaining sessions → tell watcher they're offline
+                    try:
+                        ws.app.state.offline_watcher.on_disconnect(op_id)
+                    except Exception:
+                        pass
 
 
 async def _process_frame(

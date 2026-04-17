@@ -283,6 +283,15 @@ class LocalEngine:
     async def get_conversation(self, conversation_id: str) -> Conversation:
         return self._get_conv(conversation_id)
 
+    async def list_conversations_in_takeover_by(self, operator_id: str) -> list[Conversation]:
+        """Return all non-closed conversations currently in TAKEOVER by this operator."""
+        return [
+            conv for conv in self._conversations.values()
+            if conv.state != ConversationState.CLOSED
+               and conv.mode == ConversationMode.TAKEOVER
+               and conv.takeover_operator_id == operator_id
+        ]
+
     async def list_active_conversations(
         self,
         *,
