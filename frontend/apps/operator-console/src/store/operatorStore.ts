@@ -144,15 +144,22 @@ export const useOperatorStore = create<OperatorState>((set) => ({
       unreadCounts: { ...state.unreadCounts, [squadId]: 0 },
     })),
 
-  openCopilot: (convId) => set({ activeCopilotConvId: convId }),
+  openCopilot: (convId) => set((state) => ({
+    activeCopilotConvId: convId,
+    copilotMessages: { ...state.copilotMessages, [convId]: [] },
+  })),
 
   closeCopilot: () => set({ activeCopilotConvId: null }),
 
   addCopilotMessage: (convId, msg) =>
-    set((state) => ({
-      copilotMessages: {
-        ...state.copilotMessages,
-        [convId]: [...(state.copilotMessages[convId] ?? []), msg],
-      },
-    })),
+    set((state) => {
+      const existing = state.copilotMessages[convId] ?? [];
+      if (existing.some((m) => m.id === msg.id)) return state;
+      return {
+        copilotMessages: {
+          ...state.copilotMessages,
+          [convId]: [...existing, msg],
+        },
+      };
+    }),
 }));

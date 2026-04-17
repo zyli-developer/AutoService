@@ -210,7 +210,14 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   }, [isLoggedIn, operatorId, url]);
 
   const send = (frame: Envelope) => {
-    clientRef.current?.send(frame.type as any, frame.payload).catch(() => {});
+    if (!clientRef.current) {
+      console.warn('[OperatorWS] send: no client');
+      return;
+    }
+    console.log('[OperatorWS] send:', frame.type, frame.payload);
+    clientRef.current.send(frame.type as any, frame.payload).catch((err) => {
+      console.error('[OperatorWS] send error:', err);
+    });
   };
 
   const fetchHistory = (conversationId: string) => {
