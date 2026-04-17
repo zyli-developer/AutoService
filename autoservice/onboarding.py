@@ -362,6 +362,25 @@ async def activate_sandbox(tenant_id: str = Form(...)):
         "tenant_id": tenant_id,
         "status": "active",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        # Compliance-relevant fields (defaults for new tenants)
+        "privacy_policy_url": "",
+        "consent_mechanism_enabled": False,
+        "data_retention_days": None,
+        "right_to_erasure_enabled": False,
+        "data_collection_disclosure": False,
+        "opt_out_enabled": False,
+        "coppa_compliant": False,
+        "provider_registration_id": "",
+        "data_cross_border_enabled": False,
+        "user_identity_verification": False,
+        "complaint_channel_url": "",
+        "training_data_compliance": False,
+        "soul": {
+            "disclosure_enabled": False,
+            "human_escalation_enabled": False,
+            "automated_decision_notice": False,
+            "ai_content_labeling": False,
+        },
     }
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
