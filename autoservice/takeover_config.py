@@ -22,6 +22,25 @@ class TakeoverConfig:
 DEFAULT_TAKEOVER_CONFIG = TakeoverConfig()
 
 
+def _parse_int(value: Any, default: int) -> int:
+    """Parse a value as int, returning default on error or negative value.
+
+    - None or missing → default
+    - Non-numeric → default (ValueError/TypeError)
+    - Negative → default (semantically invalid)
+    - Otherwise → int value
+    """
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+        if parsed < 0:
+            return default
+        return parsed
+    except (ValueError, TypeError):
+        return default
+
+
 def load_takeover_config(source: Path | Mapping[str, Any] | None) -> TakeoverConfig:
     """Load takeover config from a yaml path OR a parsed dict. None / missing → defaults."""
     if source is None:
@@ -39,7 +58,7 @@ def load_takeover_config(source: Path | Mapping[str, Any] | None) -> TakeoverCon
 
     section = (raw or {}).get("takeover") or {}
     return TakeoverConfig(
-        idle_timeout_ms=int(section.get("idle_timeout_ms", DEFAULT_TAKEOVER_CONFIG.idle_timeout_ms)),
-        warning_ms=int(section.get("warning_ms", DEFAULT_TAKEOVER_CONFIG.warning_ms)),
-        offline_grace_ms=int(section.get("offline_grace_ms", DEFAULT_TAKEOVER_CONFIG.offline_grace_ms)),
+        idle_timeout_ms=_parse_int(section.get("idle_timeout_ms"), DEFAULT_TAKEOVER_CONFIG.idle_timeout_ms),
+        warning_ms=_parse_int(section.get("warning_ms"), DEFAULT_TAKEOVER_CONFIG.warning_ms),
+        offline_grace_ms=_parse_int(section.get("offline_grace_ms"), DEFAULT_TAKEOVER_CONFIG.offline_grace_ms),
     )

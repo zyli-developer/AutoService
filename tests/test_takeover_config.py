@@ -47,3 +47,25 @@ def test_load_from_file(tmp_path: Path):
 def test_load_from_missing_file_returns_default(tmp_path: Path):
     cfg = load_takeover_config(tmp_path / "does-not-exist.yaml")
     assert cfg == DEFAULT_TAKEOVER_CONFIG
+
+
+def test_load_from_dict_with_invalid_string_falls_back():
+    """Non-numeric string in YAML should fall back to default, not crash."""
+    raw = {"takeover": {"idle_timeout_ms": "not_a_number"}}
+    cfg = load_takeover_config(raw)
+    assert cfg.idle_timeout_ms == DEFAULT_TAKEOVER_CONFIG.idle_timeout_ms
+
+
+def test_load_from_dict_with_negative_value_falls_back():
+    """Negative timeout is semantically invalid → default."""
+    raw = {"takeover": {"warning_ms": -500}}
+    cfg = load_takeover_config(raw)
+    assert cfg.warning_ms == DEFAULT_TAKEOVER_CONFIG.warning_ms
+
+
+def test_load_from_dict_with_float_coerces_to_int():
+    """YAML often yields floats (5000.0) — should coerce cleanly."""
+    raw = {"takeover": {"idle_timeout_ms": 7000.0}}
+    cfg = load_takeover_config(raw)
+    assert cfg.idle_timeout_ms == 7000
+    assert isinstance(cfg.idle_timeout_ms, int)
