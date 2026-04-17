@@ -1,7 +1,7 @@
 import { useAdminStore } from '../store/adminStore';
 import { WizardTab } from './WizardTab';
 import { DashboardTab } from './DashboardTab';
-import { NotificationsTab } from './NotificationsTab';
+import { ManagementChat } from './ManagementChat';
 import { ProposalsTab } from './ProposalsTab';
 import { BillingTab } from './BillingTab';
 
@@ -10,7 +10,7 @@ type TabKey = 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'wizard', label: '向导' },
   { key: 'dashboard', label: '仪表盘' },
-  { key: 'notifications', label: '通知' },
+  { key: 'notifications', label: '管理群' },
   { key: 'proposals', label: '提案' },
   { key: 'billing', label: '账单' },
 ];
@@ -18,7 +18,7 @@ const TABS: { key: TabKey; label: string }[] = [
 const TAB_CONTENT: Record<TabKey, React.ReactNode> = {
   wizard: <WizardTab />,
   dashboard: <DashboardTab />,
-  notifications: <NotificationsTab />,
+  notifications: <ManagementChat />,
   proposals: <ProposalsTab />,
   billing: <BillingTab />,
 };

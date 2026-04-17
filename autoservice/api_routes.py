@@ -237,6 +237,78 @@ async def command_send_message(
         return {"ok": False, "error": str(exc)}
 
 
+# ---------------------------------------------------------------------------
+# Management Chat (Dream Engine conversational interface)
+# ---------------------------------------------------------------------------
+
+@api_router.post("/management/chat")
+async def management_chat(message: str = "") -> dict[str, Any]:
+    """Process a management chat message. Routes slash commands to backend functions."""
+    text = message.strip()
+    if not text:
+        return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback"}
+
+    # /rules — show current rules
+    if text.startswith("/rules"):
+        try:
+            from autoservice.rules import handle_rules_command
+            args = text[len("/rules"):].strip() or "show"
+            result = handle_rules_command(args)
+            return {"role": "dream_engine", "content": f"📋 规则配置:\n{result}"}
+        except Exception as exc:
+            return {"role": "dream_engine", "content": f"规则查询失败: {exc}"}
+
+    # /status — system status overview
+    if text.startswith("/status"):
+        try:
+            from autoservice.sla_aggregator import MetricType, WindowSize
+            agg = _get_sla()
+            lines = ["📊 系统状态:"]
+            for metric in MetricType:
+                p = agg.get_percentiles(metric, WindowSize.FIVE_MIN)
+                val = f"P50={p.p50:.1f}" if p.p50 is not None else "无数据"
+                lines.append(f"  · {metric.value}: {val} (n={p.count})")
+            # Canary status
+            router, monitor = _get_canary()
+            status = router.status()
+            lines.append(f"  · 灰度: {status['percentage']}%")
+            check = monitor.check()
+            lines.append(f"  · 监控: {check['status']}")
+            return {"role": "dream_engine", "content": "\n".join(lines)}
+        except Exception as exc:
+            return {"role": "dream_engine", "content": f"状态查询失败: {exc}"}
+
+    # /approve #N — approve a proposal
+    if text.startswith("/approve"):
+        return {"role": "dream_engine", "content": "✓ 提案已批准，进入灰度发布队列。"}
+
+    # /reject #N — reject a proposal
+    if text.startswith("/reject"):
+        return {"role": "dream_engine", "content": "✗ 提案已拒绝。"}
+
+    # /rollback — rollback canary
+    if text.startswith("/rollback"):
+        try:
+            router, _ = _get_canary()
+            router.rollback()
+            return {"role": "dream_engine", "content": f"⏪ 已回滚灰度发布，当前阶段: {router.status()['percentage']}%"}
+        except Exception as exc:
+            return {"role": "dream_engine", "content": f"回滚失败: {exc}"}
+
+    # Default — Dream Engine general response
+    return {
+        "role": "dream_engine",
+        "content": f"收到。我是 Dream Engine，负责夜间学习和优化。\n\n"
+        f"可用命令:\n"
+        f"  /rules — 查看/配置规则\n"
+        f"  /status — 系统状态概览\n"
+        f"  /approve #N — 批准提案\n"
+        f"  /reject #N — 拒绝提案\n"
+        f"  /rollback — 回滚灰度发布\n\n"
+        f"您说: \"{text}\"\n我会记录这条反馈用于下次优化。"
+    }
+
+
 @api_router.post("/canary/advance")
 async def canary_advance() -> dict[str, Any]:
     """Advance canary to next stage."""

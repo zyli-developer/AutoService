@@ -121,7 +121,7 @@
 | T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | 🟩 | DevB | T3A.2 | eval-T3B.4, plan-T3B.4, test-diff-022 |
 | T3B.5 | 向导 Step4 合规预检可视化 | 🟢 | 🟩 | DevB | T3A.7 | test-diff-017 |
 | T3B.6 | 运营仪表盘页 | 🟢 | 🟩 | DevB | T1A.8 | test-diff-018 |
-| T3B.7 | 通知中心 | 🟢 | 🟩 | DevB | T2A.1 | test-diff-019 |
+| T3B.7 | 管理群（Dream Engine 对话式命令） | 🟢 | 🟦 | DevA | T2A.1 | test-diff-019 |
 
 **🤝 M3 联调**: Thu EOD，30 min smoke test
 
