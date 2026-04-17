@@ -15,8 +15,11 @@ Usage:
 from __future__ import annotations
 
 import io
+import json
 import logging
+import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -343,17 +346,67 @@ async def upload_and_parse(
 
 @onboard_router.post("/activate")
 async def activate_sandbox(tenant_id: str = Form(...)):
-    """Generate sandbox URL for tenant."""
-    sandbox_url = f"https://{tenant_id}.sandbox.localhost"
-    return {"tenant_id": tenant_id, "sandbox_url": sandbox_url, "status": "active"}
+    """Activate tenant sandbox: create runtime dir, write config, return usable URLs."""
+    # Configurable base URL components
+    scheme = os.getenv("WEB_SCHEME", "http")
+    host = os.getenv("WEB_HOST", "localhost")
+    port = os.getenv("DEMO_PORT", "8000")
+    base_url = f"{scheme}://{host}:{port}"
+
+    # Create tenant runtime directory and write config
+    tenant_dir = Path(".autoservice") / "tenants" / tenant_id
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = tenant_dir / "config.json"
+    config = {
+        "tenant_id": tenant_id,
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        # Compliance-relevant fields (defaults for new tenants)
+        "privacy_policy_url": "",
+        "consent_mechanism_enabled": False,
+        "data_retention_days": None,
+        "right_to_erasure_enabled": False,
+        "data_collection_disclosure": False,
+        "opt_out_enabled": False,
+        "coppa_compliant": False,
+        "provider_registration_id": "",
+        "data_cross_border_enabled": False,
+        "user_identity_verification": False,
+        "complaint_channel_url": "",
+        "training_data_compliance": False,
+        "soul": {
+            "disclosure_enabled": False,
+            "human_escalation_enabled": False,
+            "automated_decision_notice": False,
+            "ai_content_labeling": False,
+        },
+    }
+    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+    return {
+        "tenant_id": tenant_id,
+        "status": "active",
+        "urls": {
+            "chat": f"{base_url}/chat?tenant={tenant_id}",
+            "login": f"{base_url}/login?tenant={tenant_id}",
+            "api": f"{base_url}/api/onboard",
+        },
+        "config_dir": str(tenant_dir),
+    }
 
 
 @onboard_router.post("/invite")
 async def invite_team(tenant_id: str = Form(...), emails: str = Form("")):
     """Generate invite links for team members."""
+    scheme = os.getenv("WEB_SCHEME", "http")
+    host = os.getenv("WEB_HOST", "localhost")
+    port = os.getenv("DEMO_PORT", "8000")
+    base_url = f"{scheme}://{host}:{port}"
+
     email_list = [e.strip() for e in emails.split(",") if e.strip()]
     invites = [
-        {"email": e, "token": uuid.uuid4().hex, "link": f"https://{tenant_id}.sandbox.localhost/invite?t={uuid.uuid4().hex}"}
+        {"email": e, "token": uuid.uuid4().hex, "link": f"{base_url}/login?tenant={tenant_id}&invite={uuid.uuid4().hex}"}
         for e in email_list
     ]
     return {"tenant_id": tenant_id, "invites": invites}

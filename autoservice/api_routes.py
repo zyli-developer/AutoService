@@ -438,10 +438,48 @@ async def canary_rollback() -> dict[str, Any]:
 @api_router.post("/compliance/check")
 async def compliance_check(tenant_id: str = "default") -> dict[str, Any]:
     """Run compliance scan on tenant config."""
+    import json as _json
+    from pathlib import Path as _Path
     from autoservice.compliance.compliance import ComplianceEngine
+
+    # Load real tenant config from activation directory
+    config_path = _Path(f".autoservice/tenants/{tenant_id}/config.json")
+    if not config_path.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": f"Tenant '{tenant_id}' not found. Run /api/onboard/activate first.",
+                "tenant_id": tenant_id,
+            },
+        )
+
+    try:
+        raw_config = _json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to read tenant config: {exc}", "tenant_id": tenant_id},
+        )
+
+    # Build nested config that compliance rules can resolve via dot-notation.
+    # Rules check "tenant.<field>" and "soul.<field>" paths.
+    config: dict[str, Any] = {}
+    config["tenant"] = {k: v for k, v in raw_config.items() if k != "soul"}
+    if "soul" in raw_config:
+        config["soul"] = raw_config["soul"]
+    else:
+        # Try loading soul config from a separate soul.json if present
+        soul_path = config_path.parent / "soul.json"
+        if soul_path.exists():
+            try:
+                config["soul"] = _json.loads(soul_path.read_text(encoding="utf-8"))
+            except Exception:
+                config["soul"] = {}
+
     engine = ComplianceEngine()
-    # Use empty config to get all 16 rules with their results
-    report = engine.scan(tenant_id, {})
+    report = engine.scan(tenant_id, config)
     return {
         "tenant_id": report.tenant_id,
         "risk_level": report.risk_level.value,
