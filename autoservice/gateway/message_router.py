@@ -66,6 +66,11 @@ def get_subscription_registry() -> SubscriptionRegistry:
 
 _HINT_RE = re.compile(r"T[12]A\.\d+")
 
+# Track conversation creation timestamps for SLA first_reply_ms (T6D.1)
+import time as _time
+_conv_created_at: dict[str, float] = {}
+_conv_first_reply_sent: set[str] = set()
+
 
 def _extract_hint(exc: BaseException) -> str | None:
     msg = str(exc) if exc.args else ""
@@ -185,6 +190,27 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
             _push_csat_request(conversation_id),
             name=f"csat-request-{conversation_id}",
         )
+        # Record resolution_rate in SLAAggregator (T6D.1)
+        try:
+            from autoservice.api_routes import get_sla_aggregator
+            from autoservice.sla_aggregator import MetricType
+            sla = get_sla_aggregator()
+            sla.record(MetricType.RESOLUTION_RATE, 1.0)
+        except Exception:
+            logger.warning("Failed to record resolution SLA for conv=%s", conversation_id)
+
+    # On /hijack success, record accept_ms in SLAAggregator (T6D.1)
+    if command == "/hijack" and conversation_id:
+        try:
+            created_at = _conv_created_at.get(conversation_id)
+            if created_at is not None:
+                latency_ms = (_time.time() - created_at) * 1000
+                from autoservice.api_routes import get_sla_aggregator
+                from autoservice.sla_aggregator import MetricType
+                sla = get_sla_aggregator()
+                sla.record(MetricType.ACCEPT_MS, latency_ms)
+        except Exception:
+            logger.warning("Failed to record accept SLA for conv=%s", conversation_id)
 
     return [
         build_frame(
@@ -410,6 +436,8 @@ async def _call_engine(
                 conv_id,
                 Participant(id="agent", role=ParticipantRole.AGENT, joined_at=now),
             )
+            # Track creation time for SLA first_reply_ms (T6D.1)
+            _conv_created_at[conv_id] = _time.time()
             # Trigger squad assignment
             try:
                 from autoservice.web_gateway import _get_squad_plugin
@@ -472,6 +500,14 @@ async def _call_engine(
                 bm.record_csat(conv_id, score)
         except Exception:
             logger.warning("Failed to record CSAT in BillingMetrics for conv=%s", conv_id)
+        # Record in SLAAggregator (T6D.1)
+        try:
+            from autoservice.api_routes import get_sla_aggregator
+            from autoservice.sla_aggregator import MetricType
+            sla = get_sla_aggregator()
+            sla.record(MetricType.CSAT_SCORE, float(score))
+        except Exception:
+            logger.warning("Failed to record CSAT in SLAAggregator for conv=%s", conv_id)
         return []
 
     if frame_type == "history_request":
@@ -642,10 +678,13 @@ async def replay_messages(
     conv_seq = last_seen.get("conv_seq")
     if not conv_seq or not isinstance(conv_seq, dict):
         # Nothing to replay — send replay_complete with count=0
-        await ws.send_json(build_frame("replay_complete", {"count": 0}))
+        await ws.send_json(build_frame("replay_complete", {"count": 0, "until_sequence": 0}))
         return 0
 
     total = 0
+    max_sequence = 0
+    last_conv_id: str | None = None
+
     for conv_id, cursors in conv_seq.items():
         if not isinstance(cursors, dict):
             continue
@@ -670,11 +709,18 @@ async def replay_messages(
             try:
                 await ws.send_json(frame)
                 total += 1
+                seq = getattr(msg, "sequence_number", 0) or 0
+                if seq > max_sequence:
+                    max_sequence = seq
+                last_conv_id = conv_id
             except Exception:
                 logger.warning("replay: send failed for conv=%s", conv_id)
                 break
 
-    await ws.send_json(build_frame("replay_complete", {"count": total}))
+    payload: dict[str, Any] = {"count": total, "until_sequence": max_sequence}
+    if last_conv_id is not None and len(conv_seq) == 1:
+        payload["conversation_id"] = last_conv_id
+    await ws.send_json(build_frame("replay_complete", payload))
     return total
 
 
@@ -778,9 +824,36 @@ async def _generate_agent_reply(
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
 
         # Store agent reply in engine
+        # T6E.8: Send a SIDE-visibility draft to operator connections before final reply
+        from autoservice.conversation_engine.types import MessageVisibility
+        draft_msg = await engine.send_message(
+            conv_id, source="agent", content=reply_text.strip(),
+            requested_visibility=MessageVisibility.SIDE,
+            metadata={"draft": True},
+        )
+        draft_frame = _message_frame(draft_msg)
+        draft_frame["payload"]["message"]["visibility"] = "side"
+        await _broadcast_to_squad(draft_frame, conv_id, exclude_ws=None)
+        logger.info("Agent draft pushed to operators: conv=%s len=%d", conv_id, len(reply_text))
+
+        # Store agent reply in engine (PUBLIC visibility for customer)
         agent_msg = await engine.send_message(
             conv_id, source="agent", content=reply_text.strip(),
         )
+
+        # Record SLA first_reply_ms (T6D.1)
+        try:
+            created_at = _conv_created_at.get(conv_id)
+            if created_at is not None and conv_id not in _conv_first_reply_sent:
+                _conv_first_reply_sent.add(conv_id)
+                latency_ms = (_time.time() - created_at) * 1000
+                from autoservice.api_routes import get_sla_aggregator
+                from autoservice.sla_aggregator import MetricType
+                sla = get_sla_aggregator()
+                sla.record(MetricType.FIRST_REPLY_MS, latency_ms)
+                sla.record(MetricType.TTFB_MS, latency_ms)
+        except Exception:
+            logger.warning("Failed to record first_reply SLA for conv=%s", conv_id)
 
         # Push to customer via WebSocket
         frame = _message_frame(agent_msg)

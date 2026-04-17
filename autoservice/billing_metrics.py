@@ -5,8 +5,9 @@ Related: T1A.8 (metrics plugin), T4A.10 (billing)
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 @dataclass
@@ -23,6 +24,25 @@ class MetricSnapshot:
     escalation_resolution_rate: float = 0.0
 
 
+@dataclass
+class OperatorStats:
+    """Per-operator performance statistics (T6D.4)."""
+
+    operator_id: str
+    name: str = ""
+    handled: int = 0
+    csat_scores: list[int] = field(default_factory=list)
+    response_times_ms: list[float] = field(default_factory=list)
+
+    @property
+    def avg_csat(self) -> float:
+        return round(sum(self.csat_scores) / len(self.csat_scores), 2) if self.csat_scores else 0.0
+
+    @property
+    def avg_response_ms(self) -> float:
+        return round(sum(self.response_times_ms) / len(self.response_times_ms), 1) if self.response_times_ms else 0.0
+
+
 class BillingMetrics:
     """Tracks the three starred billing metrics.
 
@@ -35,9 +55,11 @@ class BillingMetrics:
     def __init__(self) -> None:
         # Per-conversation tracking
         self._takeovers: dict[str, int] = {}          # conv_id → count
+        self._takeover_timestamps: list[datetime] = []  # all takeover timestamps (T6D.3)
         self._csat: dict[str, int] = {}               # conv_id → score (1-5)
         self._escalations: dict[str, str] = {}        # conv_id → status
         self._monthly: dict[str, MetricSnapshot] = {} # "2026-04" → snapshot
+        self._operators: dict[str, OperatorStats] = {}  # operator_id → stats (T6D.4)
 
     # ------------------------------------------------------------------
     # Recording
@@ -46,6 +68,15 @@ class BillingMetrics:
     def record_takeover(self, conversation_id: str, timestamp: str | None = None) -> None:
         """Record a takeover event (auto/copilot → takeover mode switch)."""
         self._takeovers[conversation_id] = self._takeovers.get(conversation_id, 0) + 1
+        # Track timestamp for trend queries (T6D.3)
+        if timestamp:
+            try:
+                ts = datetime.fromisoformat(timestamp)
+            except (ValueError, TypeError):
+                ts = datetime.now(timezone.utc)
+        else:
+            ts = datetime.now(timezone.utc)
+        self._takeover_timestamps.append(ts)
 
     def record_csat(self, conversation_id: str, score: int) -> None:
         """Record a CSAT score for a conversation.
@@ -73,6 +104,68 @@ class BillingMetrics:
         """
         if conversation_id in self._escalations:
             self._escalations[conversation_id] = "resolved"
+
+    # ------------------------------------------------------------------
+    # Operator-level recording (T6D.4 leaderboard)
+    # ------------------------------------------------------------------
+
+    def record_operator_handle(
+        self,
+        operator_id: str,
+        *,
+        name: str = "",
+        csat: int | None = None,
+        response_ms: float | None = None,
+    ) -> None:
+        """Record an operator handling a conversation."""
+        if operator_id not in self._operators:
+            self._operators[operator_id] = OperatorStats(operator_id=operator_id, name=name or operator_id)
+        stats = self._operators[operator_id]
+        if name:
+            stats.name = name
+        stats.handled += 1
+        if csat is not None:
+            stats.csat_scores.append(csat)
+        if response_ms is not None:
+            stats.response_times_ms.append(response_ms)
+
+    def get_operator_leaderboard(self) -> list[dict]:
+        """Return operator stats sorted by handled count descending."""
+        result = []
+        for stats in self._operators.values():
+            result.append({
+                "operator_id": stats.operator_id,
+                "name": stats.name,
+                "handled": stats.handled,
+                "avg_csat": stats.avg_csat,
+                "avg_response_ms": stats.avg_response_ms,
+            })
+        result.sort(key=lambda x: x["handled"], reverse=True)
+        return result
+
+    # ------------------------------------------------------------------
+    # Trend queries (T6D.3)
+    # ------------------------------------------------------------------
+
+    def get_takeover_trend(self, period: str = "week") -> list[dict]:
+        """Return takeover counts grouped by date for the last week or month."""
+        now = datetime.now(timezone.utc)
+        days = 7 if period == "week" else 30
+        start = (now - timedelta(days=days - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+        counts: dict[str, int] = defaultdict(int)
+        for ts in self._takeover_timestamps:
+            ts_aware = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+            if ts_aware >= start:
+                key = ts_aware.strftime("%Y-%m-%d")
+                counts[key] += 1
+        result = []
+        for i in range(days):
+            d = start + timedelta(days=i)
+            key = d.strftime("%Y-%m-%d")
+            result.append({"date": key, "count": counts.get(key, 0)})
+        return result
 
     # ------------------------------------------------------------------
     # Snapshots

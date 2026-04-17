@@ -21,7 +21,10 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
 
   if (!activeCopilotConvId) return null;
 
-  const messages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  const allMessages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  const regularMessages = allMessages.filter((m) => m.visibility !== 'side');
+  const draftMessages = allMessages.filter((m) => m.visibility === 'side');
+  const messages = regularMessages;
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
@@ -75,6 +78,28 @@ export function CopilotSidebar({ send }: CopilotSidebarProps) {
         />
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        {draftMessages.length > 0 && (
+          <div data-testid="copilot-draft-section" style={{ marginBottom: 12, padding: '8px 12px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6 }}>
+            <Typography.Text strong style={{ fontSize: 12, color: '#d48806' }}>
+              Draft
+            </Typography.Text>
+            <List
+              dataSource={draftMessages}
+              renderItem={(msg) => (
+                <List.Item key={msg.id} data-testid={`copilot-draft-${msg.id}`} style={{ padding: '4px 0', borderBottom: 'none' }}>
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                      {msg.sender} - {msg.ts}
+                    </Typography.Text>
+                    <div>
+                      <Typography.Text>{msg.text}</Typography.Text>
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </div>
+        )}
         <List
           dataSource={messages}
           renderItem={(msg) => (

@@ -360,8 +360,8 @@ tasks:
       2. /api/billing/summary 返回真实数据（非 demo-conv-1/2）
     estimated_effort: small
     estimated_lines: 30
-    status: pending
-    owner: null
+    status: completed
+    owner: Dev
 
   - id: T6C.3
     name: "/approve /reject 真实执行"

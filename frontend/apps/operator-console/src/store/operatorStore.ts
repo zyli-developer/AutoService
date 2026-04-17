@@ -31,6 +31,7 @@ export interface CopilotMessage {
   text: string;
   sender: 'operator' | 'agent' | 'customer';
   ts: string;
+  visibility?: 'public' | 'side' | 'system';
 }
 
 export interface OperatorState {
@@ -76,7 +77,7 @@ export const initialState = {
   activeSquadId: null,
   subscriptions: {},
   conversations: {} as Record<string, Conversation>,
-  concurrencyLimit: 10,
+  concurrencyLimit: 5,
   unreadCounts: {} as Record<string, number>,
   activeCopilotConvId: null,
   copilotMessages: {} as Record<string, CopilotMessage[]>,

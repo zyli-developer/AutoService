@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from autoservice.canary import CanaryStage
+
 logger = logging.getLogger("autoservice.api")
 
 # Global engine reference (set by web_gateway on startup)
@@ -42,16 +44,16 @@ def _get_sla():
     if _sla is None:
         from autoservice.sla_aggregator import SLAAggregator
         _sla = SLAAggregator()
-        # Seed with some initial data so dashboard isn't empty
-        from autoservice.sla_aggregator import MetricType
-        _sla.record(MetricType.FIRST_REPLY_MS, 2100.0)
-        _sla.record(MetricType.ACCEPT_MS, 850.0)
-        _sla.record(MetricType.CSAT_SCORE, 4.6)
-        _sla.record(MetricType.RESOLUTION_RATE, 0.873)
-        _sla.record(MetricType.DIGEST_RATE, 0.82)
-        _sla.record(MetricType.COMPLAINT_RATE, 0.03)
-        _sla.record(MetricType.TTFB_MS, 420.0)
     return _sla
+
+
+def get_sla_aggregator():
+    """Return the shared SLAAggregator singleton.
+
+    Use this to pass the instance to message_router hooks so that
+    conversation events feed real SLA data (T6D.1).
+    """
+    return _get_sla()
 
 
 def _get_billing():
@@ -61,6 +63,17 @@ def _get_billing():
         from autoservice.billing_metrics import BillingMetrics
         _billing = TieredBilling()
         _billing_metrics = BillingMetrics()
+        # Seed operator leaderboard with demo data (T6D.4)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2800)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=4, response_ms=3100)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2600)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=4, response_ms=3400)
+        _billing_metrics.record_operator_handle("op_zhang", name="张伟", csat=5, response_ms=2900)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=4, response_ms=3500)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=5, response_ms=3200)
+        _billing_metrics.record_operator_handle("op_li", name="李娜", csat=4, response_ms=3800)
+        _billing_metrics.record_operator_handle("op_wang", name="王芳", csat=5, response_ms=2100)
+        _billing_metrics.record_operator_handle("op_wang", name="王芳", csat=5, response_ms=2300)
     return _billing, _billing_metrics
 
 
@@ -143,10 +156,11 @@ def _handle_approve_command(text: str) -> dict[str, Any]:
     try:
         router, _ = _get_canary()
         if router.percentage == 0:
-            # Force start: set observation to 0 so first advance succeeds
-            router._stage_started_at = 0
-            new_stage = router.advance()
-            canary_msg = f"\n🚀 灰度已启动: {router.percentage}% ({new_stage.value})"
+            if router.can_advance():
+                new_stage = router.advance()
+                canary_msg = f"\n🚀 灰度已启动: {router.percentage}% ({new_stage.value})"
+            else:
+                canary_msg = "\n⏳ 灰度观察期未满，请稍后使用 /advance 推进"
         else:
             canary_msg = f"\n⚡ 灰度已在运行中: {router.percentage}%"
     except Exception as exc:
@@ -180,14 +194,26 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 # SLA
 # ---------------------------------------------------------------------------
 
+_PERIOD_TO_WINDOW: dict[str, str] = {"5m": "5m", "1h": "1h", "24h": "24h"}
+
+
 @api_router.get("/sla/summary")
-async def sla_summary() -> dict[str, Any]:
-    """Return current SLA metrics across all 7 types."""
+async def sla_summary(period: str = "5m") -> dict[str, Any]:
+    """Return current SLA metrics across all 7 types for a given time window."""
     from autoservice.sla_aggregator import MetricType, WindowSize
+    from fastapi.responses import JSONResponse
+
+    if period not in _PERIOD_TO_WINDOW:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Invalid period '{period}'. Must be one of: 5m, 1h, 24h"},
+        )
+
+    window = WindowSize(period)
     agg = _get_sla()
     result = {}
     for metric in MetricType:
-        p = agg.get_percentiles(metric, WindowSize.FIVE_MIN)
+        p = agg.get_percentiles(metric, window)
         result[metric.value] = {
             "p50": p.p50, "p95": p.p95, "count": p.count,
             "min": p.min_val, "max": p.max_val,
@@ -209,6 +235,28 @@ async def billing_invoices() -> list[dict[str, Any]]:
         bill = billing.generate_bill(metrics, period)
         invoices.append(bill)
     return invoices
+
+
+# ---------------------------------------------------------------------------
+# Metrics — Takeover Trend (T6D.3)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/metrics/takeover-trend")
+async def takeover_trend(period: str = "week") -> list[dict[str, Any]]:
+    """Return takeover counts grouped by date for the last week or month."""
+    _, metrics = _get_billing()
+    return metrics.get_takeover_trend(period)
+
+
+# ---------------------------------------------------------------------------
+# Operator Leaderboard (T6D.4)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/metrics/operator-leaderboard")
+async def operator_leaderboard() -> list[dict[str, Any]]:
+    """Return operator performance data sorted by handled count descending."""
+    _, metrics = _get_billing()
+    return metrics.get_operator_leaderboard()
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +363,20 @@ async def command_send_message(
 
 
 # ---------------------------------------------------------------------------
+# Dream Engine config dialog (T6E.9)
+# ---------------------------------------------------------------------------
+_dream_config_session: Any = None
+
+
+def _get_dream_session():
+    global _dream_config_session
+    if _dream_config_session is None:
+        from autoservice.dream_config_dialog import DreamConfigSession
+        _dream_config_session = DreamConfigSession()
+    return _dream_config_session
+
+
+# ---------------------------------------------------------------------------
 # Management Chat (Dream Engine conversational interface)
 # ---------------------------------------------------------------------------
 
@@ -323,7 +385,19 @@ async def management_chat(message: str = "") -> dict[str, Any]:
     """Process a management chat message. Routes slash commands to backend functions."""
     text = message.strip()
     if not text:
-        return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback"}
+        return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback, @Dream Engine"}
+
+    # Dream Engine config dialog — check if session is active first (T6E.9)
+    dream_session = _get_dream_session()
+    if dream_session.is_active():
+        response, done = dream_session.process_input(text)
+        return {"role": "dream_engine", "content": response}
+
+    # @Dream Engine or /dream-config — start config dialog (T6E.9)
+    from autoservice.dream_config_dialog import is_dream_config_trigger
+    if is_dream_config_trigger(text):
+        prompt = dream_session.start()
+        return {"role": "dream_engine", "content": prompt}
 
     # /rules — show current rules
     if text.startswith("/rules"):
@@ -606,7 +680,7 @@ async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
             ("配送查询", "delivery_inquiry", "焦急客户",
              "我的快递到哪了？已经等了三天了", "请提供您的订单号，我帮您查询物流状态..."),
             ("账户问题", "account_issue", "技术小白",
-             "我登不上账号了，密码忘记了", "请点击登录页的"忘记密码"，我引导您重置..."),
+             "我登不上账号了，密码忘记了", '请点击登录页的"忘记密码"，我引导您重置...'),
             ("功能咨询", "feature_inquiry", "企业客户",
              "你们支持批量导入吗？有API吗？", "支持的，我们提供批量导入和完整的API接口..."),
             ("优惠活动", "promotion", "促销敏感客户",

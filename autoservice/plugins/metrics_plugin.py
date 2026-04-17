@@ -2,10 +2,14 @@
 
 Implements the PluginHook protocol to track conversation lifecycle,
 mode changes, CSAT scores, and message counts.
+
+T6C.2: Wired to BillingMetrics so that mode-change and CSAT events
+feed the billing pipeline with real data.
 """
 
 from __future__ import annotations
 
+from autoservice.billing_metrics import BillingMetrics
 from autoservice.conversation_engine.events import EventType
 from autoservice.conversation_engine.types import (
     Conversation,
@@ -19,12 +23,13 @@ from autoservice.conversation_engine.types import (
 class MetricsPlugin:
     """In-memory metrics collector implementing PluginHook."""
 
-    def __init__(self) -> None:
+    def __init__(self, billing_metrics: BillingMetrics | None = None) -> None:
         self.conversations_created: int = 0
         self.conversations_closed: int = 0
         self.mode_changes: dict[str, int] = {}
         self.csat_scores: list[int] = []
         self.messages_sent: int = 0
+        self._billing_metrics = billing_metrics
 
     # -- PluginHook callbacks --
 
@@ -43,6 +48,9 @@ class MetricsPlugin:
     ) -> None:
         key = f"{old_mode.value}\u2192{new_mode.value}"
         self.mode_changes[key] = self.mode_changes.get(key, 0) + 1
+        # T6C.2: record takeover in billing metrics
+        if new_mode == ConversationMode.TAKEOVER and self._billing_metrics is not None:
+            self._billing_metrics.record_takeover(conv.id)
 
     async def on_participant_joined(self, conv: Conversation, p: Participant) -> None:
         pass  # not tracked
@@ -55,6 +63,9 @@ class MetricsPlugin:
             score = event.data.get("score")
             if score is not None:
                 self.csat_scores.append(score)
+                # T6C.2: record CSAT in billing metrics
+                if self._billing_metrics is not None:
+                    self._billing_metrics.record_csat(event.conversation_id, score)
         elif event.type == EventType.MESSAGE_SENT:
             self.messages_sent += 1
 
