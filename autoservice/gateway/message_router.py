@@ -619,6 +619,65 @@ async def _broadcast_to_squad(
     return sent
 
 
+# ---------------------------------------------------------------------------
+# Reconnect message replay (T6A.3)
+# ---------------------------------------------------------------------------
+
+async def replay_messages(
+    ws: WebSocket,
+    engine: ConversationEngine,
+    last_seen: dict[str, Any],
+) -> int:
+    """Replay missed messages after a reconnect.
+
+    Args:
+        ws: The WebSocket connection to send replay frames to.
+        engine: The conversation engine for querying messages.
+        last_seen: A LastSeenCursor dict, expected shape:
+            {"conv_seq": {"conv_id": {"msg": <int>, "evt": <int>}}, ...}
+
+    Returns:
+        Total number of replayed messages.
+    """
+    conv_seq = last_seen.get("conv_seq")
+    if not conv_seq or not isinstance(conv_seq, dict):
+        # Nothing to replay — send replay_complete with count=0
+        await ws.send_json(build_frame("replay_complete", {"count": 0}))
+        return 0
+
+    total = 0
+    for conv_id, cursors in conv_seq.items():
+        if not isinstance(cursors, dict):
+            continue
+        msg_seq = cursors.get("msg", 0)
+        if not isinstance(msg_seq, (int, float)):
+            continue
+        msg_seq = int(msg_seq)
+
+        try:
+            msgs = await engine.get_messages(
+                conv_id,
+                since_sequence=msg_seq,
+                limit=200,
+            )
+        except Exception:
+            logger.warning("replay: failed to fetch messages for conv=%s", conv_id)
+            continue
+
+        for msg in msgs:
+            frame = _message_frame(msg)
+            frame["payload"]["replay"] = True
+            try:
+                await ws.send_json(frame)
+                total += 1
+            except Exception:
+                logger.warning("replay: send failed for conv=%s", conv_id)
+                break
+
+    await ws.send_json(build_frame("replay_complete", {"count": total}))
+    return total
+
+
 def _now_iso_ms() -> str:
     from .connection import now_iso_ms
     return now_iso_ms()

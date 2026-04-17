@@ -31,7 +31,7 @@ from autoservice.gateway.errors import (
     ERR_VERSION_INCOMPATIBLE,
     make_error_payload,
 )
-from autoservice.gateway.message_router import dispatch, get_subscription_registry
+from autoservice.gateway.message_router import dispatch, get_subscription_registry, replay_messages
 
 logger = logging.getLogger("autoservice.gateway")
 
@@ -179,6 +179,18 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
             ref=env.id,
         )
     )
+
+    # --- Reconnect message replay (T6A.3) ---
+    last_seen = env.payload.get("last_seen")
+    if last_seen and isinstance(last_seen, dict):
+        try:
+            replayed = await replay_messages(ws, engine, last_seen)
+            if replayed:
+                logger.info(
+                    "replayed %d message(s) for session %s", replayed, session_id,
+                )
+        except Exception:
+            logger.warning("replay failed for session %s", session_id, exc_info=True)
 
     # --- Frame loop ---
     try:
