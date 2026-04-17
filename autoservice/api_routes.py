@@ -210,6 +210,33 @@ async def command_release(conversation_id: str, operator_id: str = "operator") -
         return {"ok": False, "error": str(exc)}
 
 
+@api_router.post("/command/send-message")
+async def command_send_message(
+    conversation_id: str, operator_id: str = "operator", content: str = "",
+) -> dict[str, Any]:
+    """Send a message as operator (takeover mode) and broadcast to all WS connections."""
+    engine = _ws_engine()
+    if engine is None:
+        return {"ok": False, "error": "no engine"}
+    try:
+        msg = await engine.send_message(
+            conversation_id, source=operator_id, content=content,
+        )
+        # Broadcast to all WS connections
+        from autoservice.gateway.message_router import _message_frame
+        from autoservice.web_gateway import _ws_connections
+        frame = _message_frame(msg)
+        frame["payload"]["source_display"] = {"id": operator_id, "role": "operator"}
+        for sid, ws in list(_ws_connections.items()):
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                pass
+        return {"ok": True, "message_id": msg.id}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @api_router.post("/canary/advance")
 async def canary_advance() -> dict[str, Any]:
     """Advance canary to next stage."""

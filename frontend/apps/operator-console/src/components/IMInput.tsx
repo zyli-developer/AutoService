@@ -21,33 +21,35 @@ export function IMInput({ send }: IMInputProps) {
       : '输入建议给 agent (不会发给客户)'
     : '发送消息到 Agent分队';
 
-  const handleSend = () => {
+  const operatorId = useOperatorStore((s) => s.operatorId);
+
+  const handleSend = async () => {
     const text = inputText.trim();
     if (!text || !activeCopilotConvId) return;
+    setInputText('');
 
     const id = crypto.randomUUID();
     const ts = new Date().toISOString();
 
-    addCopilotMessage(activeCopilotConvId, {
-      id,
-      text,
-      sender: 'operator',
-      ts,
-    });
+    addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts });
 
-    send({
-      v: 1,
-      type: isTakeover ? 'send_message' : 'operator_message',
-      id,
-      ts,
-      payload: {
-        conversation_id: activeCopilotConvId,
-        text,
-        ...(isTakeover ? { visible_to_customer: true } : {}),
-      },
-    } as Envelope);
-
-    setInputText('');
+    // Use REST API for reliable delivery (WS connection may be flaky)
+    const API = `http://${window.location.hostname}:8000`;
+    try {
+      await fetch(
+        `${API}/api/command/send-message?conversation_id=${encodeURIComponent(activeCopilotConvId)}&operator_id=${encodeURIComponent(operatorId || 'operator')}&content=${encodeURIComponent(text)}`,
+        { method: 'POST' },
+      );
+    } catch (err) {
+      console.error('[IMInput] send failed:', err);
+      // Fallback to WS
+      send({
+        v: 1,
+        type: isTakeover ? 'operator_message' : 'operator_message',
+        id, ts,
+        payload: { conversation_id: activeCopilotConvId, content: text },
+      } as Envelope);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
