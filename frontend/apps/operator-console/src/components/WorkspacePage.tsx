@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
 import { IMTitlebar } from './IMTitlebar';
@@ -8,6 +8,62 @@ import { CopilotView } from './CopilotView';
 import { IMInput } from './IMInput';
 
 const WS_URL = `ws://${window.location.hostname}:8000/ws/operator`;
+
+/* ── ConcurrencyWarning ── */
+function ConcurrencyWarning() {
+  const count = useOperatorStore(
+    (s) => Object.keys(s.conversations).length,
+  );
+  const limit = useOperatorStore((s) => s.concurrencyLimit);
+  if (count < limit - 1) return null;
+  const atLimit = count >= limit;
+  return (
+    <div
+      data-testid="concurrency-warning"
+      style={{
+        background: atLimit ? 'var(--p)' : 'var(--l400)',
+        color: atLimit ? '#fff' : 'var(--l800)',
+        padding: '6px 16px',
+        textAlign: 'center',
+        fontSize: 13,
+      }}
+    >
+      {atLimit
+        ? `已达并发上限 (${limit})，无法接入新对话`
+        : `接近并发上限 (${count}/${limit})`}
+    </div>
+  );
+}
+
+/* ── useNotificationSound ── */
+function useNotificationSound() {
+  const prevCountRef = useRef(0);
+  const conversations = useOperatorStore((s) => s.conversations);
+  const count = Object.keys(conversations).length;
+
+  const playSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.value = 0.15;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {
+      // AudioContext may not be available
+    }
+  }, []);
+
+  useEffect(() => {
+    if (count > prevCountRef.current) {
+      playSound();
+    }
+    prevCountRef.current = count;
+  }, [count, playSound]);
+}
 
 export function WorkspacePage() {
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
@@ -21,6 +77,8 @@ export function WorkspacePage() {
   const [newSquadId, setNewSquadId] = useState('');
 
   const { send, fetchHistory } = useOperatorWS(WS_URL);
+
+  useNotificationSound();
 
   const handleOpenCopilot = (convId: string) => {
     openCopilot(convId);
@@ -36,6 +94,7 @@ export function WorkspacePage() {
   return (
     <div className="im-w" data-testid="workspace-page">
       <IMTitlebar />
+      <ConcurrencyWarning />
       {wsStatus !== 'open' && wsStatus !== 'idle' && (
         <div
           data-testid="connection-banner"

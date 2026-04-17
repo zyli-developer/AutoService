@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from autoservice.canary import CanaryStage
+
 logger = logging.getLogger("autoservice.api")
 
 # Global engine reference (set by web_gateway on startup)
@@ -154,10 +156,11 @@ def _handle_approve_command(text: str) -> dict[str, Any]:
     try:
         router, _ = _get_canary()
         if router.percentage == 0:
-            # Force start: set observation to 0 so first advance succeeds
-            router._stage_started_at = 0
-            new_stage = router.advance()
-            canary_msg = f"\n🚀 灰度已启动: {router.percentage}% ({new_stage.value})"
+            if router.can_advance():
+                new_stage = router.advance()
+                canary_msg = f"\n🚀 灰度已启动: {router.percentage}% ({new_stage.value})"
+            else:
+                canary_msg = "\n⏳ 灰度观察期未满，请稍后使用 /advance 推进"
         else:
             canary_msg = f"\n⚡ 灰度已在运行中: {router.percentage}%"
     except Exception as exc:

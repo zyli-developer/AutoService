@@ -454,6 +454,7 @@ class LocalEngine:
         await self._emit_and_dispatch_hooks(
             EventType.MESSAGE_SENT, conversation_id, {
                 "message_id": msg.id, "visibility": final_vis.value,
+                "source": msg.source, "content": msg.content,
             },
         )
         if final_vis != requested_visibility:
