@@ -87,7 +87,7 @@ export const useOperatorStore = create<OperatorState>((set) => ({
   ...initialState,
 
   login: (operatorId, token) =>
-    set({ operatorId, token, isLoggedIn: true }),
+    set({ operatorId, token, isLoggedIn: true, squads: ['web-support'], activeSquadId: 'web-support' }),
 
   logout: () =>
     set({ ...initialState }),

@@ -173,7 +173,7 @@ export class WSClient {
   }
 
   private handleAckIfAny(frame: Envelope): void {
-    const feTypesWithAck: BeToFeType[] = ['ack', 'pong', 'error', 'command_response'];
+    const feTypesWithAck: BeToFeType[] = ['ack', 'pong', 'error', 'command_response', 'subscription_added', 'subscription_removed'];
     if (!feTypesWithAck.includes(frame.type as BeToFeType)) return;
     if (!frame.ref) return;
     const pending = this.pendingAcks.get(frame.ref);
