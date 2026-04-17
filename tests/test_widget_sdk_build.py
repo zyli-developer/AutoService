@@ -75,10 +75,15 @@ class TestWidgetSdkBuild:
     @pytest.fixture(autouse=True, scope="class")
     def run_build(self):
         """Install deps and run build once for all tests in this class."""
+        import shutil
+        pnpm = shutil.which("pnpm")
+        if not pnpm:
+            pytest.skip("pnpm not found in PATH")
+
         frontend = REPO_ROOT / "frontend"
         # Install dependencies
         result = subprocess.run(
-            ["pnpm", "install", "--frozen-lockfile=false"],
+            [pnpm, "install", "--frozen-lockfile=false"],
             cwd=str(frontend),
             capture_output=True,
             text=True,
@@ -89,7 +94,7 @@ class TestWidgetSdkBuild:
 
         # Run build
         result = subprocess.run(
-            ["pnpm", "--filter", "@autoservice/widget-sdk", "build"],
+            [pnpm, "--filter", "@autoservice/widget-sdk", "build"],
             cwd=str(frontend),
             capture_output=True,
             text=True,
@@ -129,5 +134,5 @@ class TestPublishScript:
         assert "dry-run" in result.stdout.lower() or "--live" in result.stdout
 
     def test_script_has_set_euo_pipefail(self):
-        content = PUBLISH_SCRIPT.read_text()
+        content = PUBLISH_SCRIPT.read_text(encoding="utf-8")
         assert "set -euo pipefail" in content

@@ -120,7 +120,10 @@ class TestInitDiscuss:
             ["git", "worktree", "list"], cwd=git_repo,
             capture_output=True, text=True,
         ).stdout
-        assert worktrees.count(str(worktree)) == 1
+        # Normalize paths for cross-platform (Windows uses \ vs git uses /)
+        normalized_worktrees = worktrees.replace("\\", "/").lower()
+        normalized_path = str(worktree).replace("\\", "/").lower()
+        assert normalized_worktrees.count(normalized_path) == 1
 
         # Both sessions present
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
