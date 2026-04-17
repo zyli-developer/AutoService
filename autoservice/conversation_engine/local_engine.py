@@ -400,6 +400,7 @@ class LocalEngine:
         *,
         triggered_by: str,
         trigger: str,
+        takeover_operator_id: str | None = None,
     ) -> None:
         async with self._get_lock(conversation_id):
             conv = self._get_conv(conversation_id)
@@ -413,13 +414,25 @@ class LocalEngine:
                 })
                 return
             old_mode = conv.mode
-            updated = self._update_conv(conversation_id, mode=target)
+
+            # Atomically update mode and takeover_operator_id
+            new_takeover_id: str | None
+            if target == ConversationMode.TAKEOVER:
+                new_takeover_id = takeover_operator_id
+            else:
+                new_takeover_id = None
+            updated = self._update_conv(
+                conversation_id,
+                mode=target,
+                takeover_operator_id=new_takeover_id,
+            )
             await self._emit_and_dispatch_hooks(
                 EventType.MODE_CHANGED, conversation_id, {
                     "old_mode": old_mode.value,
                     "new_mode": target.value,
                     "triggered_by": triggered_by,
                     "trigger": trigger,
+                    "takeover_operator_id": new_takeover_id,
                 },
                 "on_mode_changed", updated, old_mode, target, trigger,
             )
@@ -573,6 +586,7 @@ class LocalEngine:
             await self.switch_mode(
                 conversation_id, ConversationMode.TAKEOVER,
                 triggered_by=actor_id, trigger="/hijack",
+                takeover_operator_id=actor_id,
             )
         elif command == "/release":
             await self.switch_mode(
