@@ -1,98 +1,144 @@
 @import '@autoservice/design-system';
 
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--cream);
+}
 
-/* Admin portal tab navigation */
+/* ===== Admin portal tab navigation ===== */
 .cs-tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--oat);
-  padding-bottom: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .cs-tab {
-  padding: 8px 16px;
+  padding: 10px 18px;
   border: none;
   background: transparent;
-  border-radius: 9px 9px 0 0;
+  border-radius: 10px 10px 0 0;
   font-size: 13px;
-  color: var(--charcoal);
+  color: var(--silver);
   cursor: pointer;
   font-family: var(--font-sans);
   font-weight: 500;
+  position: relative;
+  transition: color .2s;
 }
 
 .cs-tab:hover {
-  background: var(--oat-l);
+  color: var(--charcoal);
 }
 
 .cs-tab.active {
-  background: var(--m800);
-  color: #fff;
+  color: var(--ink);
   font-weight: 600;
 }
 
-/* Login page */
+.cs-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--aurora-3);
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 8px rgba(167,139,250,.5);
+}
+
+/* ===== Login page ===== */
 .cs-login {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--oat-l);
+  background: var(--cream);
+  position: relative;
+  overflow: hidden;
+}
+
+.cs-login::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 50% at 70% 20%, rgba(167,139,250,.28) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 30% 80%, rgba(103,232,249,.12) 0%, transparent 60%);
+  pointer-events: none;
 }
 
 .cs-login-card {
-  background: #fff;
-  border: 1px solid var(--oat);
-  border-radius: 14px;
-  padding: 32px 40px;
-  box-shadow: var(--shd);
-  min-width: 360px;
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 36px 44px;
+  box-shadow: 0 20px 60px rgba(24,24,27,.08), 0 4px 12px rgba(24,24,27,.04);
+  min-width: 380px;
 }
 
 .cs-login-card h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  font-family: var(--font-display);
+  margin: 0 0 6px;
+  font-size: 22px;
   font-weight: 600;
-  color: var(--m800);
+  color: var(--ink);
+  letter-spacing: -0.5px;
 }
 
 .cs-login-card p {
   color: var(--silver);
   font-size: 13px;
-  margin: 0 0 20px;
+  margin: 0 0 24px;
 }
 
 .cs-login-card input {
   width: 100%;
-  padding: 9px 14px;
-  border: 1px solid var(--oat);
-  border-radius: 9px;
+  padding: 11px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
   font-size: 13px;
   font-family: var(--font-sans);
   margin-bottom: 12px;
   outline: none;
+  background: var(--cream);
+  transition: border-color .25s, background .25s;
 }
 
 .cs-login-card input:focus {
-  border-color: var(--m600);
+  border-color: var(--ink);
+  background: var(--paper);
 }
 
 .cs-login-card button {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border: none;
-  background: var(--m800);
+  background: var(--ink);
   color: #fff;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans);
+  box-shadow: var(--shd-btn);
+  transition: transform .15s, box-shadow .2s;
+  letter-spacing: 0.3px;
+  margin-top: 4px;
 }
 
-/* Notification input row */
+.cs-login-card button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
+}
+
+/* ===== Notification input row ===== */
 .cs-notification-input {
   display: flex;
   gap: 8px;
@@ -101,41 +147,57 @@ html, body, #root { height: 100%; margin: 0; }
 
 .cs-notification-input input {
   flex: 1;
-  padding: 9px 14px;
-  border: 1px solid var(--oat);
-  border-radius: 9px;
-  font-size: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  font-size: 13px;
   font-family: var(--font-sans);
   outline: none;
+  background: var(--paper);
+  transition: border-color .25s;
+}
+
+.cs-notification-input input:focus {
+  border-color: var(--ink);
 }
 
 .cs-notification-input button {
-  padding: 9px 20px;
+  padding: 10px 22px;
   border: none;
-  background: var(--m800);
+  background: var(--ink);
   color: #fff;
-  border-radius: 9px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans);
+  box-shadow: var(--shd-btn);
+  transition: transform .15s, box-shadow .2s;
+  letter-spacing: 0.2px;
 }
 
-/* Admin workspace layout */
+.cs-notification-input button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
+}
+
+/* ===== Admin workspace layout ===== */
 .cs-w {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--cream);
   font-family: var(--font-sans);
   font-size: 14px;
   color: var(--charcoal);
 }
 
 .cs-tb {
-  background: var(--oat-l);
-  border-bottom: 1px solid var(--oat);
-  padding: 8px 16px;
+  background: rgba(255,255,255,.6);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 12px 20px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -149,65 +211,320 @@ html, body, #root { height: 100%; margin: 0; }
 }
 
 .cs-tb-dots span {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--oat);
   display: inline-block;
 }
 
+.cs-tb-dots span:first-child {
+  background: var(--aurora-3);
+  box-shadow: 0 0 0 3px rgba(167,139,250,.2);
+}
+
 .cs-app {
   font-weight: 600;
-  color: var(--m800);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: -0.2px;
 }
 
 .cs-main {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 24px;
+  padding: 24px 28px;
 }
 
-/* Wizard buttons */
-.cs-btn {
-  padding: 8px 18px;
-  border: 1px solid var(--oat);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--charcoal);
-  font-size: 12px;
+/* ===== Wizard: editorial dashboard (NOT a form) ===== */
+
+/* Main canvas: wide, breathy, no container box */
+.cs-w .cs-main {
+  padding: 40px 56px 56px !important;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+[data-testid="tab-wizard"] > div:nth-child(2) {
+  margin-top: 36px !important;
+}
+
+[data-testid="tab-wizard"] > div:last-child {
+  margin-top: 40px !important;
+  padding-top: 24px;
+  border-top: 1px solid var(--glass-border);
+}
+
+/* Dissolve the card — no border, no background, no shadow. Let content float. */
+.cs-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.cs-card:hover { box-shadow: none !important; }
+
+.cs-card.hl {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Section heading → editorial hero */
+.cs-ct {
+  font-family: var(--font-display) !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.8px !important;
+  color: var(--ink) !important;
+  margin-bottom: 6px !important;
+  align-items: baseline !important;
+  gap: 14px !important;
+}
+
+.cs-ct .num {
+  width: 32px !important;
+  height: 32px !important;
+  background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(103,232,249,.12)) !important;
+  color: #6d28d9 !important;
+  border-radius: 10px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.cs-ct { padding-bottom: 20px; }
+
+/* ===== Field grid: break vertical stack into 2-column editorial layout ===== */
+.cs-card > div[style*="flex-direction: column"] {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 28px 32px !important;
+  flex-direction: unset !important;
+  margin: 32px 0 !important;
+}
+
+/* File upload field (last child) spans both columns — it's the hero action */
+.cs-card > div[style*="flex-direction: column"] > div:last-child {
+  grid-column: 1 / -1;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(167,139,250,.05), rgba(103,232,249,.04));
+  border: 1px dashed rgba(167,139,250,.25);
+  border-radius: 14px;
+  transition: border-color .25s, background .25s;
+}
+
+.cs-card > div[style*="flex-direction: column"] > div:last-child:hover {
+  border-color: rgba(167,139,250,.5);
+  background: linear-gradient(135deg, rgba(167,139,250,.08), rgba(103,232,249,.06));
+}
+
+/* ===== Inputs — minimal underline style, not boxed ===== */
+.cs-card input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+.cs-card select,
+.cs-card textarea {
+  width: 100%;
+  padding: 8px 0 !important;
+  border: none !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  border-radius: 0 !important;
+  font-size: 15px !important;
+  font-family: var(--font-sans) !important;
+  background: transparent !important;
+  color: var(--ink) !important;
+  outline: none;
+  transition: border-color .25s, padding .25s;
+  box-sizing: border-box;
+  font-weight: 500;
+}
+
+.cs-card input:focus,
+.cs-card select:focus,
+.cs-card textarea:focus {
+  border-bottom-color: var(--aurora-3) !important;
+  background: transparent !important;
+  box-shadow: 0 1px 0 0 var(--aurora-3);
+}
+
+.cs-card input::placeholder,
+.cs-card textarea::placeholder {
+  color: rgba(24,24,27,.3);
+  font-weight: 400;
+}
+
+/* Custom select chevron */
+.cs-card select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2318181b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 4px center !important;
+  padding-right: 28px !important;
+  cursor: pointer;
+}
+
+/* Labels → small caps kicker above input */
+.cs-card label {
+  font-size: 10px !important;
+  color: var(--silver);
+  margin-bottom: 4px !important;
+  display: block;
   font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+/* File input — native button styled */
+.cs-card input[type="file"] {
+  display: block;
+  width: 100%;
+  font-size: 13px !important;
+  font-family: var(--font-sans) !important;
+  color: var(--silver);
+  cursor: pointer;
+  padding: 0 !important;
+  border: none !important;
+  border-bottom: none !important;
+  background: transparent !important;
+}
+
+.cs-card input[type="file"]::-webkit-file-upload-button,
+.cs-card input[type="file"]::file-selector-button {
+  padding: 10px 20px;
+  margin-right: 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s;
+  -webkit-appearance: none;
+  box-shadow: var(--shd-btn);
+}
+
+.cs-card input[type="file"]:hover::-webkit-file-upload-button,
+.cs-card input[type="file"]:hover::file-selector-button {
+  border-color: var(--aurora-3);
+  background: rgba(167,139,250,.06);
+  transform: translateY(-1px);
+}
+
+/* ===== Buttons ===== */
+.cs-btn {
+  flex: none !important;
+  padding: 11px 24px !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px !important;
+  background: var(--paper);
+  color: var(--charcoal);
+  font-size: 13px !important;
+  font-weight: 500 !important;
   cursor: pointer;
   font-family: var(--font-sans);
+  transition: transform .15s, box-shadow .2s, border-color .2s;
+  letter-spacing: 0.2px;
+  min-width: 100px;
+}
+
+.cs-btn:hover {
+  border-color: var(--ink) !important;
+  color: var(--ink);
 }
 
 .cs-btn.ok {
-  background: var(--m800);
+  background: var(--ink) !important;
   color: #fff;
-  border-color: var(--m800);
+  border-color: var(--ink) !important;
+  box-shadow: var(--shd-btn);
 }
 
 .cs-btn.ok:hover {
-  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
+  color: #fff;
 }
 
-/* Event stream styles */
+/* "生成 Agent" button: override inline width:100%, make it a prominent CTA */
+.cs-card .cs-btn.ok[data-testid="btn-generate"] {
+  width: auto !important;
+  min-width: 180px;
+  padding: 13px 32px !important;
+  margin-top: 8px !important;
+  border-radius: 12px !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  letter-spacing: 0.3px;
+  display: block;
+  margin-left: auto !important;
+  background: linear-gradient(135deg, var(--ink) 0%, #2a2a2f 100%) !important;
+}
+
+/* ===== Wizard stepper — flatter, editorial ===== */
+.cs-wiz {
+  gap: 4px !important;
+  padding: 0 !important;
+  margin-bottom: 8px;
+}
+
+.cs-wiz-step {
+  padding: 8px 18px !important;
+  font-size: 12px !important;
+  letter-spacing: 0.3px;
+}
+
+.cs-arr {
+  color: var(--oat) !important;
+  padding: 0 2px;
+}
+
+/* ===== Agent init result card — keep as subtle group ===== */
+[data-testid="generation-result"] {
+  margin-top: 48px !important;
+  padding-top: 32px !important;
+  border-top: 1px solid var(--glass-border) !important;
+}
+
+[data-testid="generation-result"] .cs-ct {
+  font-size: 20px !important;
+  padding-bottom: 16px;
+}
+
+.cs-row {
+  padding: 14px 0 !important;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 14px;
+}
+
+.cs-row:last-of-type { border-bottom: none; }
+
+/* ===== Event stream styles ===== */
 .ev {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--charcoal);
-  padding: 2px 0;
+  padding: 3px 0;
 }
 
 .ev .t {
   color: var(--silver);
-  margin-right: 8px;
+  margin-right: 10px;
 }
 
 .ev.ok {
-  color: var(--m600);
-  font-weight: 700;
+  color: #047857;
+  font-weight: 600;
 }
 
 .ev.warn {

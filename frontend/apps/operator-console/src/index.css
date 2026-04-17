@@ -1,19 +1,28 @@
 @import '@autoservice/design-system';
 
-html, body, #root { height: 100%; margin: 0; }
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--cream);
+}
 
-/* Operator console specific overrides */
+/* ===== Operator console input area ===== */
 .im-input textarea {
   width: 100%;
-  border: 1px solid var(--oat);
-  border-radius: 13px;
-  padding: 9px 14px;
-  font-size: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
   color: var(--charcoal);
-  background: #fff;
+  background: var(--paper);
   font-family: var(--font-sans);
   resize: none;
   outline: none;
+  transition: border-color .25s, background .25s;
+}
+
+.im-input textarea:focus {
+  border-color: var(--ink);
 }
 
 .im-input textarea::placeholder {
@@ -29,70 +38,111 @@ html, body, #root { height: 100%; margin: 0; }
 .im-input-row button {
   flex-shrink: 0;
   border: none;
-  background: var(--m800);
+  background: var(--ink);
   color: #fff;
-  border-radius: 13px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans);
+  box-shadow: var(--shd-btn);
+  transition: transform .15s, box-shadow .2s;
+  letter-spacing: 0.2px;
+}
+
+.im-input-row button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(103,232,249,.25);
+}
+
+.im-input-row button:active {
+  transform: translateY(0);
 }
 
 .im-input-row button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
-/* Login page */
+/* ===== Login page ===== */
 .im-login {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--oat-l);
+  background: var(--cream);
+  position: relative;
+  overflow: hidden;
+}
+
+.im-login::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 50% at 30% 20%, rgba(103,232,249,.25) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 70% 80%, rgba(110,231,183,.15) 0%, transparent 60%);
+  pointer-events: none;
 }
 
 .im-login-card {
-  background: #fff;
-  border: 1px solid var(--oat);
-  border-radius: 14px;
-  padding: 32px 40px;
-  box-shadow: var(--shd);
-  min-width: 320px;
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 36px 44px;
+  box-shadow: 0 20px 60px rgba(24,24,27,.08), 0 4px 12px rgba(24,24,27,.04);
+  min-width: 360px;
 }
 
 .im-login-card h2 {
-  margin: 0 0 20px;
-  font-size: 18px;
+  font-family: var(--font-display);
+  margin: 0 0 24px;
+  font-size: 22px;
   font-weight: 600;
-  color: var(--m800);
+  color: var(--ink);
+  letter-spacing: -0.5px;
 }
 
 .im-login-card input {
   width: 100%;
-  padding: 9px 14px;
-  border: 1px solid var(--oat);
-  border-radius: 9px;
+  padding: 11px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
   font-size: 13px;
   font-family: var(--font-sans);
   margin-bottom: 12px;
   outline: none;
+  background: var(--cream);
+  transition: border-color .25s, background .25s;
 }
 
 .im-login-card input:focus {
-  border-color: var(--m600);
+  border-color: var(--ink);
+  background: var(--paper);
 }
 
 .im-login-card button {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border: none;
-  background: var(--m800);
+  background: var(--ink);
   color: #fff;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans);
+  box-shadow: var(--shd-btn);
+  transition: transform .15s, box-shadow .2s;
+  letter-spacing: 0.3px;
+  margin-top: 4px;
+}
+
+.im-login-card button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(103,232,249,.25);
 }
