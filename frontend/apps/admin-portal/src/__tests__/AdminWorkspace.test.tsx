@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AdminWorkspace } from '../components/AdminWorkspace';
 import { useAdminStore, initialState } from '../store/adminStore';
+
+// Mock child components to avoid duplicate testid collisions and API calls
+vi.mock('../components/WizardTab', () => ({ WizardTab: () => <div data-testid="content-wizard">wizard content</div> }));
+vi.mock('../components/DashboardTab', () => ({ DashboardTab: () => <div data-testid="content-dashboard">dashboard content</div> }));
+vi.mock('../components/ManagementChat', () => ({ ManagementChat: () => <div data-testid="content-notifications">chat content</div> }));
+vi.mock('../components/ProposalsTab', () => ({ ProposalsTab: () => <div data-testid="content-proposals">proposals content</div> }));
+vi.mock('../components/BillingTab', () => ({ BillingTab: () => <div data-testid="content-billing">billing content</div> }));
+
+import { AdminWorkspace } from '../components/AdminWorkspace';
 
 beforeEach(() => {
   useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: 'tenant-001' });
@@ -15,24 +23,26 @@ describe('AdminWorkspace', () => {
     expect(screen.getByTestId('tenant-id')).toHaveTextContent('tenant-001');
   });
 
-  it('TC-09: shows 4 tabs', () => {
+  it('TC-09: shows 5 tabs', () => {
     render(<AdminWorkspace />);
-    expect(screen.getByRole('tab', { name: '向导' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '仪表盘' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '通知' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '提案' })).toBeInTheDocument();
+    expect(screen.getByTestId('tab-wizard')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-notifications')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-proposals')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-billing')).toBeInTheDocument();
   });
 
   it('TC-10: default tab is wizard', () => {
     render(<AdminWorkspace />);
     expect(screen.getByTestId('tab-wizard')).toBeInTheDocument();
+    expect(screen.getByTestId('content-wizard')).toBeInTheDocument();
   });
 
   it('TC-11: clicking dashboard tab switches content', async () => {
     const user = userEvent.setup();
     render(<AdminWorkspace />);
-    await user.click(screen.getByRole('tab', { name: '仪表盘' }));
-    expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
+    await user.click(screen.getByTestId('tab-dashboard'));
+    expect(screen.getByTestId('content-dashboard')).toBeInTheDocument();
   });
 
   it('TC-12: logout button resets state', async () => {

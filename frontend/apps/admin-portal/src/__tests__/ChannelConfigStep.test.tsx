@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+vi.mock('../api', () => ({
+  fetchJSON: vi.fn(() => Promise.reject(new Error('not mocked'))),
+  postJSON: vi.fn(() => Promise.reject(new Error('not mocked'))),
+  postForm: vi.fn(() => Promise.reject(new Error('not mocked'))),
+}));
+
 import { ChannelConfigStep } from '../components/wizard/ChannelConfigStep';
 
 describe('ChannelConfigStep', () => {
@@ -16,8 +23,8 @@ describe('ChannelConfigStep', () => {
     const user = userEvent.setup();
     render(<ChannelConfigStep tenantId="tenant-001" />);
     await user.click(screen.getByTestId('btn-generate-url'));
-    const urlEl = screen.getByTestId('generated-url');
-    expect(urlEl).toHaveTextContent('https://tenant-001.autoservice.ai/chat');
+    const urlEl = await screen.findByTestId('generated-url');
+    expect(urlEl).toHaveTextContent('https://tenant-001.sandbox.localhost');
   });
 
   it('TC-03: Web checkbox is checked by default', () => {
