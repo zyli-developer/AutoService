@@ -115,15 +115,15 @@ BE → FE: server_hello { session_id, protocol_version, server_time, viewer_role
 
 > Ring buffer 是 **per-subscription** 的（每个 `subscribe()` 调用一份独立窗口），防止单条 hot conv 挤占其他 squad 订阅的事件窗。
 
-如果 `last_seen` 落在保留窗口外 → BE 发 `error { code: "4041_REPLAY_GAP", recoverable: true }`，FE 应做"全量重拉"（`history_request` + 重新 subscribe）。
+如果 `last_seen` 落在保留窗口外 → BE 发 `error { code: "4018_SEQUENCE_GAP", recoverable: true }`，FE 应做"全量重拉"（`history_request` + 重新 subscribe）。
 
 ### 3.4 关闭码 (close codes)
 
 | code | 含义 | FE 行为 |
 |---|---|---|
 | 1000 | 正常关闭 | 不重连 |
-| 4001 | AUTH_FAILED / TOKEN_EXPIRED | 刷新 token 后重连 |
-| 4003 | PERMISSION_REVOKED | 提示用户，不自动重连 |
+| 4011 | AUTH / TOKEN_EXPIRED | 刷新 token 后重连 |
+| 4013 | PERMISSION_REVOKED | 提示用户，不自动重连 |
 | 4408 | IDLE_TIMEOUT | 立即重连 |
 | 4409 | CONFLICT（同 session 多连接） | 不自动重连 |
 | 4499 | SERVER_ERROR | 指数退避重连 |
@@ -320,17 +320,22 @@ BE→FE 分两类：
 
 | code | 说明 | recoverable | retry_after | 建议 FE 行为 |
 |---|---|---|---|---|
-| `4001_AUTH_FAILED` | token 无效或过期 | true | — | 刷新 token 后重连 |
-| `4003_PERMISSION_DENIED` | 角色无权执行（对应 `PermissionDenied`） | false | — | UI 灰化按钮 + 提示 |
-| `4004_NOT_FOUND` | conversation/message/timer 不存在 | false | — | 提示 + 刷新列表 |
-| `4009_CONFLICT` | 重复 frame_id / 重复 join | true | — | 忽略或重新生成 id |
+| `4010_SCHEMA` | 帧结构不符合 envelope schema | false | — | 修正后重发 |
+| `4011_AUTH` | token 无效或过期 | true | — | 刷新 token 后重连 |
 | `4012_VALIDATION` | payload 格式错误（对应 `ValidationError`） | false | — | 修正后重发 |
-| `4013_ILLEGAL_STATE` | mode 非法转换 / closed 会话写入 | false | — | 刷新状态后重试 |
-| `4029_RATE_LIMIT` | 限流 | true | yes | 按 retry_after 等 |
+| `4013_PERMISSION` | 角色无权执行（对应 `PermissionDenied`） | false | — | UI 灰化按钮 + 提示 |
+| `4014_ILLEGAL_MODE_TRANSITION` | mode 非法转换 / closed 会话写入 | false | — | 刷新状态后重试 |
+| `4015_TIMER_NOT_FOUND` | timer 不存在 | false | — | 提示 + 刷新 |
+| `4016_PARTICIPANT_NOT_FOUND` | 参与者不存在 | false | — | 提示 + 刷新列表 |
+| `4017_RATE_LIMIT` | 限流 | true | yes | 按 retry_after 等 |
+| `4018_SEQUENCE_GAP` | last_seen 落在保留窗口外 | true | — | 走"全量重拉" |
 | `4040_VERSION_INCOMPATIBLE` | 协议版本无交集 | false | — | 升级客户端 |
-| `4041_REPLAY_GAP` | last_seen 落在保留窗口外 | true | — | 走"全量重拉" |
-| `5000_INTERNAL` | 服务端 bug | true | yes | 指数退避 |
-| `5003_OVERLOAD` | 服务端过载 | true | yes | 按 retry_after |
+| `5010_INTERNAL` | 服务端 bug | true | yes | 指数退避 |
+| `5011_ENGINE` | Engine 内部错误 | true | yes | 指数退避 |
+
+> **T6A.4 frozen error code table**: The above codes are aligned 1:1 with frontend
+> `ERROR_CODES` in `frontend/packages/ws-client/src/types.ts` lines 119-132.
+> Frontend is source of truth. Any new error code MUST be added to frontend first.
 
 > Engine 的 `EngineError` 子类 → WS error code 映射在 §6.2 Bridge handler 实现表中给出（待 LocalEngine 实现）。
 
@@ -338,7 +343,7 @@ BE→FE 分两类：
 
 | 失败类别 | 走哪条 | 例 |
 |---|---|---|
-| **协议 / 鉴权失败**（payload 格式错、帧 v 不兼容、token 过期、限流、重连游标失效） | **S4 `error` 帧**（带 `ref` 关联失败的 FE 帧） | `4001_AUTH_FAILED`、`4012_VALIDATION`、`4029_RATE_LIMIT`、`4041_REPLAY_GAP` |
+| **协议 / 鉴权失败**（payload 格式错、帧 v 不兼容、token 过期、限流、重连游标失效） | **S4 `error` 帧**（带 `ref` 关联失败的 FE 帧） | `4011_AUTH`、`4012_VALIDATION`、`4017_RATE_LIMIT`、`4018_SEQUENCE_GAP` |
 | **命令级业务失败**（Engine 返回异常被 handle_command 吞下后转 `ok=false`） | **S11 `command_response{ok:false}`**（`error_code` + `error_message`） | `/hijack` `PermissionDenied`、`/dispatch` `ConversationNotFound`、`/resolve` `ConversationAlreadyClosed`、`switch_mode` `IllegalModeTransition` |
 | **非命令的 Engine 调用失败**（`customer_message` 被 `ValidationError` / `send_message` 时 conv 不存在） | **S4 `error` 帧** | `4012_VALIDATION`、`4004_NOT_FOUND` |
 

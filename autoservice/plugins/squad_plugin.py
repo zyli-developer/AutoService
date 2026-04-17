@@ -56,9 +56,18 @@ class SquadPlugin:
 
     # ---------- Public API ----------
 
-    def get_squad(self, conv_id: str) -> str | None:
-        """Return current squad for a conversation, or None if not tracked."""
-        return self._assignments.get(conv_id)
+    def get_squad(self, conv_id: str) -> str:
+        """Return current squad for a conversation.
+
+        If the conversation was not explicitly assigned (e.g., created before
+        the plugin was registered), assigns the default squad on-the-fly so
+        that every conversation is guaranteed to have a squad_id (T6A.2).
+        """
+        squad = self._assignments.get(conv_id)
+        if squad is None:
+            squad = self._default_squad
+            self._assignments[conv_id] = squad
+        return squad
 
     def list_conversations(self, squad_id: str) -> list[str]:
         """Return all conversation IDs assigned to the given squad."""

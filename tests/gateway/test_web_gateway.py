@@ -198,7 +198,7 @@ def test_tc018_operator_command_not_implemented_returns_command_response(local_e
         reply = ws.receive_json()
         assert reply["type"] == "command_response"
         assert reply["payload"]["ok"] is False
-        assert reply["payload"]["error_code"] == "5000_INTERNAL"
+        assert reply["payload"]["error_code"] == "5010_INTERNAL"
         assert reply["payload"]["command"] == "/hijack"
         assert reply.get("ref") == frame["id"]
 
@@ -212,7 +212,7 @@ def test_tc019_admin_command_not_implemented_returns_command_response(local_engi
         reply = ws.receive_json()
         assert reply["type"] == "command_response"
         assert reply["payload"]["ok"] is False
-        assert reply["payload"]["error_code"] == "5000_INTERNAL"
+        assert reply["payload"]["error_code"] == "5010_INTERNAL"
 
 
 def test_tc020_dummy_engine_success_returns_ack_and_message(dummy_engine, dummy_engine_client):
@@ -238,10 +238,10 @@ def test_tc020_dummy_engine_success_returns_ack_and_message(dummy_engine, dummy_
         assert msg["payload"]["message_id"]
 
 
-def test_tc021_dummy_engine_unexpected_exception_returns_5000_error(
+def test_tc021_dummy_engine_unexpected_exception_returns_5010_error(
     dummy_engine, dummy_engine_client
 ):
-    """TC-021: ValueError (non-NotImplementedError) → 5000_INTERNAL error."""
+    """TC-021: ValueError (non-NotImplementedError) → 5010_INTERNAL error."""
     async def _send(*_args, **_kwargs):
         raise ValueError("oops")
 
@@ -254,7 +254,7 @@ def test_tc021_dummy_engine_unexpected_exception_returns_5000_error(
         )
         reply = ws.receive_json()
         assert reply["type"] == "error"
-        assert reply["payload"]["code"] == "5000_INTERNAL"
+        assert reply["payload"]["code"] == "5010_INTERNAL"
 
 
 def test_tc022_customer_frame_on_operator_endpoint_rejected(local_engine_client):

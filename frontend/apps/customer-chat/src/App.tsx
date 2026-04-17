@@ -65,6 +65,20 @@ export function App() {
     }
   };
 
+  const handleCsatSubmit = async (score: number) => {
+    const convId = useChatStore.getState().conversationId;
+    if (!convId) return;
+    try {
+      await send('csat_response', {
+        conversation_id: convId,
+        score,
+      });
+      useChatStore.getState().setCsatSubmitted();
+    } catch {
+      // Silently fail — user already sees the score they selected
+    }
+  };
+
   return (
     <div className="web-canvas">
       <MerchantSite />
@@ -73,6 +87,7 @@ export function App() {
           messages={messages}
           onSend={handleSend}
           onClose={() => setIsOpen(false)}
+          onCsatSubmit={handleCsatSubmit}
           disabled={connectionStatus !== 'open'}
           connectionStatus={connectionStatus}
           isReplaying={isReplaying}

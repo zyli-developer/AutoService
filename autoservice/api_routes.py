@@ -61,12 +61,17 @@ def _get_billing():
         from autoservice.billing_metrics import BillingMetrics
         _billing = TieredBilling()
         _billing_metrics = BillingMetrics()
-        # Seed with demo data
-        _billing_metrics.record_takeover("demo-conv-1")
-        _billing_metrics.record_takeover("demo-conv-2")
-        _billing_metrics.record_csat("demo-conv-1", 5)
-        _billing_metrics.record_csat("demo-conv-2", 4)
     return _billing, _billing_metrics
+
+
+def get_billing_metrics():
+    """Return the shared BillingMetrics singleton.
+
+    Use this to pass the instance to MetricsPlugin so that mode-change
+    and CSAT events feed real billing data (T6C.2).
+    """
+    _, metrics = _get_billing()
+    return metrics
 
 
 def _get_canary():
@@ -97,6 +102,78 @@ def _get_proposal_pipeline():
             memory_pool=mp, db_path=db_dir / "proposals.db",
         )
     return _proposal_pipeline
+
+
+def _parse_proposal_id(text: str, command: str) -> str | None:
+    """Extract proposal ID from '/approve #N' or '/approve prop_xxxx' format."""
+    rest = text[len(command):].strip()
+    # Match #N (shorthand — look up by row index) or prop_xxx (direct ID)
+    if rest.startswith("#"):
+        rest = rest[1:].strip()
+    if not rest:
+        return None
+    # If it looks like a direct proposal ID, return as-is
+    if rest.startswith("prop_"):
+        return rest
+    # Numeric shorthand: treat as 1-based index into proposal list
+    try:
+        idx = int(rest) - 1
+        pp = _get_proposal_pipeline()
+        proposals = pp.list_proposals()
+        if 0 <= idx < len(proposals):
+            return proposals[idx]["id"]
+        return None
+    except (ValueError, IndexError):
+        return rest  # try as literal ID
+
+
+def _handle_approve_command(text: str) -> dict[str, Any]:
+    """Parse /approve, update proposal status, activate canary."""
+    proposal_id = _parse_proposal_id(text, "/approve")
+    if not proposal_id:
+        return {"role": "dream_engine", "content": "⚠️ 用法: /approve #N 或 /approve prop_xxxx\n请指定提案编号。"}
+
+    pp = _get_proposal_pipeline()
+    updated = pp.update_status(proposal_id, "accepted")
+    if updated is None:
+        return {"role": "dream_engine", "content": f"⚠️ 提案 {proposal_id!r} 未找到。使用 /status 查看可用提案。"}
+
+    # Activate canary — advance from DISABLED to STAGE_5
+    canary_msg = ""
+    try:
+        router, _ = _get_canary()
+        if router.percentage == 0:
+            # Force start: set observation to 0 so first advance succeeds
+            router._stage_started_at = 0
+            new_stage = router.advance()
+            canary_msg = f"\n🚀 灰度已启动: {router.percentage}% ({new_stage.value})"
+        else:
+            canary_msg = f"\n⚡ 灰度已在运行中: {router.percentage}%"
+    except Exception as exc:
+        canary_msg = f"\n⚠️ 灰度启动失败: {exc}"
+
+    return {
+        "role": "dream_engine",
+        "content": f"✅ 提案 {proposal_id} 已批准 (accepted){canary_msg}\n"
+        f"📋 {updated.get('title', '')}"
+    }
+
+
+def _handle_reject_command(text: str) -> dict[str, Any]:
+    """Parse /reject, update proposal status."""
+    proposal_id = _parse_proposal_id(text, "/reject")
+    if not proposal_id:
+        return {"role": "dream_engine", "content": "⚠️ 用法: /reject #N 或 /reject prop_xxxx\n请指定提案编号。"}
+
+    pp = _get_proposal_pipeline()
+    updated = pp.update_status(proposal_id, "rejected")
+    if updated is None:
+        return {"role": "dream_engine", "content": f"⚠️ 提案 {proposal_id!r} 未找到。使用 /status 查看可用提案。"}
+
+    return {
+        "role": "dream_engine",
+        "content": f"❌ 提案 {proposal_id} 已拒绝 (rejected)\n📋 {updated.get('title', '')}"
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -278,13 +355,13 @@ async def management_chat(message: str = "") -> dict[str, Any]:
         except Exception as exc:
             return {"role": "dream_engine", "content": f"状态查询失败: {exc}"}
 
-    # /approve #N — approve a proposal
+    # /approve #N — approve a proposal and activate canary
     if text.startswith("/approve"):
-        return {"role": "dream_engine", "content": "✓ 提案已批准，进入灰度发布队列。"}
+        return _handle_approve_command(text)
 
     # /reject #N — reject a proposal
     if text.startswith("/reject"):
-        return {"role": "dream_engine", "content": "✗ 提案已拒绝。"}
+        return _handle_reject_command(text)
 
     # /rollback — rollback canary
     if text.startswith("/rollback"):
@@ -310,13 +387,40 @@ async def management_chat(message: str = "") -> dict[str, Any]:
 
 
 @api_router.post("/canary/advance")
-async def canary_advance() -> dict[str, Any]:
-    """Advance canary to next stage."""
+async def canary_advance(force: bool = False) -> dict[str, Any]:
+    """Advance canary to next stage.
+
+    Query params:
+        force: skip observation period check (dev/debug only)
+
+    Returns 423 Locked if observation period has not elapsed (unless force=true).
+    """
+    from fastapi.responses import JSONResponse
     router, _ = _get_canary()
-    import time
-    router._stage_started_at = time.time() - 90000  # skip observation for demo
-    router.advance()
-    return router.status()
+    if force:
+        import time
+        router._stage_started_at = 0  # bypass observation window
+    if not router.can_advance():
+        if router.current_stage == CanaryStage.STAGE_100:
+            return JSONResponse(
+                status_code=423,
+                content={"error": "Already at STAGE_100, cannot advance further"},
+            )
+        import time
+        elapsed_s = time.time() - router._stage_started_at
+        remaining_s = router._observation_hours * 3600 - elapsed_s
+        remaining_h = remaining_s / 3600
+        return JSONResponse(
+            status_code=423,
+            content={
+                "error": f"Observation period not complete ({remaining_h:.1f}h remaining)",
+                "remaining_hours": round(remaining_h, 1),
+            },
+        )
+    new_stage = router.advance()
+    status = router.status()
+    status["message"] = f"Advanced to {new_stage.value} ({router.percentage}%)"
+    return status
 
 
 @api_router.post("/canary/rollback")
@@ -367,34 +471,126 @@ async def compliance_check(tenant_id: str = "default") -> dict[str, Any]:
 # Rehearsal (virtual customer)
 # ---------------------------------------------------------------------------
 
+def _get_kb_path(tenant_id: str) -> str:
+    """Resolve knowledge-base SQLite path for a tenant."""
+    from pathlib import Path
+    # Tenant-specific KB takes priority; fall back to shared KB
+    tenant_kb = Path(f".autoservice/tenants/{tenant_id}/kb/kb.db")
+    if tenant_kb.exists():
+        return str(tenant_kb)
+    shared_kb = Path(".autoservice/database/knowledge_base/kb.db")
+    return str(shared_kb)
+
+
+def _get_llm_client():
+    """Create an async LLM client wrapper around the Anthropic SDK.
+
+    Returns None if the anthropic SDK is not installed or API key is missing.
+    """
+    try:
+        import anthropic
+
+        class _AsyncLLMClient:
+            """Thin async wrapper matching the ``generate()`` protocol
+            expected by ``sim_customer``."""
+
+            def __init__(self):
+                self._client = anthropic.AsyncAnthropic()
+
+            async def generate(self, prompt: str) -> str:
+                message = await self._client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return message.content[0].text
+
+        return _AsyncLLMClient()
+    except Exception:
+        return None
+
+
 @api_router.post("/rehearsal/generate")
-async def rehearsal_generate(tenant_id: str = "default") -> list[dict[str, Any]]:
-    """Generate virtual customer rehearsal dialogs."""
+async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
+    """Generate virtual customer rehearsal dialogs.
+
+    Attempts real LLM-powered generation via ``sim_customer``.  When the LLM
+    is unavailable (missing SDK, no API key, network error …) the endpoint
+    falls back to >=10 hardcoded demo dialogs, each tagged with
+    ``is_demo: true``.
+    """
     try:
         from autoservice.sim_customer import generate_sim_dialogs
-        dialogs = generate_sim_dialogs(tenant_id)
-        return dialogs
+
+        kb_path = _get_kb_path(tenant_id)
+        llm_client = _get_llm_client()
+        if llm_client is None:
+            raise RuntimeError("LLM client unavailable — anthropic SDK missing or unconfigured")
+
+        dialogs = await generate_sim_dialogs(
+            tenant_id,
+            kb_path=kb_path,
+            llm_client=llm_client,
+        )
+        return {
+            "demo_mode": False,
+            "dialogs": [
+                {
+                    "id": d.id if hasattr(d, "id") else f"dialog-{i:03d}",
+                    "scenario": d.scenario if hasattr(d, "scenario") else {},
+                    "persona": d.persona if hasattr(d, "persona") else {},
+                    "turns": d.turns if hasattr(d, "turns") else [],
+                    "language": d.language if hasattr(d, "language") else "zh",
+                    "review_status": d.review_status if hasattr(d, "review_status") else "pending",
+                    "is_demo": False,
+                }
+                for i, d in enumerate(dialogs)
+            ],
+        }
     except Exception as exc:
-        logger.warning("sim_customer generation failed, using fallback: %s", exc)
-        # Fallback: return structured mock
-        return [
-            {
-                "id": f"dialog-{i:03d}",
-                "scenario": {"id": f"scenario-{i}", "name_zh": name, "intent": intent},
-                "persona": {"id": f"persona-{i}", "name_zh": persona, "traits": []},
-                "turns": [
-                    {"role": "customer", "content": q, "metadata": {}},
-                    {"role": "agent", "content": a, "metadata": {}},
-                ],
-                "language": "zh",
-                "review_status": "pending",
-            }
-            for i, (name, intent, persona, q, a) in enumerate([
-                ("通用问候", "general", "普通客户", "你好，在吗？", "您好！请问有什么可以帮到您？"),
-                ("产品咨询", "product_inquiry", "价格敏感客户", "这个产品多少钱？", "目前的价格方案如下..."),
-                ("投诉处理", "complaint", "愤怒客户", "我要投诉！", "非常抱歉给您带来不好的体验..."),
-                ("购买意向", "purchase_intent", "新客户", "怎么购买？", "您可以通过以下方式购买..."),
-                ("语言障碍", "language_barrier", "外语客户", "Can you speak English?", "Sure! How can I help you?"),
-                ("退款申请", "complaint", "老客户", "我要退款", "好的，请提供订单号..."),
-            ])
+        logger.warning("sim_customer generation failed, using demo fallback: %s", exc)
+        # Fallback: >=10 structured demo dialogs covering major business scenarios
+        _DEMO_DIALOGS = [
+            ("通用问候", "general", "普通客户",
+             "你好，在吗？", "您好！请问有什么可以帮到您？"),
+            ("产品咨询", "product_inquiry", "价格敏感客户",
+             "这个产品多少钱？", "目前的价格方案如下..."),
+            ("投诉处理", "complaint", "愤怒客户",
+             "我要投诉！服务太差了！", "非常抱歉给您带来不好的体验，我来帮您处理..."),
+            ("购买意向", "purchase_intent", "新客户",
+             "怎么购买？流程是什么？", "您可以通过以下方式购买..."),
+            ("语言障碍", "language_barrier", "外语客户",
+             "Can you speak English?", "Sure! How can I help you today?"),
+            ("退款申请", "refund", "老客户",
+             "我要退款，订单号是12345", "好的，请稍等，我帮您查询订单12345的退款流程..."),
+            ("售后服务", "after_sales", "VIP客户",
+             "产品出了问题，怎么维修？", "请您提供产品序列号，我们将为您安排维修服务..."),
+            ("配送查询", "delivery_inquiry", "焦急客户",
+             "我的快递到哪了？已经等了三天了", "请提供您的订单号，我帮您查询物流状态..."),
+            ("账户问题", "account_issue", "技术小白",
+             "我登不上账号了，密码忘记了", "请点击登录页的"忘记密码"，我引导您重置..."),
+            ("功能咨询", "feature_inquiry", "企业客户",
+             "你们支持批量导入吗？有API吗？", "支持的，我们提供批量导入和完整的API接口..."),
+            ("优惠活动", "promotion", "促销敏感客户",
+             "现在有什么优惠活动吗？", "目前我们有以下优惠活动正在进行中..."),
+            ("多轮对话", "multi_turn", "犹豫客户",
+             "我再考虑一下吧", "没问题，如果您有任何疑问随时可以联系我们..."),
         ]
+        return {
+            "demo_mode": True,
+            "dialogs": [
+                {
+                    "id": f"dialog-{i:03d}",
+                    "scenario": {"id": f"scenario-{i}", "name_zh": name, "intent": intent},
+                    "persona": {"id": f"persona-{i}", "name_zh": persona, "traits": []},
+                    "turns": [
+                        {"role": "customer", "content": q, "metadata": {}},
+                        {"role": "agent", "content": a, "metadata": {}},
+                    ],
+                    "language": "zh",
+                    "review_status": "pending",
+                    "is_demo": True,
+                }
+                for i, (name, intent, persona, q, a) in enumerate(_DEMO_DIALOGS)
+            ],
+        }

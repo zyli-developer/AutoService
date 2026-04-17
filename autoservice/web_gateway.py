@@ -31,7 +31,7 @@ from autoservice.gateway.errors import (
     ERR_VERSION_INCOMPATIBLE,
     make_error_payload,
 )
-from autoservice.gateway.message_router import dispatch
+from autoservice.gateway.message_router import dispatch, get_subscription_registry, replay_messages
 
 logger = logging.getLogger("autoservice.gateway")
 
@@ -180,23 +180,44 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         )
     )
 
+    # --- Reconnect message replay (T6A.3) ---
+    last_seen = env.payload.get("last_seen")
+    if last_seen and isinstance(last_seen, dict):
+        try:
+            replayed = await replay_messages(ws, engine, last_seen)
+            if replayed:
+                logger.info(
+                    "replayed %d message(s) for session %s", replayed, session_id,
+                )
+        except Exception:
+            logger.warning("replay failed for session %s", session_id, exc_info=True)
+
     # --- Frame loop ---
     try:
         while True:
             raw = await ws.receive_json()
             frames = await _process_frame(
                 raw, viewer_role=viewer_role, engine=engine, ws=ws,
+                session_id=session_id,
             )
             for frame in frames:
                 await ws.send_json(frame)
     except WebSocketDisconnect:
         logger.info("ws %s disconnected (session=%s)", viewer_role, session_id)
     finally:
+        # Evict all subscriptions for this session (T6A.1)
+        registry = get_subscription_registry()
+        evicted = registry.evict_by_session(session_id)
+        if evicted:
+            logger.info(
+                "evicted %d subscription(s) for session %s", len(evicted), session_id,
+            )
         _ws_connections.pop(session_id, None)
 
 
 async def _process_frame(
     raw: Any, *, viewer_role: str, engine: ConversationEngine, ws: WebSocket,
+    session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     env, err_details = parse_envelope(raw)
     if env is None:
@@ -224,7 +245,7 @@ async def _process_frame(
             )
         ]
 
-    return await dispatch(env, viewer_role=viewer_role, engine=engine, ws=ws)
+    return await dispatch(env, viewer_role=viewer_role, engine=engine, ws=ws, session_id=session_id)
 
 
 # Module-level app for `uvicorn autoservice.web_gateway:app`

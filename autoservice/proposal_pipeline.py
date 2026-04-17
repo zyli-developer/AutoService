@@ -203,6 +203,35 @@ class ProposalPipeline:
     # Query
     # ------------------------------------------------------------------
 
+    def get_proposal(self, proposal_id: str) -> dict | None:
+        """Get a single proposal by ID. Returns None if not found."""
+        row = self._conn.execute(
+            "SELECT data FROM proposals WHERE id = ?", (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["data"])
+
+    def update_status(self, proposal_id: str, new_status: str) -> dict | None:
+        """Update a proposal's status. Returns the updated proposal or None if not found.
+
+        Valid transitions: draft → accepted | rejected, accepted → implemented.
+        """
+        if new_status not in VALID_STATUSES:
+            raise ValueError(f"Invalid status {new_status!r}, must be one of {VALID_STATUSES}")
+
+        proposal = self.get_proposal(proposal_id)
+        if proposal is None:
+            return None
+
+        proposal["status"] = new_status
+        self._conn.execute(
+            "UPDATE proposals SET status = ?, data = ? WHERE id = ?",
+            (new_status, json.dumps(proposal, ensure_ascii=False), proposal_id),
+        )
+        self._conn.commit()
+        return proposal
+
     def list_proposals(self, status: str | None = None) -> list[dict]:
         """Query stored proposals, optionally filtered by status."""
         if status is not None:

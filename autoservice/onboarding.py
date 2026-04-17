@@ -294,6 +294,42 @@ async def upload_and_parse(
 
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
+    # --- Soul generation: wire soul_generator after text extraction ---
+    souls_output = None
+    try:
+        from autoservice.soul_generator import TenantConfig, generate_souls
+
+        # Combine extracted text from all successfully parsed files
+        combined_text = "\n\n".join(
+            r.get("text", "") for r in results if r.get("status") == "ok"
+        )
+
+        soul_config = TenantConfig(
+            tenant_id=tenant_id,
+            brand_name=brand_name or "Unknown Brand",
+            industry=industry,
+            extra_context=combined_text[:8000] if combined_text else "",
+        )
+
+        gen_result = generate_souls(soul_config, dry_run=(not combined_text))
+
+        souls_output = {
+            "mode": gen_result.mode,
+            "total_kb_hits": gen_result.total_kb_hits,
+            "warnings": gen_result.warnings,
+            "roles": {
+                role: {
+                    "content": draft.content,
+                    "kb_hit_count": draft.kb_hit_count,
+                    "warnings": draft.warnings,
+                }
+                for role, draft in gen_result.souls.items()
+            },
+        }
+    except Exception as exc:
+        log.warning("Soul generation failed (upload still succeeds): %s", exc)
+        souls_output = {"error": str(exc)}
+
     return {
         "tenant_id": tenant_id,
         "brand_name": brand_name,
@@ -301,6 +337,7 @@ async def upload_and_parse(
         "files_parsed": len([r for r in results if r.get("status") == "ok"]),
         "file_results": results,
         "url_result": url_result,
+        "souls": souls_output,
     }
 
 

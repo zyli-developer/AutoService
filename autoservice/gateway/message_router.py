@@ -5,7 +5,7 @@ Handles error mapping per T0.2 §6.1:
   - command frames (operator_command / admin_command) whose Engine call fails
     → S11 command_response{ok:false}
   - other frames that fail → S4 error frame
-  - NotImplementedError (T0.4 skeleton state) → 5000_INTERNAL + details.engine_hint
+  - NotImplementedError (T0.4 skeleton state) → 5010_INTERNAL + details.engine_hint
 """
 
 from __future__ import annotations
@@ -22,8 +22,13 @@ from autoservice.conversation_engine.errors import ConversationNotFound
 from autoservice.conversation_engine.types import Participant, ParticipantRole
 
 from .connection import build_frame
-from .errors import ERR_INTERNAL, ERR_VALIDATION, make_error_payload
+from .errors import ERR_INTERNAL, ERR_NOT_FOUND, ERR_VALIDATION, make_error_payload
 from .envelope import Envelope
+from .subscription_registry import (
+    SubscriptionEntry,
+    SubscriptionRegistry,
+    generate_subscription_id,
+)
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -50,6 +55,15 @@ _FRAMES_BY_ROLE = {
 # Known FE→BE types (T0.2 §4 F1-F15)
 _KNOWN_FRAMES = _CUSTOMER_FRAMES | _OPERATOR_FRAMES | _ADMIN_FRAMES
 
+# Global subscription registry (T6A.1) — shared across all connections
+_registry = SubscriptionRegistry()
+
+
+def get_subscription_registry() -> SubscriptionRegistry:
+    """Access the global subscription registry."""
+    return _registry
+
+
 _HINT_RE = re.compile(r"T[12]A\.\d+")
 
 
@@ -64,6 +78,7 @@ async def dispatch(
     viewer_role: str,
     engine: ConversationEngine,
     ws: WebSocket | None = None,
+    session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch a validated FE envelope; return frames to send back (0..N)."""
     frame_type = env.type
@@ -105,9 +120,15 @@ async def dispatch(
     if frame_type == "ping":
         return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
-    # client_ack / subscribe / unsubscribe — skeleton acks only (Phase 1+ implements)
-    if frame_type in {"client_ack", "subscribe", "unsubscribe"}:
+    # client_ack — simple ack, no engine call
+    if frame_type == "client_ack":
         return [build_frame("ack", {}, ref=env.id)]
+
+    # subscribe / unsubscribe — subscription registry (T6A.1)
+    if frame_type == "subscribe":
+        return await _handle_subscribe(env, viewer_role=viewer_role, engine=engine, ws=ws, session_id=session_id)
+    if frame_type == "unsubscribe":
+        return await _handle_unsubscribe(env, ref=env.id)
 
     # Command frames → command_response path (§6.1)
     if frame_type in _COMMAND_FRAMES:
@@ -158,7 +179,13 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
                 ref=env.id,
             )
         ]
-    # Skeleton never reaches "success" because no Engine implements handle_command yet.
+    # On /resolve success, push csat_request to customer connections (T6C.1)
+    if command == "/resolve" and conversation_id:
+        asyncio.create_task(
+            _push_csat_request(conversation_id),
+            name=f"csat-request-{conversation_id}",
+        )
+
     return [
         build_frame(
             "command_response",
@@ -166,6 +193,146 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
             ref=env.id,
         )
     ]
+
+
+async def _handle_subscribe(
+    env: Envelope,
+    *,
+    viewer_role: str,
+    engine: ConversationEngine,
+    ws: WebSocket | None = None,
+    session_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Handle F6 subscribe: create subscription, return S13 subscription_added."""
+    payload = env.payload
+    scope = payload.get("scope")
+    if not scope or not isinstance(scope, dict):
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION, "subscribe requires scope object",
+            details={"reason": "missing_scope"},
+        ), ref=env.id)]
+
+    # Validate scope: exactly one of conversation_id, squad_id, global
+    has_conv = bool(scope.get("conversation_id"))
+    has_squad = bool(scope.get("squad_id"))
+    has_global = bool(scope.get("global"))
+
+    if sum([has_conv, has_squad, has_global]) != 1:
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION,
+            "scope must specify exactly one of: conversation_id, squad_id, global",
+            details={"scope": scope},
+        ), ref=env.id)]
+
+    # global scope only allowed on /ws/admin
+    if has_global and viewer_role != "admin":
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION,
+            "global subscription only allowed on /ws/admin",
+            details={"endpoint": f"/ws/{viewer_role}"},
+        ), ref=env.id)]
+
+    subscription_id = generate_subscription_id()
+    event_types = payload.get("event_types")
+    since_sequence = payload.get("since_sequence")
+
+    # Determine since_sequence for the response:
+    # conv scope -> int, squad/global scope -> string (ULID)
+    if has_conv:
+        resp_since = int(since_sequence) if since_sequence is not None else 0
+    else:
+        resp_since = str(since_sequence) if since_sequence is not None else ""
+
+    # Create engine subscription (async iterator for event fan-out)
+    try:
+        viewer_role_enum = None
+        try:
+            viewer_role_enum = ParticipantRole(viewer_role)
+        except (ValueError, KeyError):
+            pass  # admin is not in ParticipantRole enum
+
+        iterator = engine.subscribe(
+            conversation_id=scope.get("conversation_id"),
+            squad_id=scope.get("squad_id"),
+            event_types=event_types,
+            since_sequence=since_sequence,
+            viewer_role=viewer_role_enum,
+        )
+    except Exception as exc:
+        logger.exception("engine.subscribe failed")
+        return [build_frame("error", make_error_payload(
+            ERR_INTERNAL, f"subscription failed: {exc}",
+        ), ref=env.id)]
+
+    entry = SubscriptionEntry(
+        subscription_id=subscription_id,
+        session_id=session_id or "",
+        scope=scope,
+        viewer_role=viewer_role,
+        since_sequence=resp_since,
+        event_types=event_types,
+        _iterator=iterator,
+    )
+
+    # Start fan-out task: forward engine events to the WebSocket
+    if ws is not None and iterator is not None:
+        async def _fanout(it: Any, target_ws: WebSocket, sub_id: str) -> None:
+            try:
+                async for event in it:
+                    frame = build_frame("event", {
+                        "event": {
+                            "id": event.id,
+                            "type": event.type if isinstance(event.type, str) else event.type.value,
+                            "conversation_id": event.conversation_id,
+                            "data": event.data if isinstance(event.data, dict) else {},
+                            "timestamp": event.timestamp.isoformat() if hasattr(event.timestamp, "isoformat") else str(event.timestamp),
+                            "sequence_number": event.sequence_number,
+                        },
+                    })
+                    try:
+                        await target_ws.send_json(frame)
+                    except Exception:
+                        break  # connection lost
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.debug("fanout ended for subscription %s", sub_id)
+
+        task = asyncio.create_task(
+            _fanout(iterator, ws, subscription_id),
+            name=f"sub-fanout-{subscription_id}",
+        )
+        entry._task = task
+
+    _registry.add(entry)
+
+    return [build_frame("subscription_added", {
+        "subscription_id": subscription_id,
+        "scope": scope,
+        "since_sequence": resp_since,
+    }, ref=env.id)]
+
+
+async def _handle_unsubscribe(env: Envelope, *, ref: str) -> list[dict[str, Any]]:
+    """Handle F7 unsubscribe: remove subscription, return S14 subscription_removed."""
+    payload = env.payload
+    subscription_id = payload.get("subscription_id")
+    if not subscription_id:
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION, "unsubscribe requires subscription_id",
+        ), ref=ref)]
+
+    entry = _registry.remove(subscription_id)
+    if entry is None:
+        return [build_frame("error", make_error_payload(
+            ERR_NOT_FOUND, f"subscription {subscription_id!r} not found",
+            details={"subscription_id": subscription_id},
+        ), ref=ref)]
+
+    return [build_frame("subscription_removed", {
+        "subscription_id": subscription_id,
+        "reason": "unsubscribed",
+    }, ref=ref)]
 
 
 async def _dispatch_engine(
@@ -255,7 +422,7 @@ async def _call_engine(
             conv_id, source=source, content=payload["content"],
         )
 
-        # Broadcast customer message to operator connections (with squad_id)
+        # Broadcast customer message to operator connections subscribed to this squad (T6A.2)
         customer_frame = _message_frame(msg)
         customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
         try:
@@ -267,13 +434,7 @@ async def _call_engine(
                     customer_frame["payload"]["squad_id"] = squad
         except Exception:
             pass
-        from autoservice.web_gateway import _ws_connections
-        for sid, ows in list(_ws_connections.items()):
-            if ows is not ws:
-                try:
-                    await ows.send_json(customer_frame)
-                except Exception:
-                    pass
+        await _broadcast_to_squad(customer_frame, conv_id, exclude_ws=ws)
 
         # Fire-and-forget: trigger agent response via CCPool
         if ws is not None:
@@ -300,7 +461,17 @@ async def _call_engine(
         return [_message_frame(msg)]
 
     if frame_type == "csat_response":
-        await engine.set_csat(payload["conversation_id"], int(payload["score"]))
+        conv_id = payload["conversation_id"]
+        score = int(payload["score"])
+        await engine.set_csat(conv_id, score)
+        # Record in BillingMetrics (T6C.1)
+        try:
+            from autoservice.api_routes import get_billing_metrics
+            bm = get_billing_metrics()
+            if bm is not None:
+                bm.record_csat(conv_id, score)
+        except Exception:
+            logger.warning("Failed to record CSAT in BillingMetrics for conv=%s", conv_id)
         return []
 
     if frame_type == "history_request":
@@ -387,6 +558,126 @@ def _message_frame(msg: Any, *, event_type: str = "message") -> dict[str, Any]:
     )
 
 
+async def _broadcast_to_squad(
+    frame: dict[str, Any],
+    conv_id: str,
+    *,
+    exclude_ws: WebSocket | None = None,
+) -> int:
+    """Broadcast a frame to operator/admin connections subscribed to the conversation's squad.
+
+    Uses the subscription registry (T6A.1) to find connections that subscribed
+    to the matching squad scope. Falls back to broadcasting to all connections
+    if no squad is assigned (backward compatible).
+
+    Returns the number of connections the frame was sent to.
+    """
+    from autoservice.web_gateway import _ws_connections, _get_squad_plugin
+
+    # Determine squad for this conversation
+    squad_id: str | None = None
+    try:
+        sp = _get_squad_plugin()
+        if sp:
+            squad_id = sp.get_squad(conv_id)
+    except Exception:
+        pass
+
+    sent = 0
+
+    if squad_id:
+        # Look up sessions subscribed to this squad
+        squad_subs = _registry.get_by_scope(f"squad:{squad_id}")
+        # Also include sessions subscribed to the specific conversation
+        conv_subs = _registry.get_by_scope(f"conv:{conv_id}")
+        # Also include global subscribers (admin)
+        global_subs = _registry.get_by_scope("global")
+
+        target_sessions = {
+            e.session_id for e in (*squad_subs, *conv_subs, *global_subs)
+        }
+
+        for session_id in target_sessions:
+            target_ws = _ws_connections.get(session_id)
+            if target_ws is None or target_ws is exclude_ws:
+                continue
+            try:
+                await target_ws.send_json(frame)
+                sent += 1
+            except Exception:
+                pass
+    else:
+        # No squad assigned — fallback to broadcast to all (backward compatible)
+        for sid, ows in list(_ws_connections.items()):
+            if ows is not exclude_ws:
+                try:
+                    await ows.send_json(frame)
+                    sent += 1
+                except Exception:
+                    pass
+
+    return sent
+
+
+# ---------------------------------------------------------------------------
+# Reconnect message replay (T6A.3)
+# ---------------------------------------------------------------------------
+
+async def replay_messages(
+    ws: WebSocket,
+    engine: ConversationEngine,
+    last_seen: dict[str, Any],
+) -> int:
+    """Replay missed messages after a reconnect.
+
+    Args:
+        ws: The WebSocket connection to send replay frames to.
+        engine: The conversation engine for querying messages.
+        last_seen: A LastSeenCursor dict, expected shape:
+            {"conv_seq": {"conv_id": {"msg": <int>, "evt": <int>}}, ...}
+
+    Returns:
+        Total number of replayed messages.
+    """
+    conv_seq = last_seen.get("conv_seq")
+    if not conv_seq or not isinstance(conv_seq, dict):
+        # Nothing to replay — send replay_complete with count=0
+        await ws.send_json(build_frame("replay_complete", {"count": 0}))
+        return 0
+
+    total = 0
+    for conv_id, cursors in conv_seq.items():
+        if not isinstance(cursors, dict):
+            continue
+        msg_seq = cursors.get("msg", 0)
+        if not isinstance(msg_seq, (int, float)):
+            continue
+        msg_seq = int(msg_seq)
+
+        try:
+            msgs = await engine.get_messages(
+                conv_id,
+                since_sequence=msg_seq,
+                limit=200,
+            )
+        except Exception:
+            logger.warning("replay: failed to fetch messages for conv=%s", conv_id)
+            continue
+
+        for msg in msgs:
+            frame = _message_frame(msg)
+            frame["payload"]["replay"] = True
+            try:
+                await ws.send_json(frame)
+                total += 1
+            except Exception:
+                logger.warning("replay: send failed for conv=%s", conv_id)
+                break
+
+    await ws.send_json(build_frame("replay_complete", {"count": total}))
+    return total
+
+
 def _now_iso_ms() -> str:
     from .connection import now_iso_ms
     return now_iso_ms()
@@ -411,6 +702,27 @@ async def _collect_operator_suggestions(
         return "<operator_suggestions>\n" + "\n".join(lines) + "\n</operator_suggestions>"
     except Exception:
         return ""
+
+
+# ---------------------------------------------------------------------------
+# CSAT request push (T6C.1)
+# ---------------------------------------------------------------------------
+
+async def _push_csat_request(conversation_id: str) -> None:
+    """Push S10 csat_request frame to customer + subscribed operator connections.
+
+    Called fire-and-forget after /resolve succeeds.  Uses squad-filtered
+    broadcast (T6A.2) so only relevant operators see the CSAT event.
+    """
+    try:
+        frame = build_frame("csat_request", {
+            "conversation_id": conversation_id,
+            "prompt": "How would you rate this conversation?",
+            "options": [1, 2, 3, 4, 5],
+        })
+        await _broadcast_to_squad(frame, conversation_id)
+    except Exception:
+        logger.debug("csat_request push failed for conv=%s", conversation_id)
 
 
 # ---------------------------------------------------------------------------
@@ -475,14 +787,8 @@ async def _generate_agent_reply(
         await ws.send_json(frame)
         logger.info("Agent reply pushed: conv=%s len=%d", conv_id, len(reply_text))
 
-        # Also broadcast to operator connections
-        from autoservice.web_gateway import _ws_connections
-        for sid, ows in list(_ws_connections.items()):
-            if ows is not ws:
-                try:
-                    await ows.send_json(frame)
-                except Exception:
-                    pass
+        # Broadcast to operator connections subscribed to this squad (T6A.2)
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
 
     except Exception:
         logger.exception("Agent reply FAILED for conv=%s", conv_id)
