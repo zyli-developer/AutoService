@@ -73,7 +73,13 @@ _conv_first_reply_sent: set[str] = set()
 
 
 def _infer_operator_from_ws(ws) -> str | None:
-    """Best-effort operator_id lookup from WS state (set in web_gateway)."""
+    """Best-effort operator_id lookup from WS state (set in web_gateway).
+
+    Only works for operator WS connections (set in _handle_connection). Customer
+    and admin connections never have state_operator_id set, so this returns None.
+    For client_ack frames from non-operator endpoints, an explicit operator_id
+    in the payload is required — and should be rejected by upstream validation.
+    """
     if ws is None:
         return None
     return getattr(ws, "state_operator_id", None)
@@ -132,17 +138,19 @@ async def dispatch(
     if frame_type == "ping":
         return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
-    # client_ack — ack; if action=continue, reset the takeover timer
+    # client_ack — ack; if action=continue, reset the takeover timer (operator only)
     if frame_type == "client_ack":
         payload = env.payload or {}
         if payload.get("action") == "continue":
             conv_id = payload.get("conversation_id")
-            actor_id = payload.get("operator_id") or _infer_operator_from_ws(ws)
-            if conv_id and actor_id:
-                try:
-                    await engine.reset_takeover_timer(conv_id, actor_id=actor_id)
-                except Exception:
-                    logger.exception("client_ack continue reset failed")
+            # Only operators can reset takeover timers (inferred from WS state or explicit payload)
+            if viewer_role == "operator":
+                actor_id = payload.get("operator_id") or _infer_operator_from_ws(ws)
+                if conv_id and actor_id:
+                    try:
+                        await engine.reset_takeover_timer(conv_id, actor_id=actor_id)
+                    except Exception:
+                        logger.exception("client_ack continue reset failed")
         return [build_frame("ack", {}, ref=env.id)]
 
     # subscribe / unsubscribe — subscription registry (T6A.1)

@@ -138,19 +138,32 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
 
     # Wire takeover notifications to WS push
     def _push_takeover_warning(payload: dict) -> None:
+        """Callback invoked from engine's _warning() coroutine; event loop is live."""
         operator_id = payload["operator_id"]
         frame = build_frame("takeover_warning", {
             "conversation_id": payload["conversation_id"],
             "remaining_ms": payload["remaining_ms"],
             "reason": payload["reason"],
         })
-        asyncio.create_task(_send_to_operator(operator_id, frame))
+        async def _safe_push():
+            try:
+                await _send_to_operator(operator_id, frame)
+            except Exception:
+                logger.exception("failed to push takeover_warning to operator=%s", operator_id)
+        asyncio.create_task(_safe_push())
 
     def _push_takeover_cancelled(payload: dict) -> None:
+        """Callback invoked from engine's reset_takeover_timer; event loop is live."""
         frame = build_frame("takeover_warning_cancelled", {
             "conversation_id": payload["conversation_id"],
         })
-        asyncio.create_task(_broadcast_cancelled(payload["conversation_id"], frame))
+        conv_id = payload["conversation_id"]
+        async def _safe_push():
+            try:
+                await _broadcast_cancelled(conv_id, frame)
+            except Exception:
+                logger.exception("failed to broadcast takeover_warning_cancelled for conv=%s", conv_id)
+        asyncio.create_task(_safe_push())
 
     if hasattr(engine, "on_takeover_warning"):
         engine.on_takeover_warning(_push_takeover_warning)

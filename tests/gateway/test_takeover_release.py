@@ -133,3 +133,36 @@ def test_client_ack_continue_resets_timer(fast_takeover_app):
             }))
             cancelled = _wait_frame(ows, "takeover_warning_cancelled", timeout=0.5)
             assert cancelled is not None
+
+
+def test_client_ack_continue_from_customer_does_not_reset(fast_takeover_app):
+    """Customer WS client_ack continue cannot reset the operator's takeover timer.
+
+    The actor_id inference only works for operator connections (state_operator_id
+    is only set for viewer_role=='operator'). Even if the customer supplies an
+    explicit operator_id in the payload, reset_takeover_timer's mode/owner guards
+    should prevent any mode state leakage.
+    """
+    with TestClient(fast_takeover_app) as client:
+        with client.websocket_connect("/ws/customer") as cws, \
+             client.websocket_connect("/ws/operator") as ows:
+            _setup(cws, ows)
+            conv_id = _customer_start_conv(cws)
+            _operator_join(ows, conv_id, "op42")
+            _send_cmd(ows, conv_id, "/hijack", "op42")
+
+            warning = _wait_frame(ows, "takeover_warning", timeout=1.0)
+            assert warning is not None
+
+            # Customer attempts to reset — should not produce a cancelled frame
+            cws.send_json(_frame("client_ack", {
+                "action": "continue",
+                "conversation_id": conv_id,
+                "operator_id": "op42",
+            }))
+
+            # Within a short window (less than 50ms release delay), there should
+            # be NO takeover_warning_cancelled frame. Wait 40ms to be well within
+            # the window but before auto-release would occur.
+            cancelled = _wait_frame(ows, "takeover_warning_cancelled", timeout=0.04)
+            assert cancelled is None, "customer should not be able to reset operator's timer"
