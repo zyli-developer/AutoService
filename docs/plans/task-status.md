@@ -229,7 +229,7 @@
 | T6D.2 | Dashboard 布局重组 | 🟢 | 🟩 | Agent | — | MISS-01 |
 | T6D.3 | 接管次数趋势图 | 🟢 | 🟩 | Agent | T6C.2 | MISS-02 |
 | T6D.4 | 人工客服 Leaderboard | 🟢 | 🟩 | Agent | T6C.2 | MISS-03 |
-| T6D.5 | 时间切片选择器 | 🟢 | ⬜ | Dev | T6D.1 | MISS-04 |
+| T6D.5 | 时间切片选择器 | 🟢 | 🟦 | DevA | T6D.1 | MISS-04 |
 
 ### Phase 6E · 体验打磨（P1-P3 · M6.3）
 
