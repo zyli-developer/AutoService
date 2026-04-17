@@ -22,8 +22,13 @@ from autoservice.conversation_engine.errors import ConversationNotFound
 from autoservice.conversation_engine.types import Participant, ParticipantRole
 
 from .connection import build_frame
-from .errors import ERR_INTERNAL, ERR_VALIDATION, make_error_payload
+from .errors import ERR_INTERNAL, ERR_NOT_FOUND, ERR_VALIDATION, make_error_payload
 from .envelope import Envelope
+from .subscription_registry import (
+    SubscriptionEntry,
+    SubscriptionRegistry,
+    generate_subscription_id,
+)
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -50,6 +55,15 @@ _FRAMES_BY_ROLE = {
 # Known FE→BE types (T0.2 §4 F1-F15)
 _KNOWN_FRAMES = _CUSTOMER_FRAMES | _OPERATOR_FRAMES | _ADMIN_FRAMES
 
+# Global subscription registry (T6A.1) — shared across all connections
+_registry = SubscriptionRegistry()
+
+
+def get_subscription_registry() -> SubscriptionRegistry:
+    """Access the global subscription registry."""
+    return _registry
+
+
 _HINT_RE = re.compile(r"T[12]A\.\d+")
 
 
@@ -64,6 +78,7 @@ async def dispatch(
     viewer_role: str,
     engine: ConversationEngine,
     ws: WebSocket | None = None,
+    session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch a validated FE envelope; return frames to send back (0..N)."""
     frame_type = env.type
@@ -105,9 +120,15 @@ async def dispatch(
     if frame_type == "ping":
         return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
-    # client_ack / subscribe / unsubscribe — skeleton acks only (Phase 1+ implements)
-    if frame_type in {"client_ack", "subscribe", "unsubscribe"}:
+    # client_ack — simple ack, no engine call
+    if frame_type == "client_ack":
         return [build_frame("ack", {}, ref=env.id)]
+
+    # subscribe / unsubscribe — subscription registry (T6A.1)
+    if frame_type == "subscribe":
+        return await _handle_subscribe(env, viewer_role=viewer_role, engine=engine, ws=ws, session_id=session_id)
+    if frame_type == "unsubscribe":
+        return await _handle_unsubscribe(env, ref=env.id)
 
     # Command frames → command_response path (§6.1)
     if frame_type in _COMMAND_FRAMES:
@@ -166,6 +187,146 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
             ref=env.id,
         )
     ]
+
+
+async def _handle_subscribe(
+    env: Envelope,
+    *,
+    viewer_role: str,
+    engine: ConversationEngine,
+    ws: WebSocket | None = None,
+    session_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Handle F6 subscribe: create subscription, return S13 subscription_added."""
+    payload = env.payload
+    scope = payload.get("scope")
+    if not scope or not isinstance(scope, dict):
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION, "subscribe requires scope object",
+            details={"reason": "missing_scope"},
+        ), ref=env.id)]
+
+    # Validate scope: exactly one of conversation_id, squad_id, global
+    has_conv = bool(scope.get("conversation_id"))
+    has_squad = bool(scope.get("squad_id"))
+    has_global = bool(scope.get("global"))
+
+    if sum([has_conv, has_squad, has_global]) != 1:
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION,
+            "scope must specify exactly one of: conversation_id, squad_id, global",
+            details={"scope": scope},
+        ), ref=env.id)]
+
+    # global scope only allowed on /ws/admin
+    if has_global and viewer_role != "admin":
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION,
+            "global subscription only allowed on /ws/admin",
+            details={"endpoint": f"/ws/{viewer_role}"},
+        ), ref=env.id)]
+
+    subscription_id = generate_subscription_id()
+    event_types = payload.get("event_types")
+    since_sequence = payload.get("since_sequence")
+
+    # Determine since_sequence for the response:
+    # conv scope -> int, squad/global scope -> string (ULID)
+    if has_conv:
+        resp_since = int(since_sequence) if since_sequence is not None else 0
+    else:
+        resp_since = str(since_sequence) if since_sequence is not None else ""
+
+    # Create engine subscription (async iterator for event fan-out)
+    try:
+        viewer_role_enum = None
+        try:
+            viewer_role_enum = ParticipantRole(viewer_role)
+        except (ValueError, KeyError):
+            pass  # admin is not in ParticipantRole enum
+
+        iterator = engine.subscribe(
+            conversation_id=scope.get("conversation_id"),
+            squad_id=scope.get("squad_id"),
+            event_types=event_types,
+            since_sequence=since_sequence,
+            viewer_role=viewer_role_enum,
+        )
+    except Exception as exc:
+        logger.exception("engine.subscribe failed")
+        return [build_frame("error", make_error_payload(
+            ERR_INTERNAL, f"subscription failed: {exc}",
+        ), ref=env.id)]
+
+    entry = SubscriptionEntry(
+        subscription_id=subscription_id,
+        session_id=session_id or "",
+        scope=scope,
+        viewer_role=viewer_role,
+        since_sequence=resp_since,
+        event_types=event_types,
+        _iterator=iterator,
+    )
+
+    # Start fan-out task: forward engine events to the WebSocket
+    if ws is not None and iterator is not None:
+        async def _fanout(it: Any, target_ws: WebSocket, sub_id: str) -> None:
+            try:
+                async for event in it:
+                    frame = build_frame("event", {
+                        "event": {
+                            "id": event.id,
+                            "type": event.type if isinstance(event.type, str) else event.type.value,
+                            "conversation_id": event.conversation_id,
+                            "data": event.data if isinstance(event.data, dict) else {},
+                            "timestamp": event.timestamp.isoformat() if hasattr(event.timestamp, "isoformat") else str(event.timestamp),
+                            "sequence_number": event.sequence_number,
+                        },
+                    })
+                    try:
+                        await target_ws.send_json(frame)
+                    except Exception:
+                        break  # connection lost
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.debug("fanout ended for subscription %s", sub_id)
+
+        task = asyncio.create_task(
+            _fanout(iterator, ws, subscription_id),
+            name=f"sub-fanout-{subscription_id}",
+        )
+        entry._task = task
+
+    _registry.add(entry)
+
+    return [build_frame("subscription_added", {
+        "subscription_id": subscription_id,
+        "scope": scope,
+        "since_sequence": resp_since,
+    }, ref=env.id)]
+
+
+async def _handle_unsubscribe(env: Envelope, *, ref: str) -> list[dict[str, Any]]:
+    """Handle F7 unsubscribe: remove subscription, return S14 subscription_removed."""
+    payload = env.payload
+    subscription_id = payload.get("subscription_id")
+    if not subscription_id:
+        return [build_frame("error", make_error_payload(
+            ERR_VALIDATION, "unsubscribe requires subscription_id",
+        ), ref=ref)]
+
+    entry = _registry.remove(subscription_id)
+    if entry is None:
+        return [build_frame("error", make_error_payload(
+            ERR_NOT_FOUND, f"subscription {subscription_id!r} not found",
+            details={"subscription_id": subscription_id},
+        ), ref=ref)]
+
+    return [build_frame("subscription_removed", {
+        "subscription_id": subscription_id,
+        "reason": "unsubscribed",
+    }, ref=ref)]
 
 
 async def _dispatch_engine(

@@ -1,0 +1,974 @@
+# AutoService Phase 6 — Implementation Gap Fix Tasks
+# Source: docs/plans/2026-04-17-gap-analysis.yaml
+# Continuation of task-status.md (P0-P5, 66/75 done, 9 blocked on zchat)
+# Generated: 2026-04-17
+#
+# Task ID convention: T6{Sub}.{Seq}
+#   Sub = A (protocol) | B (wizard) | C (billing) | D (dashboard) | E (UX)
+#   Seq = sequential within phase
+#
+# Type: green (AI independent) | yellow (AI + human review) | red (human-driven)
+# Effort: small (<2h) | medium (2-8h) | large (>8h)
+
+---
+
+# ============================================================
+# TASKS
+# ============================================================
+tasks:
+
+  # ─── Phase 6A: 协议层修复 (P0, blocks all pages) ────────
+
+  - id: T6A.1
+    name: "订阅注册表 + subscription_added (S13) 响应"
+    description: |
+      后端 subscribe handler 实现订阅注册表：
+      1. 维护 {subscription_id → (ws_conn, scope)} 映射
+      2. subscribe 帧处理时生成 subscription_id
+      3. 返回 subscription_added{subscription_id, scope, since_sequence}
+      4. unsubscribe 帧处理时清理注册表
+      5. 连接断开时自动清理该连接的所有订阅
+    line: A
+    type: yellow
+    phase: P6A
+    module: MOD-6A
+    gap_ref: BRK-01
+    story_refs: ["US-2.3", "US-2.4", "US-2.5"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/gateway/message_router.py"
+        type: code
+        action: modify
+        detail: "subscribe/unsubscribe handler 重写，新增订阅注册表"
+      - path: "autoservice/gateway/subscription_registry.py"
+        type: code
+        action: create
+        detail: "SubscriptionRegistry 类"
+    verification: |
+      1. 发送 subscribe{scope:{squad_id:"web-support"}} → 收到 subscription_added{subscription_id}
+      2. 发送 unsubscribe{subscription_id} → 收到 ack
+      3. 断线后注册表自动清理
+    estimated_effort: medium
+    estimated_lines: 100
+    status: completed
+    owner: Dev
+
+  - id: T6A.2
+    name: "消息广播按分队过滤"
+    description: |
+      基于 T6A.1 的订阅注册表，广播时按 squad 过滤接收方：
+      1. 维护 {squad_id → set[ws_connection]} 反向索引
+      2. customer_frame/agent_reply 广播时查 squad_id → 仅发给订阅该 squad 的连接
+      3. squad_plugin 对所有对话保证 squad 分配（无 squad_id 时分配默认值）
+    line: A
+    type: green
+    phase: P6A
+    module: MOD-6A
+    gap_ref: BRK-02
+    story_refs: ["US-2.3", "US-2.4"]
+    depends_on: ["T6A.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/gateway/message_router.py"
+        type: code
+        action: modify
+        detail: "广播函数添加 squad 过滤逻辑"
+      - path: "autoservice/plugins/squad_plugin.py"
+        type: code
+        action: modify
+        detail: "保证所有对话有 squad_id"
+    verification: |
+      1. Operator A 订阅 squad "web-support"，Operator B 订阅 squad "vip"
+      2. web-support 对话消息 → 仅 A 收到
+      3. vip 对话消息 → 仅 B 收到
+    estimated_effort: small
+    estimated_lines: 60
+    status: pending
+    owner: null
+
+  - id: T6A.3
+    name: "重连消息回放"
+    description: |
+      后端 server_hello 处理中实现消息回放：
+      1. 读取 client_hello 中的 lastSeen cursor
+      2. 从 EventBus 查询 since_sequence 之后的消息
+      3. 逐条发送补漏消息
+      4. 发送 replay_complete{count} 帧
+    line: A
+    type: green
+    phase: P6A
+    module: MOD-6A
+    gap_ref: BRK-03
+    story_refs: ["US-2.1"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/web_gateway.py"
+        type: code
+        action: modify
+        detail: "client_hello handler 读取 last_seen，调用 replay"
+      - path: "autoservice/gateway/message_router.py"
+        type: code
+        action: modify
+        detail: "新增 replay_messages(ws, since_sequence) 函数"
+    verification: |
+      1. 客户发 3 条消息 → 断线 → 重连带 lastSeen=msg2
+      2. 收到 msg3 重放 → replay_complete{count:1}
+      3. 无 lastSeen 时不重放，直接 server_hello
+    estimated_effort: medium
+    estimated_lines: 120
+    status: pending
+    owner: null
+
+  - id: T6A.4
+    name: "错误码前后端对齐"
+    description: |
+      统一到 docs/contracts/frontend-ws-schema.md 冻结码表。
+      选择方案：以前端码表为准（4010-4018, 5010-5011），后端 errors.py 对齐。
+    line: S
+    type: green
+    phase: P6A
+    module: MOD-6A
+    gap_ref: BRK-04
+    story_refs: []
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/gateway/errors.py"
+        type: code
+        action: modify
+        detail: "错误码对齐到前端定义"
+      - path: "docs/contracts/frontend-ws-schema.md"
+        type: doc
+        action: modify
+        detail: "冻结错误码映射表"
+    verification: |
+      1. 后端所有错误码与前端 types.ts 完全匹配
+      2. 前端错误分支判断（如 4013→不重连）可正确触发
+    estimated_effort: small
+    estimated_lines: 40
+    status: pending
+    owner: null
+
+  # ─── Phase 6B: 向导端到端打通 (P0) ─────────────────────
+
+  - id: T6B.1
+    name: "Upload 端点接线 soul 生成"
+    description: |
+      onboarding.py upload_and_parse 端点在文本提取完成后：
+      1. 调用 SoulGenerator.generate() 传入提取文本 + industry + brand_name
+      2. 返回结果中增加 souls 字段（4 角色摘要）
+    line: A
+    type: green
+    phase: P6B
+    module: MOD-6B
+    gap_ref: BRK-05
+    story_refs: ["US-1.1"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/onboarding.py"
+        type: code
+        action: modify
+        detail: "upload_and_parse 尾部增加 soul_generator 调用"
+    verification: |
+      1. POST /api/onboard/upload 附带 PDF → 返回含 souls 字段
+      2. souls 包含 4 个角色的 soul.md 摘要
+      3. soul_generator 不可用时返回错误提示而非静默跳过
+    estimated_effort: small
+    estimated_lines: 50
+    status: pending
+    owner: null
+
+  - id: T6B.2
+    name: "Activate 返回实际可访问 URL"
+    description: |
+      onboarding.py activate_sandbox 端点：
+      1. 创建租户运行时目录 .autoservice/tenants/{tenant_id}/
+      2. 持久化租户状态
+      3. 返回实际可访问的 URL（如 http://localhost:8000/chat?tenant={tenant_id}）
+    line: A
+    type: green
+    phase: P6B
+    module: MOD-6B
+    gap_ref: BRK-06
+    story_refs: ["US-1.2"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/onboarding.py"
+        type: code
+        action: modify
+        detail: "activate_sandbox 重写"
+    verification: |
+      1. POST /api/onboard/activate → 返回可打开的 URL
+      2. 租户目录已创建
+    estimated_effort: small
+    estimated_lines: 40
+    status: pending
+    owner: null
+
+  - id: T6B.3
+    name: "虚拟预演传正确参数 + 扩展 mock"
+    description: |
+      api_routes.py 调用 generate_sim_dialogs 时传入 kb_path 和 llm_client。
+      LLM 不可用时 fallback 扩展到 ≥10 条 mock 并标注"演示数据"。
+    line: A
+    type: green
+    phase: P6B
+    module: MOD-6B
+    gap_ref: BRK-07
+    story_refs: ["US-1.3"]
+    depends_on: ["T6B.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "rehearsal 端点传入 kb_path + llm_client"
+    verification: |
+      1. LLM 可用时：返回 ≥10 条真实生成对话
+      2. LLM 不可用时：返回 ≥10 条 mock + is_demo:true 标记
+    estimated_effort: small
+    estimated_lines: 20
+    status: pending
+    owner: null
+
+  - id: T6B.4
+    name: "合规预检传真实 config"
+    description: |
+      api_routes.py 合规扫描端点从租户运行时目录加载实际 config，
+      传入 engine.scan(tenant_id, real_config) 而非空 dict。
+    line: A
+    type: green
+    phase: P6B
+    module: MOD-6B
+    gap_ref: BRK-08
+    story_refs: ["US-1.4"]
+    depends_on: ["T6B.2"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "合规端点加载真实 tenant config"
+    verification: |
+      1. 有配置的租户 → 返回真实检查结果（非全 CRITICAL）
+      2. 无配置的租户 → 返回明确错误提示
+    estimated_effort: small
+    estimated_lines: 30
+    status: pending
+    owner: null
+
+  - id: T6B.5
+    name: "向导步骤校验 + 进度持久化"
+    description: |
+      前端 WizardTab：
+      1. 每步完成条件校验（Step1 需 files_parsed>0，Step3 需所有 ⚠ 降级）
+      2. 进度持久化到 localStorage（Zustand persist middleware）
+    line: B
+    type: green
+    phase: P6B
+    module: MOD-6B
+    gap_ref: DEV-01
+    story_refs: ["US-1.4"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/WizardTab.tsx"
+        type: code
+        action: modify
+        detail: "Next 按钮增加完成条件校验"
+      - path: "frontend/apps/admin-portal/src/store/adminStore.ts"
+        type: code
+        action: modify
+        detail: "增加 Zustand persist middleware"
+    verification: |
+      1. Step 1 未上传文件 → Next 按钮 disabled
+      2. 刷新页面 → 步骤进度保持
+    estimated_effort: small
+    estimated_lines: 80
+    status: pending
+    owner: null
+
+  # ─── Phase 6C: 计费链路打通 (P0) ───────────────────────
+
+  - id: T6C.1
+    name: "CSAT 评分全链路"
+    description: |
+      端到端实现 CSAT 评分流程：
+      1. 后端: conversation.closed 事件时向客户 WS 发送 csat_request 帧
+      2. 前端: customer-chat 新增评分弹窗（1-5 分）
+      3. 前端: 提交 csat_response 帧
+      4. 后端: 收到 csat_response → BillingMetrics.record_csat()
+    line: S
+    type: yellow
+    phase: P6C
+    module: MOD-6C
+    gap_ref: MISS-07
+    story_refs: ["US-2.6"]
+    depends_on: ["T6A.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/gateway/message_router.py"
+        type: code
+        action: modify
+        detail: "conversation.closed 时发送 csat_request 帧"
+      - path: "frontend/apps/customer-chat/src/components/CSATRating.tsx"
+        type: code
+        action: create
+        detail: "1-5 分评分弹窗组件"
+      - path: "frontend/apps/customer-chat/src/hooks/useConversation.ts"
+        type: code
+        action: modify
+        detail: "监听 csat_request，提交 csat_response"
+    verification: |
+      1. 对话 resolve → 客户看到评分弹窗
+      2. 选择分数 → csat_response 帧发出
+      3. BillingMetrics.record_csat() 被调用，数据可查
+    estimated_effort: medium
+    estimated_lines: 190
+    status: pending
+    owner: null
+
+  - id: T6C.2
+    name: "Metrics Plugin → BillingMetrics 联通"
+    description: |
+      1. metrics_plugin.on_mode_changed 调用 BillingMetrics.record_takeover()
+      2. metrics_plugin.on_csat_received 调用 BillingMetrics.record_csat()
+      3. 移除 api_routes.py 中的 seed data 代码
+    line: A
+    type: green
+    phase: P6C
+    module: MOD-6C
+    gap_ref: DEV-10
+    story_refs: ["US-2.6"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/plugins/metrics_plugin.py"
+        type: code
+        action: modify
+        detail: "on_mode_changed → record_takeover()"
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "移除 _get_billing() seed data"
+    verification: |
+      1. mode.changed → takeover 事件触发 → billing 数据自增
+      2. /api/billing/summary 返回真实数据（非 demo-conv-1/2）
+    estimated_effort: small
+    estimated_lines: 30
+    status: pending
+    owner: null
+
+  - id: T6C.3
+    name: "/approve /reject 真实执行"
+    description: |
+      1. 解析 /approve #N 中的提案 ID
+      2. ProposalPipeline 新增 update_status(id, status) 方法
+      3. approve 时调用 CanaryRouter.activate(proposal_id)
+      4. reject 时标记提案为 rejected
+    line: A
+    type: yellow
+    phase: P6C
+    module: MOD-6C
+    gap_ref: BRK-09
+    story_refs: ["US-3.2", "US-4.3"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "/approve /reject handler 重写"
+      - path: "autoservice/proposal_pipeline.py"
+        type: code
+        action: modify
+        detail: "新增 update_status() 方法"
+    verification: |
+      1. /approve #1 → 提案状态变 accepted → canary 启动
+      2. /reject #1 → 提案状态变 rejected
+      3. 无效 ID → 返回错误提示
+    estimated_effort: small
+    estimated_lines: 40
+    status: pending
+    owner: null
+
+  # ─── Phase 6D: 仪表盘补全 (P1) ─────────────────────────
+
+  - id: T6D.1
+    name: "SLA 接入真实数据"
+    description: |
+      1. SLAAggregator 在 web_gateway 启动时全局初始化
+      2. metrics_plugin hook 在每次对话事件时 record() 真实数据
+      3. 移除 api_routes.py 中 _get_sla() 的 seed data
+    line: A
+    type: yellow
+    phase: P6D
+    module: MOD-6D
+    gap_ref: DEV-02
+    story_refs: ["US-3.1"]
+    depends_on: ["T6C.2"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/web_gateway.py"
+        type: code
+        action: modify
+        detail: "启动时初始化全局 SLAAggregator"
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "移除 seed data，使用全局 SLA 实例"
+    verification: |
+      1. 新对话产生真实 SLA 数据
+      2. /api/sla/summary 返回非种子值
+    estimated_effort: small
+    estimated_lines: 50
+    status: pending
+    owner: null
+
+  - id: T6D.2
+    name: "Dashboard 布局重组（3★ + 3 辅助分区）"
+    description: |
+      重组 DashboardTab 布局：顶部 Agent 状态卡 → 中部 3★ KPI 卡 + 3 辅助 KPI 卡（分区） → 底部预留趋势图/Leaderboard 区域
+    line: B
+    type: green
+    phase: P6D
+    module: MOD-6D
+    gap_ref: MISS-01
+    story_refs: ["US-3.1"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/DashboardTab.tsx"
+        type: code
+        action: modify
+        detail: "布局重组为分区卡片"
+    verification: |
+      1. 3★ 计费指标与 3 辅助指标视觉分区
+      2. 现有 7 指标数据不丢失
+    estimated_effort: small
+    estimated_lines: 40
+    status: pending
+    owner: null
+
+  - id: T6D.3
+    name: "接管次数趋势图"
+    description: |
+      1. 后端新增 /api/metrics/takeover-trend?period=week API
+      2. 前端添加时序折线图组件（recharts）
+    line: S
+    type: green
+    phase: P6D
+    module: MOD-6D
+    gap_ref: MISS-02
+    story_refs: ["US-3.1"]
+    depends_on: ["T6C.2"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "新增 /api/metrics/takeover-trend 端点"
+      - path: "frontend/apps/admin-portal/src/components/TakeoverTrendChart.tsx"
+        type: code
+        action: create
+        detail: "recharts 折线图"
+      - path: "frontend/apps/admin-portal/src/components/DashboardTab.tsx"
+        type: code
+        action: modify
+        detail: "底部添加趋势图"
+    verification: |
+      1. Dashboard 底部显示接管次数折线图
+      2. 有数据时显示趋势；无数据时显示空状态
+    estimated_effort: medium
+    estimated_lines: 140
+    status: pending
+    owner: null
+
+  - id: T6D.4
+    name: "人工客服 Leaderboard"
+    description: |
+      1. 后端新增 /api/metrics/operator-leaderboard API（按处理量/CSAT/响应速度排名）
+      2. 前端添加排行榜表格组件
+    line: S
+    type: green
+    phase: P6D
+    module: MOD-6D
+    gap_ref: MISS-03
+    story_refs: ["US-3.1"]
+    depends_on: ["T6C.2"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "新增 /api/metrics/operator-leaderboard 端点"
+      - path: "frontend/apps/admin-portal/src/components/LeaderboardTable.tsx"
+        type: code
+        action: create
+        detail: "排行榜表格"
+      - path: "frontend/apps/admin-portal/src/components/DashboardTab.tsx"
+        type: code
+        action: modify
+        detail: "底部添加 Leaderboard"
+    verification: |
+      1. Dashboard 底部显示 operator 排名表
+      2. 按处理量降序排列
+    estimated_effort: medium
+    estimated_lines: 120
+    status: pending
+    owner: null
+
+  - id: T6D.5
+    name: "时间切片选择器"
+    description: |
+      1. /api/sla/summary 增加 period 参数（today/week/month/quarter）
+      2. 前端 Dashboard 顶部添加时间切换 Tabs
+    line: S
+    type: green
+    phase: P6D
+    module: MOD-6D
+    gap_ref: MISS-04
+    story_refs: ["US-3.1"]
+    depends_on: ["T6D.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "/api/sla/summary 增加 period 参数"
+      - path: "frontend/apps/admin-portal/src/components/DashboardTab.tsx"
+        type: code
+        action: modify
+        detail: "添加时间选择 Tabs"
+    verification: |
+      1. 切换"今日"→"本周" → 数据范围变化
+      2. 默认选中"今日"
+    estimated_effort: small
+    estimated_lines: 60
+    status: pending
+    owner: null
+
+  # ─── Phase 6E: 体验打磨 (P1-P3) ───────────────────────
+
+  # --- P1 快速修复（合并为一个 task）---
+  - id: T6E.1
+    name: "快速修复三连（并发上限 + 组件集成 + 语言切换）"
+    description: |
+      三个小改动合并执行：
+      1. DEV-06: operatorStore.ts concurrencyLimit 10→5
+      2. DEV-07: WorkspacePage 添加 ConcurrencyWarning + useNotificationSound
+      3. MISS-08: main.tsx 或 ChatHeader 添加语言切换下拉
+    line: B
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: "DEV-06 + DEV-07 + MISS-08"
+    story_refs: ["US-2.3"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/operator-console/src/store/operatorStore.ts"
+        type: code
+        action: modify
+        detail: "concurrencyLimit: 5"
+      - path: "frontend/apps/operator-console/src/components/WorkspacePage.tsx"
+        type: code
+        action: modify
+        detail: "添加 ConcurrencyWarning + useNotificationSound"
+      - path: "frontend/apps/operator-console/src/main.tsx"
+        type: code
+        action: modify
+        detail: "语言切换 UI"
+    verification: |
+      1. 并发上限显示为 5
+      2. WorkspacePage 渲染 ConcurrencyWarning
+      3. 新消息到达触发提示音
+      4. 可切换语言
+    estimated_effort: small
+    estimated_lines: 61
+    status: pending
+    owner: null
+
+  # --- P2 后端行为修复 ---
+  - id: T6E.2
+    name: "占位超时自动升级到人工"
+    description: |
+      placeholder_stream.py slow_path 超时后：
+      1. 调用 engine.switch_mode(copilot)
+      2. 发送系统消息"正在为您转接人工客服"
+    line: A
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-04
+    story_refs: ["US-2.2"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/placeholder_stream.py"
+        type: code
+        action: modify
+        detail: "slow_path 超时分支增加升级逻辑"
+    verification: |
+      1. 慢查询超时 → 模式切换 + 安抚文案发出
+    estimated_effort: small
+    estimated_lines: 30
+    status: pending
+    owner: null
+
+  - id: T6E.3
+    name: "老客户上下文问候"
+    description: |
+      lifecycle_plugin.on_conversation_created 中：
+      1. 查 CRM 是否有历史记录
+      2. 如有历史，将历史摘要注入首条 agent 回复的 context
+    line: A
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-05
+    story_refs: ["US-2.1"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/plugins/lifecycle_plugin.py"
+        type: code
+        action: modify
+        detail: "on_conversation_created 区分新老客户"
+    verification: |
+      1. 老客户 → 问候消息引用历史
+      2. 新客户 → 标准问候
+    estimated_effort: small
+    estimated_lines: 40
+    status: pending
+    owner: null
+
+  - id: T6E.4
+    name: "Canary advance 修复（保留 force 参数）"
+    description: |
+      移除 advance 端点的 demo hack（回退 90000s）。
+      增加 force=true 查询参数供开发调试，生产路径严格遵循观测期。
+    line: A
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-03
+    story_refs: ["US-4.4"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "advance 端点重写"
+    verification: |
+      1. 无 force 参数 → 观测期未满时返回 423 Locked
+      2. force=true → 跳过观测期（调试用）
+    estimated_effort: small
+    estimated_lines: 20
+    status: pending
+    owner: null
+
+  - id: T6E.5
+    name: "Memory Pool 自动录入对话"
+    description: |
+      lifecycle_plugin 或 metrics_plugin 的 on_message_sent hook 中
+      调用 memory_pool.record_turn()，使白天对话自动入池。
+    line: A
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-12
+    story_refs: ["US-4.2"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/plugins/lifecycle_plugin.py"
+        type: code
+        action: modify
+        detail: "on_message_sent 调用 record_turn()"
+    verification: |
+      1. 对话消息自动出现在 memory_pool.db
+    estimated_effort: small
+    estimated_lines: 20
+    status: pending
+    owner: null
+
+  - id: T6E.6
+    name: "旧 WS 栈标记 deprecated"
+    description: |
+      channels/web/app.py 顶部添加 deprecation warning。
+      新前端只连 autoservice/web_gateway.py。
+    line: A
+    type: green
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-09
+    story_refs: []
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "channels/web/app.py"
+        type: code
+        action: modify
+        detail: "顶部添加 DeprecationWarning"
+    verification: |
+      1. import channels.web.app 时输出 deprecation 警告
+    estimated_effort: small
+    estimated_lines: 10
+    status: pending
+    owner: null
+
+  # --- P2 全栈功能 ---
+  - id: T6E.7
+    name: "SLA 告警 WebSocket 推送"
+    description: |
+      1. alert_engine 检测到阈值触发后，通过 admin WS 连接推送 event 帧
+      2. web_gateway 启动时调用 alert_engine.set_notify(push_fn)
+      3. 前端 admin-portal 监听并渲染告警卡片
+    line: S
+    type: yellow
+    phase: P6E
+    module: MOD-6E
+    gap_ref: MISS-06
+    story_refs: ["US-3.3"]
+    depends_on: ["T6A.1", "T6D.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/web_gateway.py"
+        type: code
+        action: modify
+        detail: "启动时注册 alert push callback"
+      - path: "autoservice/alert_engine.py"
+        type: code
+        action: modify
+        detail: "阈值触发时调用 notify callback"
+      - path: "frontend/apps/admin-portal/src/components/AlertCard.tsx"
+        type: code
+        action: create
+        detail: "告警卡片组件"
+    verification: |
+      1. SLA 阈值超标 → admin WS 收到告警事件
+      2. 前端渲染告警卡片含 /dispatch 按钮
+    estimated_effort: medium
+    estimated_lines: 120
+    status: pending
+    owner: null
+
+  - id: T6E.8
+    name: "Agent 拟回复草稿展示"
+    description: |
+      1. Agent 在生成回复前先以 side 可见性发送草稿
+      2. 前端 CopilotSidebar 专区展示 side 消息并标注"草稿"
+    line: S
+    type: yellow
+    phase: P6E
+    module: MOD-6E
+    gap_ref: MISS-09
+    story_refs: ["US-2.4"]
+    depends_on: ["T6A.1"]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/gateway/message_router.py"
+        type: code
+        action: modify
+        detail: "Agent 回复前发 side 草稿帧"
+      - path: "frontend/apps/operator-console/src/components/CopilotSidebar.tsx"
+        type: code
+        action: modify
+        detail: "草稿专区 + 'Draft' 标签"
+    verification: |
+      1. Copilot 侧栏右侧显示 Agent 草稿
+      2. 草稿与正式消息视觉区分
+    estimated_effort: medium
+    estimated_lines: 100
+    status: pending
+    owner: null
+
+  - id: T6E.9
+    name: "Dream Engine 对话式 4 参数配置"
+    description: |
+      实现管理聊天中 Dream Engine 多轮对话状态机：
+      初始→询问触发时机→询问覆盖范围→询问风险阈值→询问灰度策略→确认保存。
+      每步提供推荐默认值。
+    line: S
+    type: yellow
+    phase: P6E
+    module: MOD-6E
+    gap_ref: MISS-05
+    story_refs: ["US-4.1"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/dream_config_dialog.py"
+        type: code
+        action: create
+        detail: "4 步对话状态机"
+      - path: "autoservice/api_routes.py"
+        type: code
+        action: modify
+        detail: "management/chat 集成 DreamConfigDialog"
+    verification: |
+      1. @Dream Engine → 依次询问 4 个参数
+      2. 每步可用自然语言回复
+      3. /rules show 查看已保存规则
+    estimated_effort: large
+    estimated_lines: 350
+    status: pending
+    owner: null
+
+  - id: T6E.10
+    name: "Proposal Pipeline analyzer 替换 stub"
+    description: |
+      注入 LLM-based analyzer：将回放文本发给 Claude →
+      抽取话术建议/知识盲区 → 结构化为提案。
+    line: A
+    type: yellow
+    phase: P6E
+    module: MOD-6E
+    gap_ref: DEV-11
+    story_refs: ["US-4.3"]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/proposal_pipeline.py"
+        type: code
+        action: modify
+        detail: "替换 _default_stub_analyzer 为 LLM 调用"
+    verification: |
+      1. 回放对话后生成有意义的提案（非 identity 函数）
+      2. LLM 不可用时 graceful fallback
+    estimated_effort: medium
+    estimated_lines: 80
+    status: pending
+    owner: null
+
+# ============================================================
+# DEPENDENCY GRAPH
+# ============================================================
+dependency_graph:
+  # Phase 6A internal
+  T6A.1: ["T6A.2", "T6C.1", "T6E.7", "T6E.8"]
+  T6A.2: []
+  T6A.3: []
+  T6A.4: []
+
+  # Phase 6B internal
+  T6B.1: ["T6B.3"]
+  T6B.2: ["T6B.4"]
+  T6B.3: []
+  T6B.4: []
+  T6B.5: []
+
+  # Phase 6C → 6D
+  T6C.1: []
+  T6C.2: ["T6D.1", "T6D.3", "T6D.4"]
+  T6C.3: []
+
+  # Phase 6D internal
+  T6D.1: ["T6D.5"]
+  T6D.2: []
+  T6D.3: []
+  T6D.4: []
+  T6D.5: []
+
+  # Phase 6E (mostly independent)
+  T6E.1: []
+  T6E.2: []
+  T6E.3: []
+  T6E.4: []
+  T6E.5: []
+  T6E.6: []
+  T6E.7: []
+  T6E.8: []
+  T6E.9: []
+  T6E.10: []
+
+critical_path:
+  - ["T6A.1", "T6C.1"]           # 协议 → CSAT（medium + medium = ~8h）
+  - ["T6C.2", "T6D.1", "T6D.5"]  # 计费 → SLA 真实数据 → 时间切片（~6h）
+  - ["T6A.1", "T6E.7"]           # 协议 → SLA 告警推送（~6h）
+critical_path_length: 3  # 最长链 3 步
+
+# ============================================================
+# PHASES
+# ============================================================
+phases:
+  - id: P6A
+    name: "协议层修复"
+    tasks: ["T6A.1", "T6A.2", "T6A.3", "T6A.4"]
+    gate: "Operator 订阅 squad 后只收到自己 squad 消息；重连后消息回放完整"
+    priority: P0
+    parallelizable_with: ["P6B"]
+
+  - id: P6B
+    name: "向导端到端打通"
+    tasks: ["T6B.1", "T6B.2", "T6B.3", "T6B.4", "T6B.5"]
+    gate: "上线向导 4 步跑通，soul 生成 + 可用 URL + 真实预演 + 合规非全红"
+    priority: P0
+    parallelizable_with: ["P6A"]
+
+  - id: P6C
+    name: "计费链路打通"
+    tasks: ["T6C.1", "T6C.2", "T6C.3"]
+    gate: "CSAT 端到端可评分；接管次数来自真实事件；/approve 触发灰度"
+    priority: P0
+    depends_on: ["P6A"]
+
+  - id: P6D
+    name: "仪表盘补全"
+    tasks: ["T6D.1", "T6D.2", "T6D.3", "T6D.4", "T6D.5"]
+    gate: "Dashboard 显示真实数据、分区布局、趋势图、Leaderboard、时间切片"
+    priority: P1
+    depends_on: ["P6C"]
+
+  - id: P6E
+    name: "体验打磨"
+    tasks: ["T6E.1", "T6E.2", "T6E.3", "T6E.4", "T6E.5", "T6E.6", "T6E.7", "T6E.8", "T6E.9", "T6E.10"]
+    gate: "并发上限=5、通知音、语言切换、CSAT、草稿、Dream 配置、告警推送全部可用"
+    priority: "P1-P3"
+    depends_on: ["P6A"]
+    note: "大部分 task 独立，可与 P6C/P6D 并行"
+
+# ============================================================
+# SUMMARY
+# ============================================================
+summary:
+  total_tasks: 25
+  by_type:
+    green: 17  # 68%
+    yellow: 8  # 32%
+    red: 0     # 0%
+  by_line:
+    A: 14  # backend
+    B: 2   # frontend
+    S: 9   # shared (full-stack)
+  by_phase:
+    P6A: 4
+    P6B: 5
+    P6C: 3
+    P6D: 5
+    P6E: 10  # 3 small merged into T6E.1
+  by_effort:
+    small: 16   # <2h each
+    medium: 7   # 2-8h each
+    large: 1    # >8h (T6E.9 Dream Engine dialog)
+  estimated_total_lines: ~1790
+  critical_path_length: 3
+
+  execution_estimate: |
+    With 2 parallel lines (A + B/S):
+    - P6A + P6B parallel: ~1 day
+    - P6C: ~0.5 day
+    - P6D + P6E parallel: ~1.5 days
+    Total: ~3 days
+
+warnings:
+  - "T6E.9 (Dream Engine 对话式配置) 是最大单任务 (~350 行, large) — 可拆分为状态机 + UI 两个 task"
+  - "T6C.1 (CSAT) 涉及前后端 + 新协议帧，需 A/B 协调"
+  - "P6D 全部依赖 T6C.2 (metrics→billing) — 确保 T6C.2 优先完成"
+  - "Line A 负载 14 tasks vs Line B 2 tasks — S 线 9 tasks 可灵活分配"
