@@ -26,7 +26,7 @@ describe('adminStore', () => {
     expect(useAdminStore.getState().activeTab).toBe('dashboard');
   });
 
-  it('TC-04: default activeTab is wizard', () => {
-    expect(useAdminStore.getState().activeTab).toBe('wizard');
+  it('TC-04: default activeTab is notifications', () => {
+    expect(useAdminStore.getState().activeTab).toBe('notifications');
   });
 });
