@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 
+export interface TakeoverWarning {
+  remainingMs: number;
+  reason: 'idle';
+  warningFrameId: string;
+  armedAt: string;
+}
+
 export type CardStatus =
   | 'idle'
   | 'waiting-reply'
@@ -16,6 +23,8 @@ export interface Conversation {
   lastMessage: string;
   lastMessageSender: 'customer' | 'agent' | '';
   lastActivityTs: string;
+  takeoverOperatorId?: string | null;
+  takeoverWarning?: TakeoverWarning;
 }
 
 export function deriveCardStatus(conv: Conversation): CardStatus {
@@ -65,6 +74,8 @@ export interface OperatorState {
   openCopilot: (convId: string) => void;
   closeCopilot: () => void;
   addCopilotMessage: (convId: string, msg: CopilotMessage) => void;
+  setTakeoverWarning: (conversationId: string, w: TakeoverWarning) => void;
+  clearTakeoverWarning: (conversationId: string) => void;
 }
 
 export const initialState = {
@@ -168,4 +179,25 @@ export const useOperatorStore = create<OperatorState>((set) => ({
         },
       };
     }),
+
+  setTakeoverWarning: (id, warning) => set((state) => {
+    const conv = state.conversations[id];
+    if (!conv) return state;
+    return {
+      conversations: {
+        ...state.conversations,
+        [id]: { ...conv, takeoverWarning: warning },
+      },
+    };
+  }),
+
+  clearTakeoverWarning: (id) => set((state) => {
+    const conv = state.conversations[id];
+    if (!conv || !conv.takeoverWarning) return state;
+    const copy: Conversation = { ...conv };
+    delete (copy as any).takeoverWarning;
+    return {
+      conversations: { ...state.conversations, [id]: copy },
+    };
+  }),
 }));
