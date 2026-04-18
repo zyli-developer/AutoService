@@ -168,18 +168,37 @@ async def dispatch(
 
 
 async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> list[dict[str, Any]]:
+    from autoservice.conversation_engine.errors import UnknownParticipant
+
     payload = env.payload
     command = payload.get("command", "")
     conversation_id = payload.get("conversation_id", "")
     actor_id = payload.get("operator_id") or payload.get("actor_id") or ""
     args = payload.get("args") or {}
-    try:
+
+    async def _call() -> None:
         await engine.handle_command(
-            conversation_id,
-            actor_id=actor_id,
-            command=command,
-            args=args,
+            conversation_id, actor_id=actor_id, command=command, args=args,
         )
+
+    try:
+        try:
+            await _call()
+        except UnknownParticipant:
+            # Auto-join the operator as a participant and retry once.
+            # Mirrors the legacy REST endpoint behavior so operators can hijack
+            # without an explicit operator_join handshake.
+            if not (actor_id and conversation_id):
+                raise
+            await engine.join(
+                conversation_id,
+                Participant(
+                    id=actor_id,
+                    role=ParticipantRole.OPERATOR,
+                    joined_at=datetime.now(timezone.utc),
+                ),
+            )
+            await _call()
     except NotImplementedError as exc:
         hint = _extract_hint(exc) or str(exc)
         return [
