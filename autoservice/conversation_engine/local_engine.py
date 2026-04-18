@@ -145,9 +145,24 @@ class LocalEngine:
         return conv
 
     def _get_conv_metadata(self, conversation_id: str) -> dict[str, Any]:
-        """Return conversation metadata for squad scope filtering."""
+        """Return conversation metadata for squad scope filtering.
+
+        Plugins may supply additional keys (e.g. squad_id from SquadPlugin)
+        via an optional `get_metadata(conv_id)` method — useful for plugins
+        that track state outside the Conversation dataclass.
+        """
         conv = self._conversations.get(conversation_id)
-        return dict(conv.metadata) if conv else {}
+        meta: dict[str, Any] = dict(conv.metadata) if conv else {}
+        for hook in self._hooks:
+            provider = getattr(hook, "get_metadata", None)
+            if callable(provider):
+                try:
+                    extra = provider(conversation_id)
+                    if extra:
+                        meta.update(extra)
+                except Exception:
+                    pass
+        return meta
 
     def _update_conv(self, conv_id: str, **kwargs: Any) -> Conversation:
         old = self._get_conv(conv_id)

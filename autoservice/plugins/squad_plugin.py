@@ -56,6 +56,16 @@ class SquadPlugin:
 
     # ---------- Public API ----------
 
+    def get_metadata(self, conv_id: str) -> dict[str, Any]:
+        """Expose squad_id to engine's scope-filtered event fan-out.
+
+        The LocalEngine's scope filter reads `squad_id` from conversation
+        metadata; because squad assignment is tracked here (not on the
+        Conversation dataclass), expose it via this provider hook.
+        """
+        squad = self._assignments.get(conv_id)
+        return {"squad_id": squad} if squad else {}
+
     def get_squad(self, conv_id: str) -> str:
         """Return current squad for a conversation.
 
