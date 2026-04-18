@@ -25,6 +25,9 @@ export interface Conversation {
   lastActivityTs: string;
   takeoverOperatorId?: string | null;
   takeoverWarning?: TakeoverWarning;
+  takeoverArmedAt?: string;     // ISO timestamp from backend
+  takeoverIdleMs?: number;
+  takeoverWarningMs?: number;
 }
 
 export function deriveCardStatus(conv: Conversation): CardStatus {
@@ -76,6 +79,7 @@ export interface OperatorState {
   addCopilotMessage: (convId: string, msg: CopilotMessage) => void;
   setTakeoverWarning: (conversationId: string, w: TakeoverWarning) => void;
   clearTakeoverWarning: (conversationId: string) => void;
+  setTakeoverArmed: (conversationId: string, armed: { armedAt: string; idleMs: number; warningMs: number }) => void;
 }
 
 export const initialState = {
@@ -198,6 +202,22 @@ export const useOperatorStore = create<OperatorState>((set) => ({
     delete (copy as any).takeoverWarning;
     return {
       conversations: { ...state.conversations, [id]: copy },
+    };
+  }),
+
+  setTakeoverArmed: (id, { armedAt, idleMs, warningMs }) => set((state) => {
+    const conv = state.conversations[id];
+    if (!conv) return state;
+    return {
+      conversations: {
+        ...state.conversations,
+        [id]: {
+          ...conv,
+          takeoverArmedAt: armedAt,
+          takeoverIdleMs: idleMs,
+          takeoverWarningMs: warningMs,
+        },
+      },
     };
   }),
 }));

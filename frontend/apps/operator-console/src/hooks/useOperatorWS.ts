@@ -48,11 +48,18 @@ export function handleEventFrame(
       const to = (event.data.to as Conversation['mode'] | undefined)
         ?? (event.data.new_mode as Conversation['mode']);
       const takeoverId = event.data.takeover_operator_id as string | null | undefined;
-      updateConversation(convId, {
+      const patch: Partial<Conversation> = {
         mode: to,
         takeoverOperatorId: takeoverId ?? null,
         lastActivityTs: ts,
-      });
+      };
+      if (to !== 'takeover') {
+        // Clear armed timer fields when leaving takeover mode
+        (patch as any).takeoverArmedAt = undefined;
+        (patch as any).takeoverIdleMs = undefined;
+        (patch as any).takeoverWarningMs = undefined;
+      }
+      updateConversation(convId, patch);
       break;
     }
     case 'conversation.closed':
@@ -187,6 +194,21 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
               });
             }
           }
+        }
+
+        if (frame.type === 'takeover_timer_armed') {
+          const p = frame.payload as {
+            conversation_id: string;
+            armed_at: string;
+            idle_timeout_ms: number;
+            warning_ms: number;
+          };
+          useOperatorStore.getState().setTakeoverArmed(p.conversation_id, {
+            armedAt: p.armed_at,
+            idleMs: p.idle_timeout_ms,
+            warningMs: p.warning_ms,
+          });
+          return;
         }
 
         if (frame.type === 'takeover_warning') {

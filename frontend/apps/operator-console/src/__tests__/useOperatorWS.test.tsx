@@ -128,6 +128,34 @@ describe('useOperatorWS', () => {
     expect(useOperatorStore.getState().conversations['c1']?.takeoverWarning).toBeUndefined();
   });
 
+  it('TC-019: takeover_timer_armed frame populates store armed fields', async () => {
+    useOperatorStore.getState().login('op42', 'tok');
+    useOperatorStore.getState().addConversation({
+      id: 'c1', squadId: 'web-support', customerId: 'cust1',
+      mode: 'takeover', state: 'active', lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+    } as any);
+
+    render(<TestComponent />);
+    await act(async () => { fakeInstance!.triggerOpen(); });
+
+    await act(async () => {
+      fakeInstance!.pushFrame({
+        v: 1, type: 'takeover_timer_armed', id: 'f1', ts: 't',
+        payload: {
+          conversation_id: 'c1',
+          armed_at: '2026-04-18T00:00:00Z',
+          idle_timeout_ms: 8000,
+          warning_ms: 3000,
+        },
+      });
+    });
+
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.takeoverArmedAt).toBe('2026-04-18T00:00:00Z');
+    expect(conv?.takeoverIdleMs).toBe(8000);
+    expect(conv?.takeoverWarningMs).toBe(3000);
+  });
+
   it('TC-018: mode.changed event with takeover_operator_id updates takeoverOperatorId', async () => {
     useOperatorStore.getState().login('op42', 'tok');
     useOperatorStore.getState().addConversation({
