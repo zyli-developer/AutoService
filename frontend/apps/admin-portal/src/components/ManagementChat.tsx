@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { postJSON } from '../api';
+import type { ChatBlock } from './chat/InlineWidget';
+import { InlineWidget } from './chat/InlineWidget';
 
 interface ChatMsg {
   id: string;
   role: 'user' | 'dream_engine' | 'system';
   content: string;
+  blocks?: ChatBlock[];
   ts: string;
 }
 
@@ -102,7 +105,12 @@ export function ManagementChat() {
                     <span className="im-msg-bot-tag">DREAM</span>
                     <span className="im-msg-time">{new Date(msg.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                  <div className="im-msg-text" style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                  {msg.content && (
+                    <div className="im-msg-text" style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                  )}
+                  {msg.blocks?.map((b, i) => (
+                    <InlineWidget key={i} block={b} />
+                  ))}
                 </div>
               </div>
             );
