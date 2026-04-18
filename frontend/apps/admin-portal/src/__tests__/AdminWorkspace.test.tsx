@@ -17,13 +17,21 @@ beforeEach(() => {
 });
 
 describe('AdminWorkspace', () => {
-  it('TC-08: renders workspace with tenant id', () => {
+  it('TC-08: renders workspace shell', () => {
     render(<AdminWorkspace />);
     expect(screen.getByTestId('admin-workspace')).toBeInTheDocument();
+    expect(screen.getByTestId('admin-topbar')).toBeInTheDocument();
+    expect(screen.getByTestId('admin-rail')).toBeInTheDocument();
+  });
+
+  it('TC-08b: tenant id is accessible via avatar menu', async () => {
+    const user = userEvent.setup();
+    render(<AdminWorkspace />);
+    await user.click(screen.getByTestId('avatar-trigger'));
     expect(screen.getByTestId('tenant-id')).toHaveTextContent('tenant-001');
   });
 
-  it('TC-09: shows 5 tabs', () => {
+  it('TC-09: shows 5 tabs in the rail', () => {
     render(<AdminWorkspace />);
     expect(screen.getByTestId('tab-wizard')).toBeInTheDocument();
     expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
@@ -34,7 +42,7 @@ describe('AdminWorkspace', () => {
 
   it('TC-10: default tab is notifications', () => {
     render(<AdminWorkspace />);
-    expect(screen.getByTestId('tab-notifications')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-notifications')).toHaveClass('active');
     expect(screen.getByTestId('content-notifications')).toBeInTheDocument();
   });
 
@@ -45,9 +53,10 @@ describe('AdminWorkspace', () => {
     expect(screen.getByTestId('content-dashboard')).toBeInTheDocument();
   });
 
-  it('TC-12: logout button resets state', async () => {
+  it('TC-12: logout (via avatar menu) resets state', async () => {
     const user = userEvent.setup();
     render(<AdminWorkspace />);
+    await user.click(screen.getByTestId('avatar-trigger'));
     await user.click(screen.getByTestId('btn-logout'));
     expect(useAdminStore.getState().isLoggedIn).toBe(false);
   });
