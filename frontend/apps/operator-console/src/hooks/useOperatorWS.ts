@@ -45,8 +45,14 @@ export function handleEventFrame(
       break;
     }
     case 'mode.changed': {
-      const to = event.data.to as Conversation['mode'];
-      updateConversation(convId, { mode: to, lastActivityTs: ts });
+      const to = (event.data.to as Conversation['mode'] | undefined)
+        ?? (event.data.new_mode as Conversation['mode']);
+      const takeoverId = event.data.takeover_operator_id as string | null | undefined;
+      updateConversation(convId, {
+        mode: to,
+        takeoverOperatorId: takeoverId ?? null,
+        lastActivityTs: ts,
+      });
       break;
     }
     case 'conversation.closed':
@@ -180,6 +186,25 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
               });
             }
           }
+        }
+
+        if (frame.type === 'takeover_warning') {
+          const p = frame.payload as {
+            conversation_id: string; remaining_ms: number; reason: 'idle';
+          };
+          useOperatorStore.getState().setTakeoverWarning(p.conversation_id, {
+            remainingMs: p.remaining_ms,
+            reason: p.reason,
+            warningFrameId: frame.id,
+            armedAt: new Date().toISOString(),
+          });
+          return;
+        }
+
+        if (frame.type === 'takeover_warning_cancelled') {
+          const p = frame.payload as { conversation_id: string };
+          useOperatorStore.getState().clearTakeoverWarning(p.conversation_id);
+          return;
         }
 
         if (frame.type === 'event') {

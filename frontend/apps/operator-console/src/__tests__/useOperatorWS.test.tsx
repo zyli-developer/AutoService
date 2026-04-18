@@ -82,4 +82,75 @@ describe('useOperatorWS', () => {
     // After logout, isLoggedIn=false triggers effect cleanup → client.close()
     expect(fakeInstance!.closeCalled).toBe(true);
   });
+
+  it('TC-016: receiving takeover_warning frame calls setTakeoverWarning', async () => {
+    useOperatorStore.getState().login('op42', 'tok');
+    useOperatorStore.getState().addConversation({
+      id: 'c1', squadId: 'web-support', customerId: 'cust1',
+      mode: 'takeover', state: 'active', lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+    } as any);
+
+    render(<TestComponent />);
+    await act(async () => { fakeInstance!.triggerOpen(); });
+
+    await act(async () => {
+      fakeInstance!.pushFrame({
+        v: 1, type: 'takeover_warning', id: 'f1', ts: 't',
+        payload: { conversation_id: 'c1', remaining_ms: 5000, reason: 'idle' },
+      });
+    });
+
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.takeoverWarning?.remainingMs).toBe(5000);
+    expect(conv?.takeoverWarning?.warningFrameId).toBe('f1');
+  });
+
+  it('TC-017: receiving takeover_warning_cancelled clears takeoverWarning', async () => {
+    useOperatorStore.getState().login('op42', 'tok');
+    useOperatorStore.getState().addConversation({
+      id: 'c1', squadId: 'web-support', customerId: 'cust1',
+      mode: 'takeover', state: 'active', lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+    } as any);
+    useOperatorStore.getState().setTakeoverWarning('c1', {
+      remainingMs: 5000, reason: 'idle', warningFrameId: 'f1', armedAt: '2026-04-17T00:00:00Z',
+    });
+
+    render(<TestComponent />);
+    await act(async () => { fakeInstance!.triggerOpen(); });
+
+    await act(async () => {
+      fakeInstance!.pushFrame({
+        v: 1, type: 'takeover_warning_cancelled', id: 'f2', ts: 't',
+        payload: { conversation_id: 'c1' },
+      });
+    });
+
+    expect(useOperatorStore.getState().conversations['c1']?.takeoverWarning).toBeUndefined();
+  });
+
+  it('TC-018: mode.changed event with takeover_operator_id updates takeoverOperatorId', async () => {
+    useOperatorStore.getState().login('op42', 'tok');
+    useOperatorStore.getState().addConversation({
+      id: 'c1', squadId: 'web-support', customerId: 'cust1',
+      mode: 'auto', state: 'active', lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+    } as any);
+
+    render(<TestComponent />);
+    await act(async () => { fakeInstance!.triggerOpen(); });
+
+    await act(async () => {
+      fakeInstance!.pushFrame({
+        v: 1, type: 'event', id: 'e1', ts: 't',
+        payload: { event: {
+          id: 'ev1', type: 'mode.changed', conversation_id: 'c1',
+          data: { old_mode: 'auto', new_mode: 'takeover', takeover_operator_id: 'op42' },
+          timestamp: 't',
+        }},
+      });
+    });
+
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.mode).toBe('takeover');
+    expect(conv?.takeoverOperatorId).toBe('op42');
+  });
 });
