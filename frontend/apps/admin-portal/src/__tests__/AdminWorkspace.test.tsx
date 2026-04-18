@@ -32,10 +32,10 @@ describe('AdminWorkspace', () => {
     expect(screen.getByTestId('tab-billing')).toBeInTheDocument();
   });
 
-  it('TC-10: default tab is wizard', () => {
+  it('TC-10: default tab is notifications', () => {
     render(<AdminWorkspace />);
-    expect(screen.getByTestId('tab-wizard')).toBeInTheDocument();
-    expect(screen.getByTestId('content-wizard')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-notifications')).toBeInTheDocument();
+    expect(screen.getByTestId('content-notifications')).toBeInTheDocument();
   });
 
   it('TC-11: clicking dashboard tab switches content', async () => {
