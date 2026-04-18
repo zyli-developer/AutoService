@@ -12,6 +12,7 @@ export function HijackButton({ conversationId, send, disabled }: HijackButtonPro
   const mode = useOperatorStore(
     (s) => s.conversations[conversationId]?.mode,
   );
+  const operatorId = useOperatorStore((s) => s.operatorId);
 
   const isTakeover = mode === 'takeover';
   const command = isTakeover ? '/release' : '/hijack';
@@ -26,7 +27,11 @@ export function HijackButton({ conversationId, send, disabled }: HijackButtonPro
       type: 'operator_command',
       id: crypto.randomUUID(),
       ts: new Date().toISOString(),
-      payload: { conversation_id: conversationId, command },
+      payload: {
+        conversation_id: conversationId,
+        command,
+        operator_id: operatorId || 'operator',
+      },
     } as Envelope);
   };
 
