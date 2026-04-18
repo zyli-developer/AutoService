@@ -71,6 +71,11 @@ import time as _time
 _conv_created_at: dict[str, float] = {}
 _conv_first_reply_sent: set[str] = set()
 
+# Track the customer WebSocket per conversation so operator/agent replies can
+# be pushed back without the customer needing to subscribe explicitly.
+# Populated on customer_message, cleaned lazily on failed send.
+_customer_ws_by_conv: dict[str, Any] = {}
+
 
 def _infer_operator_from_ws(ws) -> str | None:
     """Best-effort operator_id lookup from WS state (set in web_gateway).
@@ -188,17 +193,32 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
             # Auto-join the operator as a participant and retry once.
             # Mirrors the legacy REST endpoint behavior so operators can hijack
             # without an explicit operator_join handshake.
+            import sys as _sys
+            print(
+                f"[AUTOJOIN] actor={actor_id!r} conv={conversation_id!r} command={command!r}",
+                file=_sys.stderr, flush=True,
+            )
             if not (actor_id and conversation_id):
                 raise
-            await engine.join(
-                conversation_id,
-                Participant(
-                    id=actor_id,
-                    role=ParticipantRole.OPERATOR,
-                    joined_at=datetime.now(timezone.utc),
-                ),
-            )
-            await _call()
+            try:
+                await engine.join(
+                    conversation_id,
+                    Participant(
+                        id=actor_id,
+                        role=ParticipantRole.OPERATOR,
+                        joined_at=datetime.now(timezone.utc),
+                    ),
+                )
+                print("[AUTOJOIN] joined, retrying", file=_sys.stderr, flush=True)
+            except Exception as _jexc:
+                print(f"[AUTOJOIN] join failed: {_jexc!r}", file=_sys.stderr, flush=True)
+                raise
+            try:
+                await _call()
+                print("[AUTOJOIN] retry succeeded", file=_sys.stderr, flush=True)
+            except Exception as _rexc:
+                print(f"[AUTOJOIN] retry failed: {_rexc!r}", file=_sys.stderr, flush=True)
+                raise
     except NotImplementedError as exc:
         hint = _extract_hint(exc) or str(exc)
         return [
@@ -495,6 +515,11 @@ async def _call_engine(
             conv_id, source=source, content=payload["content"],
         )
 
+        # Remember the customer's WS so operator/agent can push back without
+        # the customer needing an explicit subscribe.
+        if ws is not None:
+            _customer_ws_by_conv[conv_id] = ws
+
         # Broadcast customer message to operator connections subscribed to this squad (T6A.2)
         customer_frame = _message_frame(msg)
         customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
@@ -526,12 +551,26 @@ async def _call_engine(
         })]
 
     if frame_type == "operator_message":
+        conv_id = payload["conversation_id"]
+        operator_id = payload.get("operator_id", "operator")
         msg = await engine.send_message(
-            payload["conversation_id"],
-            source=payload.get("operator_id", "operator"),
-            content=payload["content"],
+            conv_id, source=operator_id, content=payload["content"],
         )
-        return [_message_frame(msg)]
+        frame = _message_frame(msg)
+        frame["payload"]["source_display"] = {"id": operator_id, "role": "operator"}
+
+        # Push to the customer WS for this conversation (if registered)
+        cust_ws = _customer_ws_by_conv.get(conv_id)
+        if cust_ws is not None and cust_ws is not ws:
+            try:
+                await cust_ws.send_json(frame)
+            except Exception:
+                _customer_ws_by_conv.pop(conv_id, None)
+
+        # Broadcast to other operators subscribed to this squad (excluding the sender)
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+
+        return [frame]
 
     if frame_type == "csat_response":
         conv_id = payload["conversation_id"]
