@@ -1,5 +1,6 @@
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
+import { TakeoverWarning } from './TakeoverWarning';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
@@ -56,6 +57,7 @@ export function CopilotView({ send }: CopilotViewProps) {
             : '默认 copilot 模式 · agent driver'}
         </div>
       </div>
+      <TakeoverWarning conversationId={activeCopilotConvId} send={send} />
       <div className="im-feed" data-testid="copilot-sidebar">
         {draftMessages.length > 0 && (
           <div data-testid="copilot-draft-section" className="im-draft-section" style={{ margin: '8px 0', padding: '8px 12px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6 }}>
