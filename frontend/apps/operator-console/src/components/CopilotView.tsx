@@ -1,6 +1,7 @@
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
+import { HijackButton } from './HijackButton';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
@@ -19,26 +20,6 @@ export function CopilotView({ send }: CopilotViewProps) {
   const messages = allMessages.filter((m) => m.visibility !== 'side');
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
-
-  const operatorId = useOperatorStore((s) => s.operatorId);
-  const updateConversation = useOperatorStore((s) => s.updateConversation);
-
-  const handleHijack = async () => {
-    try {
-      const API = `http://${window.location.hostname}:8000`;
-      const resp = await fetch(
-        `${API}/api/command/hijack?conversation_id=${encodeURIComponent(activeCopilotConvId!)}&operator_id=${encodeURIComponent(operatorId || 'operator')}`,
-        { method: 'POST' },
-      );
-      const result = await resp.json();
-      console.log('[Hijack] result:', result);
-      if (result.ok) {
-        updateConversation(activeCopilotConvId!, { mode: result.mode });
-      }
-    } catch (err) {
-      console.error('[Hijack] failed:', err);
-    }
-  };
 
   return (
     <>
@@ -125,25 +106,7 @@ export function CopilotView({ send }: CopilotViewProps) {
         </div>
       </div>
       <div style={{ padding: '8px 20px', display: 'flex', gap: 8 }}>
-        {!isTakeover && (
-          <button
-            data-testid={`btn-hijack-${activeCopilotConvId}`}
-            onClick={handleHijack}
-            style={{
-              background: 'var(--p)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 9,
-              padding: '6px 14px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            <span className="im-cmd">/hijack</span> {'抢单'}
-          </button>
-        )}
+        <HijackButton conversationId={activeCopilotConvId} send={send} />
         <button
           data-testid="copilot-close"
           onClick={closeCopilot}

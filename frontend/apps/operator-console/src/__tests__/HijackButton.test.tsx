@@ -30,7 +30,7 @@ describe('Hijack in CopilotView', () => {
     const send = vi.fn();
     render(<CopilotView send={send} />);
     const btn = screen.getByTestId('btn-hijack-conv-001');
-    expect(btn).toHaveTextContent(/抢单/);
+    expect(btn).toHaveTextContent(/抢.?单/);
   });
 
   it('TC-02: clicking hijack button calls send with correct frame', async () => {
