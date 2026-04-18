@@ -2,6 +2,7 @@ import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
 import { HijackButton } from './HijackButton';
+import { TakeoverIndicator } from './TakeoverIndicator';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
@@ -26,11 +27,7 @@ export function CopilotView({ send }: CopilotViewProps) {
       <div className="im-main-header" data-testid="copilot-header">
         <div className="im-main-title">
           {'聊天窗'} {activeCopilotConvId.slice(0, 8)}
-          {isTakeover && (
-            <span data-testid="takeover-indicator" style={{ color: 'var(--p)', fontSize: 11, marginLeft: 8, fontWeight: 700 }}>
-              TAKEOVER
-            </span>
-          )}
+          <TakeoverIndicator conversationId={activeCopilotConvId} />
         </div>
         <div className="im-main-subtitle">
           {isTakeover
