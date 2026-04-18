@@ -94,6 +94,7 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
     const client = new WSClientImpl({
       url,
       clientApp: 'operator-console',
+      operatorId: operatorId || undefined,
       heartbeatMs: 20_000,
       onOpen: (hello: ServerHelloPayload) => {
         setSessionId(hello.session_id);
