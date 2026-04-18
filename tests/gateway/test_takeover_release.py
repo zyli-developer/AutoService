@@ -202,3 +202,34 @@ def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_a
     conv = asyncio.run(eng.get_conversation(conv_id))
     assert conv.mode.value == "auto"
     assert conv.takeover_operator_id is None
+
+
+def test_operator_message_reaches_customer_ws(fast_takeover_app):
+    """After hijack, operator_message frames must push to the customer WS.
+
+    Regression: the handler used to only echo back to the sender; customer
+    never saw the operator's reply during TAKEOVER.
+    """
+    with TestClient(fast_takeover_app) as client:
+        with client.websocket_connect("/ws/customer") as cws, \
+             client.websocket_connect("/ws/operator") as ows:
+            _setup(cws, ows)
+            conv_id = _customer_start_conv(cws)
+            _operator_join(ows, conv_id, "op42")
+            _send_cmd(ows, conv_id, "/hijack", "op42")
+            # Confirm hijack succeeded
+            resp = _wait_frame(ows, "command_response", timeout=1.0)
+            assert resp is not None and resp["payload"]["ok"] is True
+
+            # Operator sends a message
+            ows.send_json(_frame("operator_message", {
+                "conversation_id": conv_id,
+                "operator_id": "op42",
+                "content": "hello from operator",
+            }))
+
+            # Customer should receive a 'message' frame with the operator's text
+            frame = _wait_frame(cws, "message", timeout=1.0)
+            assert frame is not None, "customer never received operator message"
+            assert frame["payload"]["message"]["content"] == "hello from operator"
+            assert frame["payload"]["source_display"]["role"] == "operator"
