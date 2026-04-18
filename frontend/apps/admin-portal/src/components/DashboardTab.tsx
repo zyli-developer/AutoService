@@ -83,67 +83,62 @@ export function DashboardTab() {
 
   return (
     <div data-testid="tab-dashboard">
-      {/* --- Time Slice Selector (T6D.5) --- */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+      {/* Time Slice Selector */}
+      <div className="cs-wiz" style={{ marginBottom: 14 }}>
         {PERIOD_OPTIONS.map((opt) => (
           <button
             key={opt.value}
+            type="button"
+            className={`cs-wiz-step ${period === opt.value ? 'cur' : ''}`}
             data-testid={`period-${opt.value}`}
             onClick={() => setPeriod(opt.value)}
-            style={{
-              fontSize: 11,
-              padding: '2px 8px',
-              border: '1px solid var(--silver, #ccc)',
-              borderRadius: 4,
-              background: period === opt.value ? 'var(--m600, #2563eb)' : 'transparent',
-              color: period === opt.value ? '#fff' : 'inherit',
-              cursor: 'pointer',
-            }}
           >
             {opt.label}
           </button>
         ))}
       </div>
 
-      {/* --- Top Section: Agent Status --- */}
-      <div className="cs-card">
-        <div className="cs-ct">🤖 Agent 状态</div>
-        {['customer', 'translate', 'lead', 'triage'].map((a) => (
-          <div className="cs-row" key={a} data-testid={`agent-card-${a}`}>
-            <span>{a} Agent</span>
-            <span style={{ color: 'var(--m600)', fontWeight: 700 }}>online</span>
-          </div>
-        ))}
-      </div>
-
-      {/* --- Middle Section: KPI Metrics --- */}
+      {/* Primary KPIs — big grid */}
       {error && <div className="cs-pg warn" style={{ marginTop: 14 }}>{error}</div>}
       {!sla && !error && <div className="im-empty" style={{ marginTop: 14 }}>加载中...</div>}
 
       {sla && (
         <>
-          {/* Primary billing KPIs (starred) */}
-          <div className="cs-card" style={{ marginTop: 14 }}>
-            <div className="cs-ct">⭐ 核心计费指标</div>
+          <div className="cs-kpi-grid">
             {primaryEntries.map(([key, m]) => (
-              <MetricRow key={key} metricKey={key} m={m} />
+              <div className="cs-kpi" key={key} data-testid={`metric-${key}`}>
+                <div className="cs-kpi-label">{METRIC_LABELS[key] || key}</div>
+                <div className={`cs-kpi-value ${m.count > 0 ? '' : 'muted'}`}>
+                  {formatValue(key, m)}
+                </div>
+                <div className="cs-kpi-sparkline" />
+              </div>
             ))}
           </div>
 
-          {/* Auxiliary KPIs */}
-          <div className="cs-card" style={{ marginTop: 14 }}>
-            <div className="cs-ct">◉ 辅助运营指标</div>
-            {auxiliaryEntries.map(([key, m]) => (
-              <MetricRow key={key} metricKey={key} m={m} />
-            ))}
+          {/* Aux 2-column */}
+          <div className="cs-aux-grid">
+            <div className="cs-card">
+              <div className="cs-ct">🤖 Agent 状态</div>
+              {['customer', 'translate', 'lead', 'triage'].map((a) => (
+                <div className="cs-row" key={a} data-testid={`agent-card-${a}`}>
+                  <span>{a} Agent</span>
+                  <span style={{ color: 'var(--m600)', fontWeight: 700 }}>online</span>
+                </div>
+              ))}
+            </div>
+            <div className="cs-card">
+              <div className="cs-ct">◉ 辅助运营指标</div>
+              {auxiliaryEntries.map(([key, m]) => (
+                <MetricRow key={key} metricKey={key} m={m} />
+              ))}
+            </div>
           </div>
         </>
       )}
 
-      {/* Canary Progress */}
+      {/* Full-width sections */}
       <CanaryProgress />
-
-      {/* --- Bottom Section: Trend Charts & Leaderboard (T6D.3 + T6D.4) --- */}
       <TakeoverTrendChart />
       <LeaderboardTable />
     </div>
