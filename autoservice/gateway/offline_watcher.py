@@ -30,8 +30,12 @@ class OfflineWatcher:
 
     def on_disconnect(self, operator_id: str) -> None:
         self._online.discard(operator_id)
+        prev = self._pending.pop(operator_id, None)
+        if prev and not prev.done():
+            prev.cancel()
         self._pending[operator_id] = asyncio.create_task(
-            self._grace(operator_id), name=f"offline-grace-{operator_id}",
+            self._grace(operator_id),
+            name=f"offline-grace-{operator_id}",
         )
 
     async def _grace(self, operator_id: str) -> None:

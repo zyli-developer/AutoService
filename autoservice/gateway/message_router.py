@@ -193,11 +193,7 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
             # Auto-join the operator as a participant and retry once.
             # Mirrors the legacy REST endpoint behavior so operators can hijack
             # without an explicit operator_join handshake.
-            import sys as _sys
-            print(
-                f"[AUTOJOIN] actor={actor_id!r} conv={conversation_id!r} command={command!r}",
-                file=_sys.stderr, flush=True,
-            )
+            logger.debug("[AUTOJOIN] actor=%r conv=%r command=%r", actor_id, conversation_id, command)
             if not (actor_id and conversation_id):
                 raise
             try:
@@ -209,15 +205,15 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
                         joined_at=datetime.now(timezone.utc),
                     ),
                 )
-                print("[AUTOJOIN] joined, retrying", file=_sys.stderr, flush=True)
+                logger.debug("[AUTOJOIN] joined, retrying")
             except Exception as _jexc:
-                print(f"[AUTOJOIN] join failed: {_jexc!r}", file=_sys.stderr, flush=True)
+                logger.debug("[AUTOJOIN] join failed: %r", _jexc)
                 raise
             try:
                 await _call()
-                print("[AUTOJOIN] retry succeeded", file=_sys.stderr, flush=True)
+                logger.debug("[AUTOJOIN] retry succeeded")
             except Exception as _rexc:
-                print(f"[AUTOJOIN] retry failed: {_rexc!r}", file=_sys.stderr, flush=True)
+                logger.debug("[AUTOJOIN] retry failed: %r", _rexc)
                 raise
     except NotImplementedError as exc:
         hint = _extract_hint(exc) or str(exc)
@@ -293,8 +289,7 @@ async def _handle_subscribe(
     session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Handle F6 subscribe: create subscription, return S13 subscription_added."""
-    import sys
-    print(f"[SUB] role={viewer_role} session={session_id} scope={env.payload.get('scope')}", file=sys.stderr, flush=True)
+    logger.debug("[SUB] role=%s session=%s scope=%s", viewer_role, session_id, env.payload.get('scope'))
     payload = env.payload
     scope = payload.get("scope")
     if not scope or not isinstance(scope, dict):
@@ -704,10 +699,9 @@ async def _broadcast_to_squad(
         pass
 
     sent = 0
-    import sys
-    print(
-        f"[BCAST] conv={conv_id} squad={squad_id} reg_count={_registry.count} ws_count={len(_ws_connections)} scopes={list(_registry._by_scope.keys())}",
-        file=sys.stderr, flush=True,
+    logger.debug(
+        "[BCAST] conv=%s squad=%s reg_count=%d ws_count=%d scopes=%s",
+        conv_id, squad_id, _registry.count, len(_ws_connections), list(_registry._by_scope.keys()),
     )
 
     if squad_id:
@@ -721,9 +715,9 @@ async def _broadcast_to_squad(
         target_sessions = {
             e.session_id for e in (*squad_subs, *conv_subs, *global_subs)
         }
-        print(
-            f"[BCAST] squad_subs={len(squad_subs)} conv_subs={len(conv_subs)} global_subs={len(global_subs)} targets={len(target_sessions)}",
-            file=sys.stderr, flush=True,
+        logger.debug(
+            "[BCAST] squad_subs=%d conv_subs=%d global_subs=%d targets=%d",
+            len(squad_subs), len(conv_subs), len(global_subs), len(target_sessions),
         )
 
         for session_id in target_sessions:

@@ -56,3 +56,38 @@ async def test_disconnect_with_no_takeover_conversations_is_noop():
     watcher.on_disconnect("op42")
     await asyncio.sleep(0.05)
     # No exception, no state — pass.
+
+
+@pytest.mark.asyncio
+async def test_second_disconnect_cancels_first_task():
+    """A second on_disconnect must cancel the first pending grace task."""
+    eng = LocalEngine()
+    conv = await eng.create_conversation(channel="web", external_id="x2")
+    now = datetime.now(timezone.utc)
+    await eng.join(conv.id, Participant(id="cust1", role=ParticipantRole.CUSTOMER, joined_at=now))
+    await eng.join(conv.id, Participant(id="op42", role=ParticipantRole.OPERATOR, joined_at=now))
+    await eng.handle_command(conv.id, actor_id="op42", command="/hijack")
+
+    # Use a long grace so neither task fires during the test
+    watcher = OfflineWatcher(eng, grace_ms=5000)
+    watcher.on_connect("op42")
+    watcher.on_disconnect("op42")
+    first_task = watcher._pending["op42"]
+
+    # Second disconnect before first task completes
+    watcher.on_disconnect("op42")
+    second_task = watcher._pending["op42"]
+
+    # Give the event loop a tick to process cancellation
+    await asyncio.sleep(0)
+
+    assert first_task is not second_task, "second call should create a new task"
+    assert first_task.cancelled(), "first task should have been cancelled"
+    assert not second_task.done(), "second task should still be running"
+
+    # Clean up — cancel second task to avoid dangling coroutine
+    second_task.cancel()
+    try:
+        await second_task
+    except asyncio.CancelledError:
+        pass
