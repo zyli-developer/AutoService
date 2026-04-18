@@ -51,8 +51,8 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
   const handleStart = async () => {
     setRehearsalLoading(true);
     try {
-      const dialogs = await postJSON<SimDialogUI[]>(`/api/rehearsal/generate?tenant_id=${tenantId}`);
-      setRehearsalDialogs(dialogs);
+      const resp = await postJSON<{ demo_mode: boolean; dialogs: SimDialogUI[] }>(`/api/rehearsal/generate?tenant_id=${tenantId}`);
+      setRehearsalDialogs(Array.isArray(resp?.dialogs) ? resp.dialogs : []);
     } catch {
       // Fallback to local mock if API fails
       const dialogs = await mockGenerate();

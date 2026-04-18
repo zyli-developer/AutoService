@@ -24,8 +24,8 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
     try {
       const form = new FormData();
       form.append('tenant_id', tenantId);
-      const resp = await postForm<{ sandbox_url: string }>('/api/onboard/activate', form);
-      setGeneratedUrl(resp.sandbox_url);
+      const resp = await postForm<{ urls?: { chat?: string } }>('/api/onboard/activate', form);
+      setGeneratedUrl(resp.urls?.chat ?? null);
     } catch {
       setGeneratedUrl(`https://${tenantId}.sandbox.localhost`);
     }
