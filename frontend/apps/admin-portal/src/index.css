@@ -682,7 +682,11 @@ html, body, #root {
 }
 
 /* Default canvas padding; overridden per view via data attribute */
-.cs-canvas[data-view="notifications"] { padding: 0; }
+.cs-canvas[data-view="notifications"] {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
 .cs-canvas[data-view="dashboard"] { padding: 24px 32px; }
 .cs-canvas[data-view="wizard"] { padding: 40px 56px; }
 .cs-canvas[data-view="proposals"] { padding: 20px 28px; }

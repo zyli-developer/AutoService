@@ -61,7 +61,7 @@ export function ManagementChat() {
   };
 
   return (
-    <div data-testid="tab-notifications" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+    <div data-testid="tab-notifications" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div className="im-main-header" style={{ flexShrink: 0 }}>
         <div className="im-main-title">管理群</div>
