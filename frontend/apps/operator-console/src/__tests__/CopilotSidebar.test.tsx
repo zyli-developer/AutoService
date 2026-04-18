@@ -69,7 +69,7 @@ describe('CopilotView', () => {
     expect(frame.type).toBe('operator_message');
     expect(frame.v).toBe(1);
     expect(frame.payload.conversation_id).toBe('conv-1');
-    expect(frame.payload.text).toBe('hello world');
+    expect(frame.payload.content).toBe('hello world');
 
     expect(screen.getByTestId('copilot-input')).toHaveValue('');
   });

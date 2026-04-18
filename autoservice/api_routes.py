@@ -300,6 +300,11 @@ async def canary_status() -> dict[str, Any]:
 # Commands (hijack/release) via REST — fallback when WS is flaky
 # ---------------------------------------------------------------------------
 
+# NOTE: UI now uses WS `operator_message` and `operator_command` frames for
+# operator input and control flow. These REST endpoints are kept as debug/ops
+# fallback only. Do not add UI dependencies on them — they bypass WS broadcast
+# and subscription flow.
+
 @api_router.post("/command/hijack")
 async def command_hijack(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
     """Join conversation + hijack via REST API."""

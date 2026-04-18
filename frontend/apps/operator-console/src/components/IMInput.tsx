@@ -23,7 +23,7 @@ export function IMInput({ send }: IMInputProps) {
 
   const operatorId = useOperatorStore((s) => s.operatorId);
 
-  const handleSend = async () => {
+  const handleSend = () => {
     const text = inputText.trim();
     if (!text || !activeCopilotConvId) return;
     setInputText('');
@@ -33,23 +33,18 @@ export function IMInput({ send }: IMInputProps) {
 
     addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts });
 
-    // Use REST API for reliable delivery (WS connection may be flaky)
-    const API = `http://${window.location.hostname}:8000`;
-    try {
-      await fetch(
-        `${API}/api/command/send-message?conversation_id=${encodeURIComponent(activeCopilotConvId)}&operator_id=${encodeURIComponent(operatorId || 'operator')}&content=${encodeURIComponent(text)}`,
-        { method: 'POST' },
-      );
-    } catch (err) {
-      console.error('[IMInput] send failed:', err);
-      // Fallback to WS
-      send({
-        v: 1,
-        type: isTakeover ? 'operator_message' : 'operator_message',
-        id, ts,
-        payload: { conversation_id: activeCopilotConvId, content: text },
-      } as Envelope);
-    }
+    // Send via WebSocket operator_message frame (unified operator write path)
+    send({
+      v: 1,
+      type: 'operator_message',
+      id,
+      ts,
+      payload: {
+        conversation_id: activeCopilotConvId,
+        operator_id: operatorId || 'operator',
+        content: text,
+      },
+    } as Envelope);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
