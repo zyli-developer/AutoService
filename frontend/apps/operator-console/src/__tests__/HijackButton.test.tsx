@@ -36,6 +36,7 @@ describe('Hijack in CopilotView', () => {
   it('TC-02: clicking hijack button calls send with correct frame', async () => {
     useOperatorStore.setState({
       activeCopilotConvId: 'conv-042',
+      operatorId: 'op1',
       conversations: { 'conv-042': makeConv({ id: 'conv-042', mode: 'auto' }) },
     });
     const send = vi.fn();
@@ -79,6 +80,7 @@ describe('HijackButton dual-state', () => {
   function addConv(mode: 'auto' | 'copilot' | 'takeover', id = 'c1') {
     const conv = makeConv({ id, mode });
     useOperatorStore.setState({
+      operatorId: 'op1',
       conversations: { [id]: conv },
     });
   }
@@ -123,5 +125,12 @@ describe('HijackButton dual-state', () => {
     const user = userEvent.setup();
     await user.click(btn);
     expect(send.mock.calls[0][0].payload.command).toBe('/hijack');
+  });
+
+  it('is disabled when operatorId is null', () => {
+    const conv = makeConv({ id: 'c1', mode: 'auto' });
+    useOperatorStore.setState({ operatorId: null, conversations: { c1: conv } });
+    render(<HijackButton conversationId="c1" send={vi.fn()} />);
+    expect(screen.getByTestId('btn-hijack-c1')).toBeDisabled();
   });
 });

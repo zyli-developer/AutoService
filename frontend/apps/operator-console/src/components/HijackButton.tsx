@@ -30,7 +30,7 @@ export function HijackButton({ conversationId, send, disabled }: HijackButtonPro
       payload: {
         conversation_id: conversationId,
         command,
-        operator_id: operatorId || 'operator',
+        operator_id: operatorId,
       },
     } as Envelope);
   };
@@ -39,7 +39,7 @@ export function HijackButton({ conversationId, send, disabled }: HijackButtonPro
     <Button
       type="primary"
       danger={!isTakeover}
-      disabled={disabled}
+      disabled={disabled || !operatorId}
       data-testid={testId}
       onClick={handleClick}
     >

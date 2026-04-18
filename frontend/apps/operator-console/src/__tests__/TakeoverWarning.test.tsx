@@ -75,6 +75,7 @@ describe('TakeoverWarning', () => {
         payload: expect.objectContaining({
           conversation_id: 'c1',
           command: '/release',
+          operator_id: 'op42',
         }),
       }),
     );

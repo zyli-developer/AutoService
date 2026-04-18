@@ -49,7 +49,11 @@ export function TakeoverWarning({ conversationId, send }: TakeoverWarningProps) 
       type: 'operator_command',
       id: crypto.randomUUID(),
       ts: new Date().toISOString(),
-      payload: { conversation_id: conversationId, command: '/release' },
+      payload: {
+        conversation_id: conversationId,
+        command: '/release',
+        operator_id: currentOperatorId ?? 'operator',
+      },
     } as Envelope);
   };
 
