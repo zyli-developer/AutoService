@@ -204,6 +204,25 @@ def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_a
     assert conv.takeover_operator_id is None
 
 
+def test_takeover_timer_armed_frame_sent_after_hijack(fast_takeover_app):
+    """Operator receives takeover_timer_armed frame immediately after /hijack."""
+    with TestClient(fast_takeover_app) as client:
+        with client.websocket_connect("/ws/customer") as cws, \
+             client.websocket_connect("/ws/operator") as ows:
+            _setup(cws, ows)
+            conv_id = _customer_start_conv(cws)
+            _operator_join(ows, conv_id, "op42")
+            _send_cmd(ows, conv_id, "/hijack", "op42")
+
+            armed = _wait_frame(ows, "takeover_timer_armed", timeout=1.0)
+            assert armed is not None
+            p = armed["payload"]
+            assert p["conversation_id"] == conv_id
+            assert p["idle_timeout_ms"] == 150  # fast_takeover_app config
+            assert p["warning_ms"] == 50
+            assert p["armed_at"]
+
+
 def test_operator_message_reaches_customer_ws(fast_takeover_app):
     """After hijack, operator_message frames must push to the customer WS.
 

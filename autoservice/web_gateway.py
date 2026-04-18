@@ -90,7 +90,12 @@ async def _get_pool():
 
 async def _send_to_operator(operator_id: str, frame: dict) -> None:
     """Push a frame to every session held by a given operator_id."""
-    for session_id in list(_operator_sessions.get(operator_id, set())):
+    sessions = list(_operator_sessions.get(operator_id, set()))
+    logger.warning(
+        "[TK] send_to_operator op=%s type=%s sessions=%d",
+        operator_id, frame.get("type"), len(sessions),
+    )
+    for session_id in sessions:
         ws = _ws_connections.get(session_id)
         if ws is None:
             continue
@@ -172,10 +177,28 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
                 logger.exception("failed to broadcast takeover_warning_cancelled for conv=%s", conv_id)
         asyncio.create_task(_safe_push())
 
+    def _push_takeover_armed(payload: dict) -> None:
+        """Callback when engine arms/re-arms a takeover timer; notify operator."""
+        operator_id = payload["operator_id"]
+        frame = build_frame("takeover_timer_armed", {
+            "conversation_id": payload["conversation_id"],
+            "armed_at": payload["armed_at"],
+            "idle_timeout_ms": payload["idle_timeout_ms"],
+            "warning_ms": payload["warning_ms"],
+        })
+        async def _safe_push():
+            try:
+                await _send_to_operator(operator_id, frame)
+            except Exception:
+                logger.exception("failed to push takeover_timer_armed op=%s", operator_id)
+        asyncio.create_task(_safe_push())
+
     if hasattr(engine, "on_takeover_warning"):
         engine.on_takeover_warning(_push_takeover_warning)
     if hasattr(engine, "on_takeover_warning_cancelled"):
         engine.on_takeover_warning_cancelled(_push_takeover_cancelled)
+    if hasattr(engine, "on_takeover_armed"):
+        engine.on_takeover_armed(_push_takeover_armed)
 
     app.state.offline_watcher = OfflineWatcher(engine, grace_ms=takeover_cfg.offline_grace_ms)
 

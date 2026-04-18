@@ -118,6 +118,7 @@ class LocalEngine:
         # Notification callbacks (set externally via on_takeover_warning / on_takeover_warning_cancelled)
         self._takeover_warning_cb = None
         self._takeover_cancel_cb = None
+        self._takeover_armed_cb = None
         # Core storage
         self._conversations: dict[str, Conversation] = {}
         self._participants: dict[str, list[Participant]] = {}  # conv_id → [Participant]
@@ -607,12 +608,35 @@ class LocalEngine:
         """Register callback invoked when a fired warning is subsequently cancelled."""
         self._takeover_cancel_cb = cb
 
+    def on_takeover_armed(self, cb) -> None:
+        """Register callback invoked when a takeover timer is armed or re-armed.
+
+        Callback receives dict:
+            {conversation_id, operator_id, armed_at (iso str), idle_timeout_ms, warning_ms}.
+        """
+        self._takeover_armed_cb = cb
+
     def _arm_takeover_timer(self, conversation_id: str, operator_id: str) -> None:
         """Schedule warning and release tasks. Cancels any existing ones first."""
         self._cancel_takeover_timer(conversation_id)
         cfg = self._takeover_config
         warning_delay = max(0, cfg.idle_timeout_ms - cfg.warning_ms) / 1000.0
         release_delay = cfg.warning_ms / 1000.0
+        log.warning(
+            "[TK] timer armed conv=%s op=%s warning_in=%.2fs release_in=%.2fs",
+            conversation_id, operator_id, warning_delay, warning_delay + release_delay,
+        )
+        if self._takeover_armed_cb:
+            try:
+                self._takeover_armed_cb({
+                    "conversation_id": conversation_id,
+                    "operator_id": operator_id,
+                    "armed_at": datetime.now(timezone.utc).isoformat(),
+                    "idle_timeout_ms": cfg.idle_timeout_ms,
+                    "warning_ms": cfg.warning_ms,
+                })
+            except Exception:
+                log.exception("takeover_armed callback failed")
 
         state: dict[str, Any] = {"warning_fired": False}
 
@@ -622,6 +646,7 @@ class LocalEngine:
             except asyncio.CancelledError:
                 return
             state["warning_fired"] = True
+            log.warning("[TK] warning fired conv=%s op=%s", conversation_id, operator_id)
             if self._takeover_warning_cb:
                 try:
                     self._takeover_warning_cb({

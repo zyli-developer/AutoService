@@ -120,6 +120,33 @@ async def test_continue_ack_resets_timer(engine_with_conv):
 
 
 @pytest.mark.asyncio
+async def test_armed_callback_fires_on_hijack(engine_with_conv):
+    eng, cid = engine_with_conv
+    armed: list[dict] = []
+    eng.on_takeover_armed(lambda ev: armed.append(ev))
+
+    await eng.handle_command(cid, actor_id="op42", command="/hijack")
+    assert len(armed) == 1
+    assert armed[0]["conversation_id"] == cid
+    assert armed[0]["operator_id"] == "op42"
+    assert armed[0]["idle_timeout_ms"] == 100
+    assert armed[0]["warning_ms"] == 30
+    assert armed[0]["armed_at"]  # non-empty ISO string
+
+
+@pytest.mark.asyncio
+async def test_armed_callback_fires_on_reset(engine_with_conv):
+    eng, cid = engine_with_conv
+    armed: list[dict] = []
+    eng.on_takeover_armed(lambda ev: armed.append(ev))
+
+    await eng.handle_command(cid, actor_id="op42", command="/hijack")
+    await eng.reset_takeover_timer(cid, actor_id="op42")
+
+    assert len(armed) == 2  # one for hijack, one for reset
+
+
+@pytest.mark.asyncio
 async def test_close_conversation_cancels_takeover_timer(engine_with_conv):
     """Closing a conversation directly (not via /resolve) must cancel takeover timer."""
     from autoservice.conversation_engine.types import Outcome
