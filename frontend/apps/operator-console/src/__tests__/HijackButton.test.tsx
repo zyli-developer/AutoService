@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CopilotView } from '../components/CopilotView';
+import { HijackButton } from '../components/HijackButton';
 import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
@@ -67,5 +68,60 @@ describe('Hijack in CopilotView', () => {
     const send = vi.fn();
     render(<CopilotView send={send} />);
     expect(screen.getByTestId('btn-hijack-conv-001')).toBeInTheDocument();
+  });
+});
+
+describe('HijackButton dual-state', () => {
+  beforeEach(() => {
+    useOperatorStore.setState({ ...initialState });
+  });
+
+  function addConv(mode: 'auto' | 'copilot' | 'takeover', id = 'c1') {
+    const conv = makeConv({ id, mode });
+    useOperatorStore.setState({
+      conversations: { [id]: conv },
+    });
+  }
+
+  it('shows 释放回 AI when mode is takeover and dispatches /release', async () => {
+    addConv('takeover');
+    const send = vi.fn();
+    render(<HijackButton conversationId="c1" send={send} />);
+
+    const btn = screen.getByTestId('btn-release-c1');
+    expect(btn.textContent).toMatch(/释放.*回.*AI/);
+    const user = userEvent.setup();
+    await user.click(btn);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'operator_command',
+        payload: expect.objectContaining({
+          conversation_id: 'c1',
+          command: '/release',
+        }),
+      }),
+    );
+  });
+
+  it('shows 抢单 when mode is auto and dispatches /hijack', async () => {
+    addConv('auto');
+    const send = vi.fn();
+    render(<HijackButton conversationId="c1" send={send} />);
+    const btn = screen.getByTestId('btn-hijack-c1');
+    expect(btn.textContent).toMatch(/抢.*单/);
+    const user = userEvent.setup();
+    await user.click(btn);
+    expect(send.mock.calls[0][0].payload.command).toBe('/hijack');
+  });
+
+  it('shows 抢单 when mode is copilot and dispatches /hijack', async () => {
+    addConv('copilot');
+    const send = vi.fn();
+    render(<HijackButton conversationId="c1" send={send} />);
+    const btn = screen.getByTestId('btn-hijack-c1');
+    expect(btn.textContent).toMatch(/抢.*单/);
+    const user = userEvent.setup();
+    await user.click(btn);
+    expect(send.mock.calls[0][0].payload.command).toBe('/hijack');
   });
 });
