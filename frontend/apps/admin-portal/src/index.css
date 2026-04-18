@@ -6,51 +6,6 @@ html, body, #root {
   background: var(--cream);
 }
 
-/* ===== Admin portal tab navigation ===== */
-.cs-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--glass-border);
-  padding-bottom: 0;
-  position: relative;
-  z-index: 1;
-}
-
-.cs-tab {
-  padding: 10px 18px;
-  border: none;
-  background: transparent;
-  border-radius: 10px 10px 0 0;
-  font-size: 13px;
-  color: var(--silver);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-weight: 500;
-  position: relative;
-  transition: color .2s;
-}
-
-.cs-tab:hover {
-  color: var(--charcoal);
-}
-
-.cs-tab.active {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.cs-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -1px;
-  height: 2px;
-  background: var(--aurora-3);
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 8px rgba(167,139,250,.5);
-}
 
 /* ===== Login page ===== */
 .cs-login {
@@ -181,67 +136,14 @@ html, body, #root {
   box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
 }
 
-/* ===== Admin workspace layout ===== */
-.cs-w {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--cream);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--charcoal);
-}
 
-.cs-tb {
-  background: rgba(255,255,255,.6);
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  border-bottom: 1px solid var(--glass-border);
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  flex-shrink: 0;
-}
+/* ===== Wizard: editorial dashboard (NOT a form) =====
+   All rules scoped to [data-testid="tab-wizard"] so Dashboard/Proposals/Billing
+   get the plain design-system defaults for .cs-card, .cs-btn, .cs-row, etc.
+*/
 
-.cs-tb-dots {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.cs-tb-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--oat);
-  display: inline-block;
-}
-
-.cs-tb-dots span:first-child {
-  background: var(--aurora-3);
-  box-shadow: 0 0 0 3px rgba(167,139,250,.2);
-}
-
-.cs-app {
-  font-weight: 600;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 14px;
-  letter-spacing: -0.2px;
-}
-
-.cs-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 28px;
-}
-
-/* ===== Wizard: editorial dashboard (NOT a form) ===== */
-
-/* Main canvas: wide, breathy, no container box */
-.cs-w .cs-main {
-  padding: 40px 56px 56px !important;
+/* Wizard canvas: constrain reading width; other views are full-width */
+.cs-canvas[data-view="wizard"] > [data-testid="tab-wizard"] {
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -257,7 +159,7 @@ html, body, #root {
 }
 
 /* Dissolve the card — no border, no background, no shadow. Let content float. */
-.cs-card {
+[data-testid="tab-wizard"] .cs-card {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -265,16 +167,16 @@ html, body, #root {
   border-radius: 0 !important;
 }
 
-.cs-card:hover { box-shadow: none !important; }
+[data-testid="tab-wizard"] .cs-card:hover { box-shadow: none !important; }
 
-.cs-card.hl {
+[data-testid="tab-wizard"] .cs-card.hl {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 
 /* Section heading → editorial hero */
-.cs-ct {
+[data-testid="tab-wizard"] .cs-ct {
   font-family: var(--font-display) !important;
   font-size: 28px !important;
   font-weight: 600 !important;
@@ -283,9 +185,10 @@ html, body, #root {
   margin-bottom: 6px !important;
   align-items: baseline !important;
   gap: 14px !important;
+  padding-bottom: 20px;
 }
 
-.cs-ct .num {
+[data-testid="tab-wizard"] .cs-ct .num {
   width: 32px !important;
   height: 32px !important;
   background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(103,232,249,.12)) !important;
@@ -301,10 +204,8 @@ html, body, #root {
   align-self: center;
 }
 
-.cs-ct { padding-bottom: 20px; }
-
 /* ===== Field grid: break vertical stack into 2-column editorial layout ===== */
-.cs-card > div[style*="flex-direction: column"] {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
   gap: 28px 32px !important;
@@ -313,7 +214,7 @@ html, body, #root {
 }
 
 /* File upload field (last child) spans both columns — it's the hero action */
-.cs-card > div[style*="flex-direction: column"] > div:last-child {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] > div:last-child {
   grid-column: 1 / -1;
   padding: 24px;
   background: linear-gradient(135deg, rgba(167,139,250,.05), rgba(103,232,249,.04));
@@ -322,15 +223,15 @@ html, body, #root {
   transition: border-color .25s, background .25s;
 }
 
-.cs-card > div[style*="flex-direction: column"] > div:last-child:hover {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] > div:last-child:hover {
   border-color: rgba(167,139,250,.5);
   background: linear-gradient(135deg, rgba(167,139,250,.08), rgba(103,232,249,.06));
 }
 
 /* ===== Inputs — minimal underline style, not boxed ===== */
-.cs-card input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
-.cs-card select,
-.cs-card textarea {
+[data-testid="tab-wizard"] .cs-card input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+[data-testid="tab-wizard"] .cs-card select,
+[data-testid="tab-wizard"] .cs-card textarea {
   width: 100%;
   padding: 8px 0 !important;
   border: none !important;
@@ -346,22 +247,22 @@ html, body, #root {
   font-weight: 500;
 }
 
-.cs-card input:focus,
-.cs-card select:focus,
-.cs-card textarea:focus {
+[data-testid="tab-wizard"] .cs-card input:focus,
+[data-testid="tab-wizard"] .cs-card select:focus,
+[data-testid="tab-wizard"] .cs-card textarea:focus {
   border-bottom-color: var(--aurora-3) !important;
   background: transparent !important;
   box-shadow: 0 1px 0 0 var(--aurora-3);
 }
 
-.cs-card input::placeholder,
-.cs-card textarea::placeholder {
+[data-testid="tab-wizard"] .cs-card input::placeholder,
+[data-testid="tab-wizard"] .cs-card textarea::placeholder {
   color: rgba(24,24,27,.3);
   font-weight: 400;
 }
 
 /* Custom select chevron */
-.cs-card select {
+[data-testid="tab-wizard"] .cs-card select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -373,7 +274,7 @@ html, body, #root {
 }
 
 /* Labels → small caps kicker above input */
-.cs-card label {
+[data-testid="tab-wizard"] .cs-card label {
   font-size: 10px !important;
   color: var(--silver);
   margin-bottom: 4px !important;
@@ -384,7 +285,7 @@ html, body, #root {
 }
 
 /* File input — native button styled */
-.cs-card input[type="file"] {
+[data-testid="tab-wizard"] .cs-card input[type="file"] {
   display: block;
   width: 100%;
   font-size: 13px !important;
@@ -397,8 +298,8 @@ html, body, #root {
   background: transparent !important;
 }
 
-.cs-card input[type="file"]::-webkit-file-upload-button,
-.cs-card input[type="file"]::file-selector-button {
+[data-testid="tab-wizard"] .cs-card input[type="file"]::-webkit-file-upload-button,
+[data-testid="tab-wizard"] .cs-card input[type="file"]::file-selector-button {
   padding: 10px 20px;
   margin-right: 14px;
   border: 1px solid var(--glass-border);
@@ -414,15 +315,15 @@ html, body, #root {
   box-shadow: var(--shd-btn);
 }
 
-.cs-card input[type="file"]:hover::-webkit-file-upload-button,
-.cs-card input[type="file"]:hover::file-selector-button {
+[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::-webkit-file-upload-button,
+[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::file-selector-button {
   border-color: var(--aurora-3);
   background: rgba(167,139,250,.06);
   transform: translateY(-1px);
 }
 
-/* ===== Buttons ===== */
-.cs-btn {
+/* ===== Buttons (wizard-specific overrides) ===== */
+[data-testid="tab-wizard"] .cs-btn {
   flex: none !important;
   padding: 11px 24px !important;
   border: 1px solid var(--glass-border) !important;
@@ -438,26 +339,26 @@ html, body, #root {
   min-width: 100px;
 }
 
-.cs-btn:hover {
+[data-testid="tab-wizard"] .cs-btn:hover {
   border-color: var(--ink) !important;
   color: var(--ink);
 }
 
-.cs-btn.ok {
+[data-testid="tab-wizard"] .cs-btn.ok {
   background: var(--ink) !important;
   color: #fff;
   border-color: var(--ink) !important;
   box-shadow: var(--shd-btn);
 }
 
-.cs-btn.ok:hover {
+[data-testid="tab-wizard"] .cs-btn.ok:hover {
   transform: translateY(-1px);
   box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
   color: #fff;
 }
 
 /* "生成 Agent" button: override inline width:100%, make it a prominent CTA */
-.cs-card .cs-btn.ok[data-testid="btn-generate"] {
+[data-testid="tab-wizard"] .cs-card .cs-btn.ok[data-testid="btn-generate"] {
   width: auto !important;
   min-width: 180px;
   padding: 13px 32px !important;
@@ -472,19 +373,19 @@ html, body, #root {
 }
 
 /* ===== Wizard stepper — flatter, editorial ===== */
-.cs-wiz {
+[data-testid="tab-wizard"] .cs-wiz {
   gap: 4px !important;
   padding: 0 !important;
   margin-bottom: 8px;
 }
 
-.cs-wiz-step {
+[data-testid="tab-wizard"] .cs-wiz-step {
   padding: 8px 18px !important;
   font-size: 12px !important;
   letter-spacing: 0.3px;
 }
 
-.cs-arr {
+[data-testid="tab-wizard"] .cs-arr {
   color: var(--oat) !important;
   padding: 0 2px;
 }
@@ -501,13 +402,13 @@ html, body, #root {
   padding-bottom: 16px;
 }
 
-.cs-row {
+[data-testid="tab-wizard"] .cs-row {
   padding: 14px 0 !important;
   border-bottom: 1px solid var(--glass-border);
   font-size: 14px;
 }
 
-.cs-row:last-of-type { border-bottom: none; }
+[data-testid="tab-wizard"] .cs-row:last-of-type { border-bottom: none; }
 
 /* ===== Event stream styles ===== */
 .ev {
