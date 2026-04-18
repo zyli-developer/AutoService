@@ -297,13 +297,15 @@ async def canary_status() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Commands (hijack/release) via REST — fallback when WS is flaky
+# REST Command endpoints — DEPRECATED for UI use (kept as ops/debug fallback)
 # ---------------------------------------------------------------------------
-
-# NOTE: UI now uses WS `operator_message` and `operator_command` frames for
-# operator input and control flow. These REST endpoints are kept as debug/ops
-# fallback only. Do not add UI dependencies on them — they bypass WS broadcast
-# and subscription flow.
+# The operator-console UI dispatches /hijack, /release and send-message via
+# WebSocket `operator_command` / `operator_message` frames. These REST
+# endpoints remain for:
+#   - Manual ops intervention when WS is down
+#   - Smoke tests / curl debugging
+#   - Scripts or third-party tools
+# Do NOT add new UI callers here. Extend the WS frame handlers instead.
 
 @api_router.post("/command/hijack")
 async def command_hijack(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
