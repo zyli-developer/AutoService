@@ -29,33 +29,47 @@ export function BillingTab() {
       {loading && <div className="im-empty" data-testid="billing-loading">加载中...</div>}
       {!loading && invoices.length === 0 && <div className="im-empty">暂无账单数据</div>}
       {!loading && inv && (
-        <>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }} data-testid="billing-controls">
+        <div className="cs-split" style={{ ['--split-left' as string]: '200px' }}>
+          <div className="cs-split-list" data-testid="billing-controls">
             {invoices.map((item, i) => (
-              <button key={i} className={`cs-wiz-step ${i === selectedIdx ? 'cur' : ''}`} onClick={() => setSelectedIdx(i)}>
+              <button
+                key={i}
+                type="button"
+                className={`cs-list-row ${i === selectedIdx ? 'active' : ''}`}
+                onClick={() => setSelectedIdx(i)}
+              >
                 {item.period}
               </button>
             ))}
           </div>
-
-          <div className="cs-card" data-testid="invoice-detail">
-            <div className="cs-ct">💰 账单 · {inv.period}</div>
-            <div className="cs-row"><span>总金额</span><span style={{ color: 'var(--m600)', fontWeight: 700, fontFamily: 'var(--font-mono)' }} data-testid="stat-total">${inv.total.toFixed(2)}</span></div>
-            <div className="cs-row"><span>状态</span><span>{inv.status || 'generated'}</span></div>
-          </div>
-
-          {inv.breakdown && inv.breakdown.length > 0 && (
-            <div className="cs-card" style={{ marginTop: 14 }} data-testid="breakdown-card">
-              <div className="cs-ct">📊 阶梯明细</div>
-              {inv.breakdown.map((b, i) => (
-                <div className="cs-row" key={i}>
-                  <span>{b.tier} × {b.count}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${b.subtotal.toFixed(2)}</span>
-                </div>
-              ))}
+          <div className="cs-split-detail">
+            <div className="cs-card" data-testid="invoice-detail">
+              <div className="cs-ct">💰 账单 · {inv.period}</div>
+              <div className="cs-row">
+                <span>总金额</span>
+                <span
+                  style={{ color: 'var(--m600)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
+                  data-testid="stat-total"
+                >
+                  ${inv.total.toFixed(2)}
+                </span>
+              </div>
+              <div className="cs-row"><span>状态</span><span>{inv.status || 'generated'}</span></div>
             </div>
-          )}
-        </>
+
+            {inv.breakdown && inv.breakdown.length > 0 && (
+              <div className="cs-card" style={{ marginTop: 14 }} data-testid="breakdown-card">
+                <div className="cs-ct">📊 阶梯明细</div>
+                {inv.breakdown.map((b, i) => (
+                  <div className="cs-row" key={i}>
+                    <span>{b.tier} × {b.count}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>${b.subtotal.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

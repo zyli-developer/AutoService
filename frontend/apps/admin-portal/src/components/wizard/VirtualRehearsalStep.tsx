@@ -98,7 +98,7 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
                       <div className="lb">{turn.role === 'customer' ? '虚拟客户' : 'AI 回答'}</div>
                       <div className={turn.role === 'agent' ? 'ai' : ''}>
                         {turn.content}
-                        {turn.metadata?.is_trap && <span style={{ color: 'var(--p)', fontSize: 10, marginLeft: 6 }} data-testid={`trap-tag-${dialog.id}`}>陷阱题</span>}
+                        {!!turn.metadata?.is_trap && <span style={{ color: 'var(--p)', fontSize: 10, marginLeft: 6 }} data-testid={`trap-tag-${dialog.id}`}>陷阱题</span>}
                       </div>
                     </div>
                   ))}

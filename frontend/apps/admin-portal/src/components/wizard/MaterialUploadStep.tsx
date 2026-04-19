@@ -36,7 +36,7 @@ export function MaterialUploadStep({ tenantId, onGenerated }: Props) {
         const s = (resp.souls as Record<string, any>)?.[role];
         souls[role] = { role, kbHitCount: s?.kb_hit_count ?? 0, mode: s?.mode ?? 'dry_run', warnings: s?.warnings ?? [] };
       }
-      setGenerationResult({ tenantId: resp.tenant_id, souls, totalKbHits: Object.values(souls).reduce((sum, v) => sum + v.kbHitCount, 0), mode: 'api', warnings: [] });
+      setGenerationResult({ tenantId: resp.tenant_id, souls, totalKbHits: Object.values(souls).reduce((sum, v) => sum + v.kbHitCount, 0), mode: 'ai', warnings: [] });
       onGenerated?.();
     } catch (e) {
       console.error('Upload failed:', e);
