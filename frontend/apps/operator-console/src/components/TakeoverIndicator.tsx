@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore } from '../store/operatorStore';
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function TakeoverIndicator({ conversationId }: Props) {
+  const { t } = useTranslation();
   const conv = useOperatorStore((s) => s.conversations[conversationId]);
   const isTakeover = conv?.mode === 'takeover';
   const armedAt = conv?.takeoverArmedAt;
@@ -41,14 +43,14 @@ export function TakeoverIndicator({ conversationId }: Props) {
       data-testid="takeover-indicator"
       style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 8 }}
     >
-      <span className="takeover-pill" title="operator 已接管，agent 静默">
-        ⚡ TAKEOVER
+      <span className="takeover-pill" title={t('operator.takeover.title')}>
+        {t('operator.takeover.badge')}
       </span>
       {hasCountdown && (
         <span
           data-testid="takeover-countdown"
           className={`takeover-pill-countdown${inWarningPhase ? ' warning' : ''}`}
-          title={`还剩 ${seconds}s 自动回到 AI`}
+          title={t('operator.takeover.countdown_title', { seconds })}
         >
           {seconds}s
         </span>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { fetchJSON, postJSON } from '../api';
 
 interface Proposal {
@@ -19,11 +20,16 @@ const PRIORITY_STYLES: Record<string, { bg: string; color: string }> = {
   low: { bg: 'var(--m300)', color: 'var(--m800)' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: '待审核', accepted: '已接受', rejected: '已拒绝', blocked: '已阻止',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  draft: 'admin.proposals.filter.pending',
+  accepted: 'admin.proposals.filter.accepted',
+  rejected: 'admin.proposals.filter.rejected',
+  blocked: 'admin.proposals.filter.blocked',
 };
 
 export function ProposalsTab() {
+  const { t } = useTranslation();
+  const statusLabel = (s: string) => (STATUS_LABEL_KEYS[s] ? t(STATUS_LABEL_KEYS[s]) : s);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -63,7 +69,7 @@ export function ProposalsTab() {
               className={`cs-wiz-step ${statusFilter === s ? 'cur' : ''}`}
               onClick={() => setStatusFilter(s)}
             >
-              {s ? STATUS_LABELS[s] || s : '全部'}
+              {s ? statusLabel(s) : t('admin.proposals.filter.all')}
             </button>
           ))}
         </div>
@@ -74,16 +80,16 @@ export function ProposalsTab() {
           disabled={generating}
           style={{ opacity: generating ? 0.6 : 1 }}
         >
-          {generating ? '生成中...' : '🔄 运行 Pipeline'}
+          {generating ? t('admin.wizard.upload.generating') : t('admin.proposals.run_pipeline')}
         </button>
       </div>
 
       {/* Hidden total count for legacy test compatibility */}
       <span data-testid="stat-draft" style={{ display: 'none' }}>{proposals.length}</span>
 
-      {loading && <div className="im-empty" data-testid="proposals-loading">加载中...</div>}
+      {loading && <div className="im-empty" data-testid="proposals-loading">{t('common.loading')}</div>}
       {!loading && filtered.length === 0 && (
-        <div className="im-empty">暂无提案，点击"运行 Pipeline"生成</div>
+        <div className="im-empty">{t('admin.proposals.empty')}</div>
       )}
 
       {!loading && filtered.length > 0 && (
@@ -105,7 +111,7 @@ export function ProposalsTab() {
                       {p.priority}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--silver)' }}>{p.category}</span>
-                    <span style={{ fontSize: 10, color: 'var(--silver)' }}>{STATUS_LABELS[p.status] || p.status}</span>
+                    <span style={{ fontSize: 10, color: 'var(--silver)' }}>{statusLabel(p.status)}</span>
                   </div>
                   <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{p.title || p.id}</div>
                   {p.suggestion && (
@@ -122,26 +128,26 @@ export function ProposalsTab() {
               <div className="cs-card">
                 <div className="cs-ct">{selected.title || selected.id}</div>
                 <div className="cs-row">
-                  <span>状态</span>
-                  <span>{STATUS_LABELS[selected.status] || selected.status}</span>
+                  <span>{t('admin.proposals.status')}</span>
+                  <span>{statusLabel(selected.status)}</span>
                 </div>
                 <div className="cs-row">
-                  <span>优先级</span>
+                  <span>{t('admin.proposals.priority')}</span>
                   <span>{selected.priority}</span>
                 </div>
                 <div className="cs-row">
-                  <span>分类</span>
+                  <span>{t('admin.proposals.category')}</span>
                   <span>{selected.category}</span>
                 </div>
                 {selected.compliance_status && (
                   <div className="cs-row">
-                    <span>合规</span>
+                    <span>{t('admin.proposals.compliance')}</span>
                     <span>{selected.compliance_status}</span>
                   </div>
                 )}
                 {selected.suggestion && (
                   <div className="im-block" style={{ marginTop: 12 }}>
-                    <div className="im-block-title">建议</div>
+                    <div className="im-block-title">{t('admin.proposals.suggestion')}</div>
                     <div className="im-block-meta" style={{ whiteSpace: 'pre-wrap' }}>
                       {selected.suggestion}
                     </div>
@@ -149,7 +155,7 @@ export function ProposalsTab() {
                 )}
                 {selected.source_conversations && selected.source_conversations.length > 0 && (
                   <div className="cs-row">
-                    <span>源对话</span>
+                    <span>{t('admin.proposals.source_conversations')}</span>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
                       {selected.source_conversations.join(', ')}
                     </span>
@@ -157,7 +163,7 @@ export function ProposalsTab() {
                 )}
               </div>
             ) : (
-              <div className="im-empty">从左侧选择一条提案</div>
+              <div className="im-empty">{t('admin.proposals.select_a_proposal')}</div>
             )}
           </div>
         </div>

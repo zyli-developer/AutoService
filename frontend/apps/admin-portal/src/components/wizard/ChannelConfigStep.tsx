@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { postForm } from '../../api';
 
 const channelOptions = [
-  { label: 'Web 在线客服', value: 'web', disabled: false },
-  { label: '飞书 IM', value: 'feishu', disabled: true },
+  { labelKey: 'admin.wizard.channel.web', value: 'web', disabled: false },
+  { labelKey: 'admin.wizard.channel.feishu', value: 'feishu', disabled: true },
 ];
 
 interface ChannelConfigStepProps {
@@ -11,6 +12,7 @@ interface ChannelConfigStepProps {
 }
 
 export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
+  const { t } = useTranslation();
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['web']);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
 
@@ -34,7 +36,7 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
   return (
     <div data-testid="channel-config-step">
       <div className="cs-card">
-        <div className="cs-ct">{'渠道配置'}</div>
+        <div className="cs-ct">{t('admin.wizard.channel.title')}</div>
         <div data-testid="channel-checkboxes" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
           {channelOptions.map((opt) => (
             <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: opt.disabled ? 'var(--silver)' : 'var(--charcoal)' }}>
@@ -44,7 +46,7 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
                 disabled={opt.disabled}
                 onChange={() => toggleChannel(opt.value)}
               />
-              {opt.label}
+              {t(opt.labelKey)}
             </label>
           ))}
         </div>
@@ -64,7 +66,7 @@ export function ChannelConfigStep({ tenantId }: ChannelConfigStepProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'生成链接'}
+          {t('admin.wizard.channel.generate_link')}
         </button>
         {generatedUrl && (
           <div className="cs-row" style={{ marginTop: 12 }}>

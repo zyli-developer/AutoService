@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import type { Envelope } from '@autoservice/ws-client';
 import { useOperatorStore } from '../store/operatorStore';
 
@@ -8,6 +9,7 @@ interface TakeoverWarningProps {
 }
 
 export function TakeoverWarning({ conversationId, send }: TakeoverWarningProps) {
+  const { t } = useTranslation();
   const currentOperatorId = useOperatorStore((s) => s.operatorId);
   const conv = useOperatorStore((s) => s.conversations[conversationId]);
   const warning = conv?.takeoverWarning;
@@ -71,21 +73,21 @@ export function TakeoverWarning({ conversationId, send }: TakeoverWarningProps) 
       }}
     >
       <span style={{ flex: 1 }}>
-        {`再 ${Math.ceil(remaining / 1000)}s 无响应将自动回到 AI`}
+        {t('operator.warning.auto_release_in', { seconds: Math.ceil(remaining / 1000) })}
       </span>
       <button
         data-testid="takeover-warning-continue"
         onClick={handleContinue}
         style={{ padding: '4px 12px' }}
       >
-        继续接管
+        {t('operator.warning.continue_takeover')}
       </button>
       <button
         data-testid="takeover-warning-release"
         onClick={handleRelease}
         style={{ padding: '4px 12px' }}
       >
-        释放
+        {t('operator.warning.release')}
       </button>
     </div>
   );

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 
 export function AvatarMenu() {
+  const { t } = useTranslation();
   const tenantId = useAdminStore((s) => s.tenantId);
   const logout = useAdminStore((s) => s.logout);
   const [open, setOpen] = useState(false);
@@ -26,7 +28,7 @@ export function AvatarMenu() {
         type="button"
         className="cs-avatar-btn"
         data-testid="avatar-trigger"
-        aria-label="用户菜单"
+        aria-label={t('admin.user_menu.open')}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -34,7 +36,7 @@ export function AvatarMenu() {
       </button>
       {open && (
         <div className="cs-avatar-menu" data-testid="avatar-menu" role="menu">
-          <div className="cs-avatar-menu-row label">租户 ID</div>
+          <div className="cs-avatar-menu-row label">{t('admin.user_menu.tenant_id')}</div>
           <div className="cs-avatar-menu-row value" data-testid="tenant-id">
             {tenantId ?? '—'}
           </div>
@@ -48,9 +50,9 @@ export function AvatarMenu() {
               logout();
             }}
           >
-            退出
+            {t('common.logout')}
           </button>
-          <div className="cs-avatar-menu-row label" style={{ marginTop: 4 }}>版本</div>
+          <div className="cs-avatar-menu-row label" style={{ marginTop: 4 }}>{t('admin.user_menu.version')}</div>
           <div className="cs-avatar-menu-row value">v0.0.1</div>
         </div>
       )}

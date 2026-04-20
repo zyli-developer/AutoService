@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { fetchJSON } from '../api';
 
 interface OperatorRow {
@@ -16,6 +17,7 @@ function formatResponseTime(ms: number): string {
 }
 
 export function LeaderboardTable() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<OperatorRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -34,21 +36,21 @@ export function LeaderboardTable() {
 
   return (
     <div className="cs-card" style={{ marginTop: 14 }} data-testid="leaderboard-table">
-      <div className="cs-ct">🏆 人工客服排行榜</div>
+      <div className="cs-ct">{t('admin.dashboard.leaderboard')}</div>
       {error && <div className="cs-pg warn">{error}</div>}
-      {loading && !error && <div className="im-empty">加载中...</div>}
+      {loading && !error && <div className="im-empty">{t('common.loading')}</div>}
       {!loading && !error && rows.length === 0 && (
-        <div className="im-empty" data-testid="leaderboard-empty">暂无客服数据</div>
+        <div className="im-empty" data-testid="leaderboard-empty">{t('admin.dashboard.leaderboard.empty')}</div>
       )}
       {!loading && !error && rows.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--silver, #ccc)', textAlign: 'left' }}>
-              <th style={{ padding: '6px 8px', fontWeight: 600 }}>排名</th>
-              <th style={{ padding: '6px 8px', fontWeight: 600 }}>客服</th>
-              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>处理量</th>
-              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>平均 CSAT</th>
-              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>平均响应</th>
+              <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('admin.dashboard.leaderboard.rank')}</th>
+              <th style={{ padding: '6px 8px', fontWeight: 600 }}>{t('admin.dashboard.leaderboard.operator')}</th>
+              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>{t('admin.dashboard.leaderboard.volume')}</th>
+              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>{t('admin.dashboard.leaderboard.avg_csat')}</th>
+              <th style={{ padding: '6px 8px', fontWeight: 600, textAlign: 'right' }}>{t('admin.dashboard.leaderboard.avg_response')}</th>
             </tr>
           </thead>
           <tbody>

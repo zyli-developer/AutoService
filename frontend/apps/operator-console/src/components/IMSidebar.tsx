@@ -1,3 +1,4 @@
+import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore } from '../store/operatorStore';
 
 interface IMSidebarProps {
@@ -5,6 +6,7 @@ interface IMSidebarProps {
 }
 
 export function IMSidebar({ onLogout }: IMSidebarProps) {
+  const { t } = useTranslation();
   const operatorId = useOperatorStore((s) => s.operatorId);
   const squads = useOperatorStore((s) => s.squads);
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
@@ -15,19 +17,19 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
   return (
     <div className="im-sidebar" data-testid="im-sidebar">
       <div className="im-ws-header">
-        <div className="im-ws-title">{'商户工作区'}</div>
+        <div className="im-ws-title">{t('operator.sidebar.workspace')}</div>
         <div className="im-ws-user" data-testid="operator-name">
-          {operatorId ?? '客服'}
+          {operatorId ?? t('operator.sidebar.default_operator')}
         </div>
       </div>
 
-      <div className="im-section-title">频道</div>
+      <div className="im-section-title">{t('operator.sidebar.channels')}</div>
       <div
         className={`im-channel ${!activeSquadId ? 'active' : ''}`}
         data-testid="channel-all"
         onClick={() => setActiveSquad(null as any)}
       >
-        全部对话
+        {t('operator.sidebar.all_conversations')}
       </div>
       {squads.map((squadId) => {
         const unread = unreadCounts[squadId] ?? 0;
@@ -48,10 +50,10 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         );
       })}
 
-      <div className="im-section-title">{'直接消息'}</div>
+      <div className="im-section-title">{t('operator.sidebar.direct_messages')}</div>
       {activeCopilotConvId && (
         <div className="im-channel dm active" data-testid="dm-copilot">
-          {'对话'} {activeCopilotConvId.slice(0, 6)}
+          {t('operator.sidebar.conversation_prefix')} {activeCopilotConvId.slice(0, 6)}
         </div>
       )}
 
@@ -68,7 +70,7 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'退出'}
+          {t('common.logout')}
         </button>
       </div>
     </div>

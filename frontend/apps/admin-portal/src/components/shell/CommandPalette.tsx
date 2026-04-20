@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 interface Props {
   open: boolean;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function CommandPalette({ open, onClose }: Props) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -23,10 +25,10 @@ export function CommandPalette({ open, onClose }: Props) {
         data-testid="cmdk-panel"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label="命令面板"
+        aria-label={t('admin.command_palette.title')}
       >
-        <div className="cs-cmdk-panel-title">命令面板</div>
-        <div>⌘K search is coming soon. Esc to close.</div>
+        <div className="cs-cmdk-panel-title">{t('admin.command_palette.title')}</div>
+        <div>{t('admin.command_palette.placeholder')}</div>
       </div>
     </div>
   );

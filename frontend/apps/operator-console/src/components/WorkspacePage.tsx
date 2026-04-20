@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
 import { IMTitlebar } from './IMTitlebar';
@@ -11,6 +12,7 @@ const WS_URL = `ws://${window.location.hostname}:8000/ws/operator`;
 
 /* ── ConcurrencyWarning ── */
 function ConcurrencyWarning() {
+  const { t } = useTranslation();
   const count = useOperatorStore(
     (s) => Object.keys(s.conversations).length,
   );
@@ -29,8 +31,8 @@ function ConcurrencyWarning() {
       }}
     >
       {atLimit
-        ? `已达并发上限 (${limit})，无法接入新对话`
-        : `接近并发上限 (${count}/${limit})`}
+        ? t('operator.concurrency.at_limit', { limit })
+        : t('operator.concurrency.approaching', { count, limit })}
     </div>
   );
 }
@@ -66,6 +68,7 @@ function useNotificationSound() {
 }
 
 export function WorkspacePage() {
+  const { t } = useTranslation();
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
   const squads = useOperatorStore((s) => s.squads);
   const wsStatus = useOperatorStore((s) => s.wsStatus);
@@ -73,6 +76,7 @@ export function WorkspacePage() {
   const addSquad = useOperatorStore((s) => s.addSquad);
   const openCopilot = useOperatorStore((s) => s.openCopilot);
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
+  const operatorId = useOperatorStore((s) => s.operatorId);
 
   const [newSquadId, setNewSquadId] = useState('');
 
@@ -83,6 +87,14 @@ export function WorkspacePage() {
   const handleOpenCopilot = (convId: string) => {
     openCopilot(convId);
     fetchHistory(convId);
+    // Join the conversation so operator_message frames are accepted by the engine
+    send({
+      v: 1,
+      type: 'operator_join' as any,
+      id: crypto.randomUUID(),
+      ts: new Date().toISOString(),
+      payload: { conversation_id: convId, operator_id: operatorId || 'operator' },
+    } as any);
   };
 
   const handleAddSquad = () => {
@@ -105,7 +117,7 @@ export function WorkspacePage() {
             padding: '6px 16px',
           }}
         >
-          {wsStatus === 'connecting' ? '连接中...' : '连接已断开，尝试重连'}
+          {wsStatus === 'connecting' ? t('connection.connecting') : t('connection.disconnected')}
         </div>
       )}
       <div className="im-body">
@@ -120,10 +132,14 @@ export function WorkspacePage() {
             <>
               <div className="im-main-header">
                 <div className="im-main-title">
-                  {activeSquadId ? `# ${activeSquadId}` : '# 全部对话'}
+                  {activeSquadId ? `# ${activeSquadId}` : t('operator.main.all_conversations')}
                 </div>
                 <div className="im-main-subtitle">
-                  {`${Object.values(useOperatorStore.getState().conversations).filter(c => !activeSquadId || c.squadId === activeSquadId).length} 个对话`}
+                  {t('operator.main.conversation_count', {
+                    count: Object.values(useOperatorStore.getState().conversations).filter(
+                      (c) => !activeSquadId || c.squadId === activeSquadId,
+                    ).length,
+                  })}
                 </div>
               </div>
               <ConversationFeed
@@ -132,7 +148,7 @@ export function WorkspacePage() {
               />
               <div className="im-input">
                 <div className="im-input-box">
-                  等待客户接入...
+                  {t('operator.main.waiting_for_customer')}
                 </div>
               </div>
             </>
