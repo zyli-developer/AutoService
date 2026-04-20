@@ -911,3 +911,134 @@ async def rehearsal_review(payload: dict[str, Any] = Body(...)) -> dict[str, Any
         "dialog_id": dialog_id,
         "review_status": review_status,
     }
+
+
+# ---------------------------------------------------------------------------
+# Publish gate + sandbox freeze/archive (T1B.7)
+# ---------------------------------------------------------------------------
+#
+# `/api/onboard/publish`  — fires the Step 4 "一键对外" button
+# `/api/onboard/unfreeze` — debug/misfire recovery: restore an archived
+#                           sandbox to its pre-publish state.
+#
+# Business logic lives in autoservice.publish; this layer only translates
+# between HTTP + JSON and the module's Python API.
+#
+# Spec refs: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §6 / §7
+
+
+@api_router.post("/onboard/publish")
+async def onboard_publish(payload: dict[str, Any] = Body(...)) -> Any:
+    """Publish a sandbox — run gate, build tarball, freeze + archive.
+
+    Request body::
+
+        {
+            "tenant_id": "<tid>",                 # required
+            "override_compliance_critical": bool, # optional
+            "signer": "<email>"                   # required when override=true
+        }
+
+    Returns (200)::
+
+        {
+          "status": "published",
+          "tenant_id": "<tid>",
+          "artifact": ".autoservice/published/tenant_<tid>_publish_<ts>.tar.gz",
+          "artifact_sha256": "<hex>",
+          "runbook": ".autoservice/published/<tid>_PUBLISH_RUNBOOK.md",
+          "record":  ".autoservice/published/<tid>.json",
+          "archived_to": ".autoservice/archived/<tid>_<ts>",
+          "gate": { ... GateResult dump ... }
+        }
+
+    Errors:
+        - 400 — missing ``tenant_id``, or ``override=true`` without ``signer``
+        - 404 — sandbox dir missing for tenant
+        - 409 — gate blocked (no valid override); body contains gate detail
+    """
+    from fastapi.responses import JSONResponse
+    from autoservice import publish as publish_mod
+
+    tenant_id = (payload.get("tenant_id") or "").strip()
+    override = bool(payload.get("override_compliance_critical") or False)
+    signer = (payload.get("signer") or "").strip() or None
+
+    if not tenant_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "tenant_id is required"},
+        )
+    if override and not signer:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "override_compliance_critical=true requires signer",
+            },
+        )
+
+    try:
+        result = publish_mod.publish(
+            tenant_id, override=override, signer=signer,
+        )
+    except FileNotFoundError as exc:
+        return JSONResponse(
+            status_code=404,
+            content={"error": str(exc), "tenant_id": tenant_id},
+        )
+
+    if result.get("status") == "blocked":
+        # Gate failed — 409 so the UI can show blocking_reasons to the user.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "publish blocked by gate",
+                "tenant_id": tenant_id,
+                **result,
+            },
+        )
+
+    return result
+
+
+@api_router.post("/onboard/unfreeze")
+async def onboard_unfreeze(payload: dict[str, Any] = Body(...)) -> Any:
+    """Move an archived sandbox back to ``.autoservice/sandbox/<tid>/``.
+
+    For debug / misfire recovery. Request body::
+
+        {"tenant_id": "<tid>", "reason": "<non-empty text>"}
+
+    Errors:
+        - 400 — missing tenant_id or reason
+        - 404 — no archive found, or live sandbox already occupies the slot
+    """
+    from fastapi.responses import JSONResponse
+    from autoservice import publish as publish_mod
+
+    tenant_id = (payload.get("tenant_id") or "").strip()
+    reason = (payload.get("reason") or "").strip()
+
+    if not tenant_id or not reason:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "tenant_id and reason are required"},
+        )
+
+    try:
+        return publish_mod.unfreeze(tenant_id, reason)
+    except FileNotFoundError as exc:
+        return JSONResponse(
+            status_code=404,
+            content={"error": str(exc), "tenant_id": tenant_id},
+        )
+    except FileExistsError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={"error": str(exc), "tenant_id": tenant_id},
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"error": str(exc), "tenant_id": tenant_id},
+        )
