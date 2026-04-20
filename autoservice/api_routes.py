@@ -6,11 +6,13 @@ CanaryRouter, ComplianceEngine, sim_customer) to HTTP endpoints.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 
 from autoservice.canary import CanaryStage
 
@@ -625,6 +627,39 @@ def _get_llm_client():
         return None
 
 
+_VALID_REVIEW_STATUSES = {"pending", "approved", "flagged"}
+
+
+def _rehearsal_path(tenant_id: str) -> Path:
+    """Resolve the on-disk rehearsal.json path for a tenant sandbox."""
+    return Path(f".autoservice/sandbox/{tenant_id}/rehearsal.json")
+
+
+def _persist_rehearsal(tenant_id: str, demo_mode: bool, dialogs: list[dict[str, Any]]) -> None:
+    """Write rehearsal.json to the tenant sandbox directory.
+
+    Every dialog is initialized with ``review_status='pending'``,
+    ``review_note=''`` and ``reviewed_at=None`` so the frontend can
+    restore review state after a reload (fixes bug #4).
+    """
+    path = _rehearsal_path(tenant_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "demo_mode": demo_mode,
+        "dialogs": [
+            {
+                **d,
+                "review_status": "pending",
+                "review_note": "",
+                "reviewed_at": None,
+            }
+            for d in dialogs
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 @api_router.post("/rehearsal/generate")
 async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
     """Generate virtual customer rehearsal dialogs.
@@ -633,6 +668,11 @@ async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
     is unavailable (missing SDK, no API key, network error …) the endpoint
     falls back to >=10 hardcoded demo dialogs, each tagged with
     ``is_demo: true``.
+
+    T1B.3: every successful response is also persisted to
+    ``.autoservice/sandbox/<tenant_id>/rehearsal.json`` with initial
+    ``review_status='pending'`` so refreshing the frontend doesn't lose
+    review progress (fixes bug #4).
     """
     try:
         from autoservice.sim_customer import generate_sim_dialogs
@@ -647,21 +687,20 @@ async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
             kb_path=kb_path,
             llm_client=llm_client,
         )
-        return {
-            "demo_mode": False,
-            "dialogs": [
-                {
-                    "id": d.id if hasattr(d, "id") else f"dialog-{i:03d}",
-                    "scenario": d.scenario if hasattr(d, "scenario") else {},
-                    "persona": d.persona if hasattr(d, "persona") else {},
-                    "turns": d.turns if hasattr(d, "turns") else [],
-                    "language": d.language if hasattr(d, "language") else "zh",
-                    "review_status": d.review_status if hasattr(d, "review_status") else "pending",
-                    "is_demo": False,
-                }
-                for i, d in enumerate(dialogs)
-            ],
-        }
+        dialog_list = [
+            {
+                "id": d.id if hasattr(d, "id") else f"dialog-{i:03d}",
+                "scenario": d.scenario if hasattr(d, "scenario") else {},
+                "persona": d.persona if hasattr(d, "persona") else {},
+                "turns": d.turns if hasattr(d, "turns") else [],
+                "language": d.language if hasattr(d, "language") else "zh",
+                "review_status": d.review_status if hasattr(d, "review_status") else "pending",
+                "is_demo": False,
+            }
+            for i, d in enumerate(dialogs)
+        ]
+        _persist_rehearsal(tenant_id, demo_mode=False, dialogs=dialog_list)
+        return {"demo_mode": False, "dialogs": dialog_list}
     except Exception as exc:
         logger.warning("sim_customer generation failed, using demo fallback: %s", exc)
         # Fallback: >=10 structured demo dialogs covering major business scenarios
@@ -691,21 +730,105 @@ async def rehearsal_generate(tenant_id: str = "default") -> dict[str, Any]:
             ("多轮对话", "multi_turn", "犹豫客户",
              "我再考虑一下吧", "没问题，如果您有任何疑问随时可以联系我们..."),
         ]
-        return {
-            "demo_mode": True,
-            "dialogs": [
-                {
-                    "id": f"dialog-{i:03d}",
-                    "scenario": {"id": f"scenario-{i}", "name_zh": name, "intent": intent},
-                    "persona": {"id": f"persona-{i}", "name_zh": persona, "traits": []},
-                    "turns": [
-                        {"role": "customer", "content": q, "metadata": {}},
-                        {"role": "agent", "content": a, "metadata": {}},
-                    ],
-                    "language": "zh",
-                    "review_status": "pending",
-                    "is_demo": True,
-                }
-                for i, (name, intent, persona, q, a) in enumerate(_DEMO_DIALOGS)
-            ],
+        dialog_list = [
+            {
+                "id": f"dialog-{i:03d}",
+                "scenario": {"id": f"scenario-{i}", "name_zh": name, "intent": intent},
+                "persona": {"id": f"persona-{i}", "name_zh": persona, "traits": []},
+                "turns": [
+                    {"role": "customer", "content": q, "metadata": {}},
+                    {"role": "agent", "content": a, "metadata": {}},
+                ],
+                "language": "zh",
+                "review_status": "pending",
+                "is_demo": True,
+            }
+            for i, (name, intent, persona, q, a) in enumerate(_DEMO_DIALOGS)
+        ]
+        _persist_rehearsal(tenant_id, demo_mode=True, dialogs=dialog_list)
+        return {"demo_mode": True, "dialogs": dialog_list}
+
+
+@api_router.post("/rehearsal/review")
+async def rehearsal_review(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Update a single dialog's review status in rehearsal.json.
+
+    Request body::
+
+        {
+            "tenant_id": "<tid>",
+            "dialog_id": "<did>",
+            "review_status": "pending|approved|flagged",
+            "review_note": "<optional text>"
         }
+
+    Response on success::
+
+        {"status": "ok", "dialog_id": "<did>", "review_status": "<status>"}
+
+    Errors:
+        - 400 when review_status is not one of {pending, approved, flagged}
+        - 404 when the tenant has no rehearsal.json yet, or dialog_id is unknown
+    """
+    from fastapi.responses import JSONResponse
+
+    tenant_id = (payload.get("tenant_id") or "").strip()
+    dialog_id = (payload.get("dialog_id") or "").strip()
+    review_status = (payload.get("review_status") or "").strip()
+    review_note = payload.get("review_note", "") or ""
+
+    if not tenant_id or not dialog_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "tenant_id and dialog_id are required"},
+        )
+
+    if review_status not in _VALID_REVIEW_STATUSES:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": f"Invalid review_status {review_status!r}. "
+                f"Must be one of: {sorted(_VALID_REVIEW_STATUSES)}"
+            },
+        )
+
+    path = _rehearsal_path(tenant_id)
+    if not path.exists():
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": f"No rehearsal.json found for tenant {tenant_id!r}. "
+                f"Call /api/rehearsal/generate first."
+            },
+        )
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to read rehearsal.json: {exc}"},
+        )
+
+    dialogs = data.get("dialogs", [])
+    target = next((d for d in dialogs if d.get("id") == dialog_id), None)
+    if target is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": f"dialog_id {dialog_id!r} not found in tenant "
+                f"{tenant_id!r} rehearsal.json"
+            },
+        )
+
+    target["review_status"] = review_status
+    target["review_note"] = review_note
+    target["reviewed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "status": "ok",
+        "dialog_id": dialog_id,
+        "review_status": review_status,
+    }
