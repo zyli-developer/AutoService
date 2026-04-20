@@ -53,11 +53,21 @@ const ITEMS: RailItem[] = [
   { key: 'billing',       icon: <CardIcon />, labelKey: 'admin.nav.billing',         group: 'config' },
 ];
 
-export function AdminRail() {
+interface AdminRailProps {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
   const { t } = useTranslation();
   const tenantId = useAdminStore((s) => s.tenantId);
   const activeTab = useAdminStore((s) => s.activeTab);
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
+
+  const handlePick = (key: TabKey) => {
+    setActiveTab(key);
+    onClose?.();
+  };
 
   const renderItem = (item: RailItem) => {
     const label = t(item.labelKey);
@@ -67,7 +77,7 @@ export function AdminRail() {
         key={item.key}
         data-testid={`tab-${item.key}`}
         className={`cs-nav-item ${isActive ? 'active' : ''}`}
-        onClick={() => setActiveTab(item.key)}
+        onClick={() => handlePick(item.key)}
         aria-current={isActive ? 'page' : undefined}
       >
         {item.icon}
@@ -81,7 +91,7 @@ export function AdminRail() {
   const tenant = tenantId ?? 'mystore';
 
   return (
-    <aside className="cs-rail" data-testid="admin-rail" aria-label="Admin navigation">
+    <aside className={`cs-rail ${open ? 'open' : ''}`} data-testid="admin-rail" aria-label="Admin navigation">
       <div className="cs-brand">
         <div className="cs-brand-wm">{'OneSyn · autoservice'}</div>
         <div className="cs-brand-sub">{'admin / v1.1'}</div>

@@ -271,6 +271,70 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+/* ===== Desktop-only block (≤900px) ===== */
+.op-mobile-block {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+  text-align: center;
+  background: var(--color-bg);
+}
+
+.op-mobile-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.op-mobile-h2 {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--color-text-ink);
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+  line-height: 1.25;
+}
+
+.op-mobile-p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.1px;
+  max-width: 360px;
+  margin: 0 0 20px;
+}
+
+.op-mobile-minw {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.1px;
+}
+
+.op-mobile-minw b {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .op-desktop-only { display: none; }
+  .op-mobile-block { display: flex; }
+}
+
 /* ===== Conversation card row hover ===== */
 .im-card {
   padding: 10px 14px;

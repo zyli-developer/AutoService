@@ -18,6 +18,8 @@ interface ChatModalProps {
   connectionStatus: 'idle' | 'connecting' | 'open' | 'closed';
   isReplaying?: boolean;
   replayCount?: number;
+  sheet?: 'peek' | 'full';
+  onToggleSheet?: () => void;
 }
 
 export function ChatModal({
@@ -29,6 +31,8 @@ export function ChatModal({
   connectionStatus,
   isReplaying = false,
   replayCount = 0,
+  sheet = 'peek',
+  onToggleSheet,
 }: ChatModalProps) {
   const { t } = useTranslation();
   const isAgentTyping = useChatStore((s) => s.isAgentTyping);
@@ -42,7 +46,14 @@ export function ChatModal({
   }, [messages.length, isAgentTyping]);
 
   return (
-    <div className="web-modal" data-testid="chat-modal">
+    <div className={`web-modal sheet-${sheet}`} data-testid="chat-modal">
+      <div
+        className="w-handle"
+        data-testid="sheet-handle"
+        onClick={onToggleSheet}
+        role="button"
+        aria-label={sheet === 'peek' ? 'Expand chat' : 'Collapse chat'}
+      />
       <div className="web-modal-header">
         <div className="w-hd-av">{t('customer.chat.avatar.merchant')}</div>
         <div className="w-hd-info">
