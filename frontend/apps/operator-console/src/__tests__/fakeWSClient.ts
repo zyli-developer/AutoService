@@ -6,12 +6,14 @@ type OnCloseCb = (code: number, reason: string) => void;
 type OnFrameCb = (frame: Envelope) => void;
 
 interface FakeOpts {
+  url?: string;
   onOpen?: OnOpenCb;
   onClose?: OnCloseCb;
   onFrame?: OnFrameCb;
 }
 
 export class FakeWSClient {
+  url?: string;
   onOpen?: OnOpenCb;
   onClose?: OnCloseCb;
   onFrame?: OnFrameCb;
@@ -20,6 +22,7 @@ export class FakeWSClient {
   connectCallCount = 0;
 
   constructor(opts: FakeOpts) {
+    this.url = opts.url;
     this.onOpen = opts.onOpen;
     this.onClose = opts.onClose;
     this.onFrame = opts.onFrame;

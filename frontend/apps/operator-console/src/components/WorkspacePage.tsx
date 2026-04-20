@@ -1,14 +1,23 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
+import { useTenantId } from '../hooks/useTenantId';
 import { IMTitlebar } from './IMTitlebar';
 import { IMSidebar } from './IMSidebar';
 import { ConversationFeed } from './ConversationFeed';
 import { CopilotView } from './CopilotView';
 import { IMInput } from './IMInput';
+import { NoTenantFallback } from './NoTenantFallback';
 
-const WS_URL = `ws://${window.location.hostname}:8000/ws/operator`;
+/**
+ * Build the operator WS URL for a given tenant.
+ * Exported so tests (and future shared utilities) can assert the template.
+ * See docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.2.
+ */
+export function buildOperatorWsUrl(tenantId: string, hostname = window.location.hostname): string {
+  return `ws://${hostname}:8000/ws/operator?tenant=${encodeURIComponent(tenantId)}`;
+}
 
 /* ── ConcurrencyWarning ── */
 function ConcurrencyWarning() {
@@ -95,6 +104,7 @@ function useNotificationSound() {
 
 export function WorkspacePage() {
   const { t } = useTranslation();
+  const tenantId = useTenantId();
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
   const wsStatus = useOperatorStore((s) => s.wsStatus);
   const logout = useOperatorStore((s) => s.logout);
@@ -102,7 +112,18 @@ export function WorkspacePage() {
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const operatorId = useOperatorStore((s) => s.operatorId);
 
-  const { send, fetchHistory } = useOperatorWS(WS_URL);
+  // Build the WS URL with tenant context. If no tenant is present we fall
+  // back to an empty string and skip the connection — see NoTenantFallback.
+  const wsUrl = useMemo(
+    () => (tenantId ? buildOperatorWsUrl(tenantId) : ''),
+    [tenantId],
+  );
+
+  const { send, fetchHistory } = useOperatorWS(wsUrl);
+
+  if (!tenantId) {
+    return <NoTenantFallback />;
+  }
 
   useNotificationSound();
 
