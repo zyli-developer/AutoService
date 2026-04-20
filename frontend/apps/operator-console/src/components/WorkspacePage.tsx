@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
@@ -22,17 +22,43 @@ function ConcurrencyWarning() {
   return (
     <div
       data-testid="concurrency-warning"
-      style={{
-        background: atLimit ? 'var(--p)' : 'var(--l400)',
-        color: atLimit ? '#fff' : 'var(--l800)',
-        padding: '6px 16px',
-        textAlign: 'center',
-        fontSize: 13,
-      }}
+      className={`op-notif ${atLimit ? 'danger' : 'warn'}`}
     >
-      {atLimit
-        ? t('operator.concurrency.at_limit', { limit })
-        : t('operator.concurrency.approaching', { count, limit })}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9v4M12 17h.01" />
+      </svg>
+      <span>
+        {atLimit
+          ? t('operator.concurrency.at_limit', { limit })
+          : t('operator.concurrency.approaching', { count, limit })}
+      </span>
+    </div>
+  );
+}
+
+function ChatEmpty() {
+  const { t } = useTranslation();
+  return (
+    <div className="op-chat-empty" data-testid="chat-empty">
+      <svg viewBox="0 0 240 160" width="180" height="120" aria-hidden="true">
+        <defs>
+          <linearGradient id="ink-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="var(--ink-50)" />
+            <stop offset="100%" stopColor="var(--mountain-200)" />
+          </linearGradient>
+        </defs>
+        {/* distant boats — abstract sumi-e style */}
+        <path d="M30,90 Q120,70 210,95" stroke="var(--mountain-400)" strokeWidth="1" fill="none" opacity="0.6" />
+        <path d="M50,110 Q120,95 200,115" stroke="var(--mountain-200)" strokeWidth="1" fill="none" opacity="0.5" />
+        <ellipse cx="80" cy="92" rx="14" ry="3" fill="var(--ink-700)" opacity="0.7" />
+        <line x1="80" y1="92" x2="80" y2="78" stroke="var(--ink-700)" strokeWidth="1" opacity="0.7" />
+        <ellipse cx="140" cy="98" rx="10" ry="2.5" fill="var(--ink-700)" opacity="0.6" />
+        <line x1="140" y1="98" x2="140" y2="86" stroke="var(--ink-700)" strokeWidth="1" opacity="0.6" />
+        <ellipse cx="180" cy="105" rx="8" ry="2" fill="var(--ink-700)" opacity="0.4" />
+        <line x1="180" y1="105" x2="180" y2="95" stroke="var(--ink-700)" strokeWidth="1" opacity="0.4" />
+      </svg>
+      <h3>{t('operator.empty.title')}</h3>
+      <p>{t('operator.empty.desc')}</p>
     </div>
   );
 }
@@ -70,15 +96,11 @@ function useNotificationSound() {
 export function WorkspacePage() {
   const { t } = useTranslation();
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
-  const squads = useOperatorStore((s) => s.squads);
   const wsStatus = useOperatorStore((s) => s.wsStatus);
   const logout = useOperatorStore((s) => s.logout);
-  const addSquad = useOperatorStore((s) => s.addSquad);
   const openCopilot = useOperatorStore((s) => s.openCopilot);
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const operatorId = useOperatorStore((s) => s.operatorId);
-
-  const [newSquadId, setNewSquadId] = useState('');
 
   const { send, fetchHistory } = useOperatorWS(WS_URL);
 
@@ -87,7 +109,6 @@ export function WorkspacePage() {
   const handleOpenCopilot = (convId: string) => {
     openCopilot(convId);
     fetchHistory(convId);
-    // Join the conversation so operator_message frames are accepted by the engine
     send({
       v: 1,
       type: 'operator_join' as any,
@@ -97,12 +118,6 @@ export function WorkspacePage() {
     } as any);
   };
 
-  const handleAddSquad = () => {
-    if (!newSquadId.trim()) return;
-    addSquad(newSquadId.trim());
-    setNewSquadId('');
-  };
-
   return (
     <div className="im-w" data-testid="workspace-page">
       <IMTitlebar />
@@ -110,50 +125,31 @@ export function WorkspacePage() {
       {wsStatus !== 'open' && wsStatus !== 'idle' && (
         <div
           data-testid="connection-banner"
-          className="im-system"
-          style={{
-            background: wsStatus === 'connecting' ? 'var(--l400)' : 'var(--p)',
-            color: wsStatus === 'connecting' ? 'var(--l800)' : '#fff',
-            padding: '6px 16px',
-          }}
+          className={`op-notif ${wsStatus === 'connecting' ? 'warn' : 'danger'}`}
         >
-          {wsStatus === 'connecting' ? t('connection.connecting') : t('connection.disconnected')}
+          <span>
+            {wsStatus === 'connecting' ? t('connection.connecting') : t('connection.disconnected')}
+          </span>
         </div>
       )}
       <div className="im-body">
         <IMSidebar onLogout={logout} />
-        <div className="im-main">
+        <main className={`im-main ${activeCopilotConvId ? 'with-chat' : ''}`}>
+          <section className="op-cards-col">
+            <ConversationFeed
+              squadId={activeSquadId}
+              onCardClick={handleOpenCopilot}
+            />
+          </section>
           {activeCopilotConvId ? (
             <>
               <CopilotView send={send} />
               <IMInput send={send} />
             </>
           ) : (
-            <>
-              <div className="im-main-header">
-                <div className="im-main-title">
-                  {activeSquadId ? `# ${activeSquadId}` : t('operator.main.all_conversations')}
-                </div>
-                <div className="im-main-subtitle">
-                  {t('operator.main.conversation_count', {
-                    count: Object.values(useOperatorStore.getState().conversations).filter(
-                      (c) => !activeSquadId || c.squadId === activeSquadId,
-                    ).length,
-                  })}
-                </div>
-              </div>
-              <ConversationFeed
-                squadId={activeSquadId}
-                onCardClick={handleOpenCopilot}
-              />
-              <div className="im-input">
-                <div className="im-input-box">
-                  {t('operator.main.waiting_for_customer')}
-                </div>
-              </div>
-            </>
+            <ChatEmpty />
           )}
-        </div>
+        </main>
       </div>
     </div>
   );

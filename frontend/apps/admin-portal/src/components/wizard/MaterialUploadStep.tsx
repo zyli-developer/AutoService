@@ -70,10 +70,17 @@ export function MaterialUploadStep({ tenantId, onGenerated }: Props) {
           </div>
           <div>
             <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>{t('admin.wizard.upload.files')}</label>
-            <input data-testid="file-upload" type="file" accept=".pdf,.csv,.txt" multiple
-              onChange={e => setFiles(Array.from(e.target.files || []))}
-              style={{ fontSize: 12, fontFamily: 'var(--font-sans)' }} />
-            {files.length > 0 && <div style={{ fontSize: 11, color: 'var(--silver)', marginTop: 4 }}>{t('admin.wizard.upload.files_selected', { count: files.length })}</div>}
+            <label className="cs-file-picker">
+              <input data-testid="file-upload" type="file" accept=".pdf,.csv,.txt" multiple
+                onChange={e => setFiles(Array.from(e.target.files || []))}
+                className="cs-file-input-hidden" />
+              <span className="cs-file-picker-btn">{t('admin.wizard.upload.choose_file')}</span>
+              <span className="cs-file-picker-hint">
+                {files.length > 0
+                  ? t('admin.wizard.upload.files_selected', { count: files.length })
+                  : t('admin.wizard.upload.no_file_selected')}
+              </span>
+            </label>
           </div>
         </div>
 
