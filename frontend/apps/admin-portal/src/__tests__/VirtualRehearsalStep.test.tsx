@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { useAdminStore } from '../store/adminStore';
 
-// Mock API — postJSON will reject so component falls back to local mockGenerate
+// Mock API — postJSON rejects by default so component falls back to local
+// mockGenerate on /rehearsal/generate. Individual tests override the mock to
+// exercise the /rehearsal/review happy path (T1F.7).
+const postJSONMock = vi.fn<[string, unknown?], Promise<unknown>>(() =>
+  Promise.reject(new Error('not mocked')),
+);
 vi.mock('../api', () => ({
   fetchJSON: vi.fn(() => Promise.reject(new Error('not mocked'))),
-  postJSON: vi.fn(() => Promise.reject(new Error('not mocked'))),
+  postJSON: (path: string, body?: unknown) => postJSONMock(path, body),
   postForm: vi.fn(() => Promise.reject(new Error('not mocked'))),
 }));
 
@@ -17,6 +22,8 @@ describe('VirtualRehearsalStep', () => {
       rehearsalDialogs: [],
       rehearsalLoading: false,
     });
+    postJSONMock.mockReset();
+    postJSONMock.mockImplementation(() => Promise.reject(new Error('not mocked')));
   });
 
   afterEach(() => {
@@ -135,6 +142,115 @@ describe('VirtualRehearsalStep', () => {
     const trapTags = screen.getAllByTestId(/^trap-tag-/);
     expect(trapTags.length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('陷阱题').length).toBeGreaterThanOrEqual(1);
+  });
+
+  // T1F.7 · approve/flag buttons must POST /api/rehearsal/review
+  it('TC-T1F7-A: approve triggers POST /api/rehearsal/review', async () => {
+    // Seed state directly — bypass the fake-timer generate path so the test
+    // focuses on the review API call wiring.
+    useAdminStore.setState({
+      rehearsalDialogs: [
+        {
+          id: 'dialog-001',
+          scenario: {
+            id: 'greeting',
+            name_zh: '通用问候',
+            intent: 'general_question',
+            trap_question: '',
+            degraded: false,
+            keywords: [],
+          },
+          persona: {
+            id: 'angry-refund',
+            name_zh: '愤怒退款客户',
+            traits: [],
+            communication_style: 'aggressive',
+          },
+          turns: [],
+          language: 'zh',
+          review_status: 'pending',
+        },
+      ],
+      rehearsalLoading: false,
+    });
+
+    postJSONMock.mockImplementation((_path: string, body?: unknown) =>
+      Promise.resolve({
+        status: 'ok',
+        dialog_id: (body as { dialog_id: string }).dialog_id,
+        review_status: 'approved',
+      }),
+    );
+
+    render(<VirtualRehearsalStep tenantId="tenant-x" />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-approve-dialog-001'));
+    });
+
+    await waitFor(() => {
+      const reviewCalls = postJSONMock.mock.calls.filter(
+        ([path]) => path === '/api/rehearsal/review',
+      );
+      expect(reviewCalls.length).toBe(1);
+      expect(reviewCalls[0][1]).toEqual({
+        tenant_id: 'tenant-x',
+        dialog_id: 'dialog-001',
+        review_status: 'approved',
+      });
+    });
+  });
+
+  it('TC-T1F7-B: flag triggers POST /api/rehearsal/review with flagged status', async () => {
+    useAdminStore.setState({
+      rehearsalDialogs: [
+        {
+          id: 'dialog-002',
+          scenario: {
+            id: 'inquiry',
+            name_zh: '基本咨询',
+            intent: 'product_inquiry',
+            trap_question: '',
+            degraded: false,
+            keywords: [],
+          },
+          persona: {
+            id: 'price-sensitive',
+            name_zh: '价格敏感客户',
+            traits: [],
+            communication_style: 'cautious',
+          },
+          turns: [],
+          language: 'zh',
+          review_status: 'pending',
+        },
+      ],
+      rehearsalLoading: false,
+    });
+
+    postJSONMock.mockImplementation((_path: string, body?: unknown) =>
+      Promise.resolve({
+        status: 'ok',
+        dialog_id: (body as { dialog_id: string }).dialog_id,
+        review_status: (body as { review_status: string }).review_status,
+      }),
+    );
+
+    render(<VirtualRehearsalStep tenantId="tenant-y" />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-flag-dialog-002'));
+    });
+
+    await waitFor(() => {
+      const reviewCalls = postJSONMock.mock.calls.filter(
+        ([path]) => path === '/api/rehearsal/review',
+      );
+      expect(reviewCalls.length).toBe(1);
+      expect(reviewCalls[0][1]).toEqual({
+        tenant_id: 'tenant-y',
+        dialog_id: 'dialog-002',
+        review_status: 'flagged',
+      });
+    });
   });
 
   it('TC-008: degraded scenario shows degraded tag', async () => {

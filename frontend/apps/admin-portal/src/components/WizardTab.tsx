@@ -4,6 +4,7 @@ import { MaterialUploadStep } from './wizard/MaterialUploadStep';
 import { ChannelConfigStep } from './wizard/ChannelConfigStep';
 import { VirtualRehearsalStep } from './wizard/VirtualRehearsalStep';
 import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
+import { SandboxReady } from './wizard/SandboxReady';
 
 const STEP_KEYS = [
   'admin.wizard.step.1',
@@ -37,20 +38,6 @@ function useStepComplete(step: number): boolean {
     default:
       return true;
   }
-}
-
-function SandboxReady() {
-  const { t } = useTranslation();
-  const tenantId = useAdminStore((s) => s.tenantId);
-  return (
-    <div className="cs-card hl">
-      <div className="cs-ct">🎉 {t('admin.wizard.sandbox.title')}</div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.url')}</span><span style={{ color: 'var(--m600)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>{tenantId}.sandbox.onesync</span></div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.team')}</span><span style={{ color: '#000' }}>{t('admin.wizard.sandbox.team_count', { count: 5 })}</span></div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.public')}</span><span style={{ color: 'var(--l700)', fontWeight: 700 }}>{t('admin.wizard.sandbox.pending_merchant')}</span></div>
-      <div className="cs-pg ok">{t('admin.wizard.sandbox.one_click_live')}</div>
-    </div>
-  );
 }
 
 export function WizardTab() {
