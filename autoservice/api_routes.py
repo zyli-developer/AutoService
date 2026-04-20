@@ -217,6 +217,81 @@ async def get_session_mode() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Master · tenant directory (T1F.6)
+# ---------------------------------------------------------------------------
+#
+# Scans .autoservice/sandbox/<tid>/config.json (and .autoservice/archived/...)
+# to power the Master-view TenantListTab. Each directory's config.json is the
+# source of truth — see autoservice.onboarding._write_sandbox_config_skeleton
+# and autoservice.publish._archive_sandbox.
+#
+# M1: no auth. M2 will gate with tenant-admin RBAC (see spec §5.3 and the
+# tenant-sandbox M2 design doc).
+#
+# See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.2
+
+_SANDBOX_ROOT = Path(".autoservice") / "sandbox"
+_ARCHIVED_ROOT = Path(".autoservice") / "archived"
+
+
+def _read_tenant_config(cfg_path: Path, *, status_override: str | None = None) -> dict[str, Any] | None:
+    """Read a tenant config.json, returning a projection with the listing fields.
+
+    Returns None if the file is missing or unparseable — the listing endpoint
+    silently skips such entries (a corrupt config shouldn't 500 the whole list).
+    ``status_override`` is used for archived entries whose on-disk config may or
+    may not have been stamped with ``status=archived`` yet (see publish.py §7.2).
+    """
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read tenant config at %s: %s", cfg_path, exc)
+        return None
+    return {
+        "tenant_id": cfg.get("tenant_id"),
+        "brand_name": cfg.get("brand_name"),
+        "industry": cfg.get("industry"),
+        "status": status_override or cfg.get("status", "unknown"),
+        "created_at": cfg.get("created_at"),
+    }
+
+
+@api_router.get("/master/tenants")
+async def list_master_tenants() -> list[dict[str, Any]]:
+    """List all tenants known to this Master deployment.
+
+    Scans ``.autoservice/sandbox/<tid>/`` (sandbox + published_pending_fork)
+    and ``.autoservice/archived/<tid>_<ts>/`` (archived) for ``config.json``
+    files, projecting the listing fields. Returns ``[]`` when neither
+    directory exists or contains any tenant configs.
+    """
+    out: list[dict[str, Any]] = []
+
+    if _SANDBOX_ROOT.exists() and _SANDBOX_ROOT.is_dir():
+        for tid_dir in sorted(_SANDBOX_ROOT.iterdir()):
+            if not tid_dir.is_dir():
+                continue
+            entry = _read_tenant_config(tid_dir / "config.json")
+            if entry is not None:
+                out.append(entry)
+
+    if _ARCHIVED_ROOT.exists() and _ARCHIVED_ROOT.is_dir():
+        for tid_dir in sorted(_ARCHIVED_ROOT.iterdir()):
+            if not tid_dir.is_dir():
+                continue
+            # Archived directory names are "<tid>_<ts>" — use the config's own
+            # tenant_id as authoritative, but force status=archived since the
+            # list is what A sees and archived entries must render as such.
+            entry = _read_tenant_config(tid_dir / "config.json", status_override="archived")
+            if entry is not None:
+                out.append(entry)
+
+    return out
+
+
+# ---------------------------------------------------------------------------
 # SLA
 # ---------------------------------------------------------------------------
 
