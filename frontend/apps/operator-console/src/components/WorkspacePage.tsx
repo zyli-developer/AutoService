@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { useTenantId } from '@autoservice/shared';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
-import { useTenantId } from '../hooks/useTenantId';
 import { IMTitlebar } from './IMTitlebar';
 import { IMSidebar } from './IMSidebar';
 import { ConversationFeed } from './ConversationFeed';

@@ -16,6 +16,7 @@
     "@ant-design/icons": "^6.1.1",
     "@autoservice/design-system": "workspace:*",
     "@autoservice/i18n": "workspace:*",
+    "@autoservice/shared": "workspace:*",
     "@autoservice/ws-client": "workspace:*",
     "antd": "^6.3.5",
     "react": "^18.2.0",

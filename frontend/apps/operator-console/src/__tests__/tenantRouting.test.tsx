@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { useTenantId } from '@autoservice/shared';
 import { WorkspacePage, buildOperatorWsUrl } from '../components/WorkspacePage';
-import { useTenantId } from '../hooks/useTenantId';
 import { useOperatorStore, initialState } from '../store/operatorStore';
 import { useOperatorWS, _setWSClientImpl } from '../hooks/useOperatorWS';
 import { createFakeWSClientClass, fakeInstance } from './fakeWSClient';

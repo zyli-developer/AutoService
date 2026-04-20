@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
+import { useTenantId } from '@autoservice/shared';
 import { useWebSocket } from './hooks/useWebSocket';
-import { useTenantId } from './hooks/useTenantId';
 import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
 import { ChatFAB } from './components/ChatFAB';
