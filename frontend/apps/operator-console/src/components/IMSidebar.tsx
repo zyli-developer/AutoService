@@ -57,7 +57,7 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         <div className="im-me-info">
           <div className="im-me-nm" data-testid="operator-name">{operatorDisplay}</div>
           <div className="im-me-rl">
-            {`在线 · 并发 ${totalConvs}/${concurrencyLimit}`}
+            {t('operator.sidebar.online_concurrency', { count: totalConvs, limit: concurrencyLimit })}
           </div>
         </div>
       </div>
@@ -108,22 +108,22 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         </>
       )}
 
-      <div className="im-nav-sec">{'资源'}</div>
+      <div className="im-nav-sec">{t('operator.sidebar.resources')}</div>
       <ul className="im-nav">
         <li className="im-nav-item">
           <BookIcon />
-          <span>{'知识库'}</span>
+          <span>{t('operator.sidebar.knowledge_base')}</span>
         </li>
         <li className="im-nav-item">
           <BellIcon />
-          <span>{'通知中心'}</span>
+          <span>{t('operator.sidebar.notifications_center')}</span>
         </li>
       </ul>
 
       <div className="im-side-foot">
-        <div className="im-side-foot-row"><span>今日接管</span><b>—</b></div>
-        <div className="im-side-foot-row"><span>CSAT</span><b>—</b></div>
-        <div className="im-side-foot-row"><span>首回 P95</span><b>—</b></div>
+        <div className="im-side-foot-row"><span>{t('operator.sidebar.today_takeovers')}</span><b>—</b></div>
+        <div className="im-side-foot-row"><span>{t('operator.sidebar.csat')}</span><b>—</b></div>
+        <div className="im-side-foot-row"><span>{t('operator.sidebar.p95')}</span><b>—</b></div>
         <div className="im-side-foot-row">
           <span className="im-zchat-label">zchat</span>
           <span className="im-zchat-status">● connected</span>

@@ -37,6 +37,7 @@ function ConcurrencyWarning() {
 }
 
 function ChatEmpty() {
+  const { t } = useTranslation();
   return (
     <div className="op-chat-empty" data-testid="chat-empty">
       <svg viewBox="0 0 240 160" width="180" height="120" aria-hidden="true">
@@ -56,11 +57,8 @@ function ChatEmpty() {
         <ellipse cx="180" cy="105" rx="8" ry="2" fill="var(--ink-700)" opacity="0.4" />
         <line x1="180" y1="105" x2="180" y2="95" stroke="var(--ink-700)" strokeWidth="1" opacity="0.4" />
       </svg>
-      <h3>点开任意卡片进入 Copilot</h3>
-      <p>
-        你不需要先开口。打开卡片，zchat 自动进入 copilot 模式，
-        客户端无感知，你可以从容观察 Agent 的回复、在侧栏输入建议。
-      </p>
+      <h3>{t('operator.empty.title')}</h3>
+      <p>{t('operator.empty.desc')}</p>
     </div>
   );
 }

@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore, deriveCardStatus, type Conversation, type CardStatus } from '../store/operatorStore';
 
-const STATUS_LABELS: Record<CardStatus, string> = {
-  idle: '空闲',
-  'waiting-reply': '待回复',
-  'escalation-pending': '升级中',
-  'human-takeover': '人工接管',
-  closed: '已关闭',
+const STATUS_I18N_KEY: Record<CardStatus, string> = {
+  idle: 'operator.feed.status.idle',
+  'waiting-reply': 'operator.feed.status.waiting_reply',
+  'escalation-pending': 'operator.feed.status.escalation_pending',
+  'human-takeover': 'operator.feed.status.human_takeover',
+  closed: 'operator.feed.status.closed',
 };
 
 const STATUS_KIND: Record<CardStatus, 'auto' | 'copilot' | 'takeover' | 'wait'> = {
@@ -19,14 +20,8 @@ const STATUS_KIND: Record<CardStatus, 'auto' | 'copilot' | 'takeover' | 'wait'> 
 
 function avatarKind(conv: Conversation): 'a1' | 'a2' | 'a3' | 'a4' {
   if (conv.mode === 'takeover') return 'a4';
-  // hash to one of the three palettes for visual variety
   const c = (conv.customerId || conv.id).charCodeAt(0) % 3;
   return (['a1', 'a2', 'a3'] as const)[c];
-}
-
-function avatarText(conv: Conversation): string {
-  if (conv.mode === 'takeover') return '人';
-  return (conv.customerId || conv.id).slice(0, 1).toUpperCase();
 }
 
 function truncate(text: string, max: number): string {
@@ -39,6 +34,7 @@ interface ConversationFeedProps {
 }
 
 export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps) {
+  const { t } = useTranslation();
   const conversations = useOperatorStore((s) => s.conversations);
 
   const sorted = useMemo(() => {
@@ -47,12 +43,19 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
       .sort((a, b) => (b.lastActivityTs > a.lastActivityTs ? 1 : -1));
   }, [conversations, squadId]);
 
+  const avatarHumanLabel = t('operator.feed.avatar.human');
+
+  function avatarText(conv: Conversation): string {
+    if (conv.mode === 'takeover') return avatarHumanLabel;
+    return (conv.customerId || conv.id).slice(0, 1).toUpperCase();
+  }
+
   if (sorted.length === 0) {
     return (
       <div className="im-feed">
         <div className="im-empty" data-testid="empty-squad">
-          {'暂无进行中的对话'}<br />
-          {'等待 Agent 接入新客户...'}
+          {t('operator.feed.empty_title')}<br />
+          {t('operator.feed.empty_hint')}
         </div>
       </div>
     );
@@ -61,13 +64,13 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
   return (
     <div className="im-feed cards" data-testid="conversation-feed">
       <div className="im-sec-lbl">
-        <span>{'进行中对话'}</span>
-        <span className="im-sec-cnt">{sorted.length} 张卡片</span>
+        <span>{t('operator.feed.sec_label')}</span>
+        <span className="im-sec-cnt">{t('operator.feed.card_count', { count: sorted.length })}</span>
       </div>
       <div className="im-card-grid">
         {sorted.map((conv) => {
           const status = deriveCardStatus(conv);
-          const statusLabel = STATUS_LABELS[status];
+          const statusLabel = t(STATUS_I18N_KEY[status]);
           const statusKind = STATUS_KIND[status];
           const isUrgent = status === 'escalation-pending';
           const slaPct = status === 'escalation-pending' ? 42 : status === 'human-takeover' ? 58 : 88;

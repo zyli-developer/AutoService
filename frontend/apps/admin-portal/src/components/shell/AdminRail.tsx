@@ -96,27 +96,27 @@ export function AdminRail() {
         <span className="cs-workspace-chev"><ChevIcon /></span>
       </div>
 
-      <div className="cs-nav-sec">{'运营'}</div>
+      <div className="cs-nav-sec">{t('admin.nav.section.ops')}</div>
       <ul className="cs-nav">{opsItems.map(renderItem)}</ul>
 
-      <div className="cs-nav-sec">{'配置'}</div>
+      <div className="cs-nav-sec">{t('admin.nav.section.config')}</div>
       <ul className="cs-nav">{configItems.map(renderItem)}</ul>
 
       <div className="cs-usage-card">
         <div className="cs-usage-ttl">
-          <span>{'本月消息用量'}</span>
+          <span>{t('admin.usage.title')}</span>
           <b>{'68%'}</b>
         </div>
-        <div className="cs-usage-nm">{'2026 年 4 月'}</div>
-        <div className="cs-usage-val">{'13,605 / 20,000 条'}</div>
+        <div className="cs-usage-nm">{t('admin.usage.month')}</div>
+        <div className="cs-usage-val">{t('admin.usage.progress', { used: '13,605', total: '20,000' })}</div>
         <div className="cs-usage-bar">
           <div className="cs-usage-fill" style={{ width: '68%' }} />
         </div>
         <div className="cs-usage-foot">
-          <span>{'04-01 → 04-20'}</span>
-          <span>{'还剩 10 天'}</span>
+          <span>{t('admin.usage.period')}</span>
+          <span>{t('admin.usage.remaining', { days: 10 })}</span>
         </div>
-        <button type="button" className="cs-usage-upgrade">{'升级到 scale 套餐'}</button>
+        <button type="button" className="cs-usage-upgrade">{t('admin.usage.upgrade_cta')}</button>
       </div>
 
       <div className="cs-rail-spacer" />

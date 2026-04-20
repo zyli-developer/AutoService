@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
 
-function resolveRole(message: ChatMessage): 'customer' | 'agent' | 'operator' | 'system' {
+type Role = 'customer' | 'agent' | 'operator' | 'system';
+
+function resolveRole(message: ChatMessage): Role {
   if (message.visibility === 'system') return 'system';
   if (message.sourceRole === 'system') return 'system';
   if (message.sourceRole === 'customer') return 'customer';
@@ -15,21 +18,8 @@ function resolveRole(message: ChatMessage): 'customer' | 'agent' | 'operator' | 
   return 'agent';
 }
 
-function avatarLabel(role: string): string {
-  if (role === 'customer') return '我';
-  if (role === 'operator') return '李';
-  if (role === 'agent') return '店';
-  return '·';
-}
-
-function whoLabel(role: string): { name: string; tag?: string; tagKind?: 'ai' | 'op' } {
-  if (role === 'customer') return { name: '我' };
-  if (role === 'operator') return { name: '客服小李', tag: '人工', tagKind: 'op' };
-  if (role === 'agent') return { name: 'mystore 客服', tag: 'AI', tagKind: 'ai' };
-  return { name: '系统' };
-}
-
 export function MessageBubble({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation();
   const [imgError, setImgError] = useState(false);
   const role = resolveRole(message);
   const attachmentUrl = message.metadata?.attachment_url as string | undefined;
@@ -59,18 +49,21 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     );
   }
 
-  const { name, tag, tagKind } = whoLabel(role);
+  const avatarLabel = t(`customer.chat.avatar.${role === 'customer' ? 'me' : role === 'operator' ? 'operator' : 'agent'}`);
+  const name = t(`customer.chat.sender.${role === 'customer' ? 'me' : role === 'operator' ? 'operator' : 'agent'}`);
+  const tag = role === 'operator' ? t('customer.chat.tag.operator') : role === 'agent' ? t('customer.chat.tag.agent') : null;
+  const tagKind = role === 'operator' ? 'op' : role === 'agent' ? 'ai' : '';
 
   return (
     <div
       className={`w-msg ${role}${statusSuffix}${editedSuffix}`}
       data-testid={`msg-${role}`}
     >
-      <div className={`w-msg-av ${role}`}>{avatarLabel(role)}</div>
+      <div className={`w-msg-av ${role}`}>{avatarLabel}</div>
       <div className="w-msg-body">
         <div className="w-msg-who">
           <span>{name}</span>
-          {tag && <span className={`w-msg-tag ${tagKind ?? ''}`}>{tag}</span>}
+          {tag && <span className={`w-msg-tag ${tagKind}`}>{tag}</span>}
         </div>
         <div className={`web-msg ${role}${statusSuffix}${editedSuffix}`}>
           {isImage ? (
@@ -84,7 +77,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             />
           ) : attachmentUrl && imgError ? (
             <div data-testid="image-error-placeholder" style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
-              Image unavailable
+              {t('image.error')}
             </div>
           ) : (
             <span>{message.content}</span>

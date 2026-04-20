@@ -44,14 +44,14 @@ export function ChatModal({
   return (
     <div className="web-modal" data-testid="chat-modal">
       <div className="web-modal-header">
-        <div className="w-hd-av">{'店'}</div>
+        <div className="w-hd-av">{t('customer.chat.avatar.merchant')}</div>
         <div className="w-hd-info">
           <div className="web-modal-title" data-testid="modal-title">
-            {t('customer.chat.title')}
+            {t('customer.chat.title_brand')}
           </div>
           <div className="w-hd-sub">
             <span className="w-hd-dot" />
-            {'通常 30 秒内回复 · 今天 09:00 – 24:00'}
+            {t('customer.chat.subtitle')}
           </div>
         </div>
         <div className="w-hd-actions">
@@ -60,8 +60,8 @@ export function ChatModal({
             className="w-hd-btn"
             data-testid="modal-minimize"
             onClick={onClose}
-            aria-label="Minimize chat"
-            title="收起"
+            aria-label={t('customer.chat.minimize')}
+            title={t('customer.chat.minimize')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M5 12h14" />
@@ -73,7 +73,7 @@ export function ChatModal({
             onClick={onClose}
             data-testid="modal-close"
             aria-label={t('customer.chat.close')}
-            title="关闭"
+            title={t('customer.chat.close')}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -87,7 +87,7 @@ export function ChatModal({
         replayCount={replayCount}
       />
       <div className="web-modal-body" ref={bodyRef} data-testid="message-list">
-        <div className="w-day">{'今天 · 09:38'}</div>
+        <div className="w-day">{t('customer.chat.day_today')}</div>
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}

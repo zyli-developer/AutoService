@@ -73,13 +73,13 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           rows={1}
         />
         <div className="w-comp-tools">
-          <button type="button" className="w-tool-btn" title="图片" aria-label="Insert picture" disabled={disabled}>
+          <button type="button" className="w-tool-btn" title={t('chat.input.tool.picture')} aria-label={t('chat.input.tool.picture')} disabled={disabled}>
             <PicIcon />
           </button>
-          <button type="button" className="w-tool-btn" title="附件" aria-label="Attach file" disabled={disabled}>
+          <button type="button" className="w-tool-btn" title={t('chat.input.tool.attach')} aria-label={t('chat.input.tool.attach')} disabled={disabled}>
             <AttachIcon />
           </button>
-          <button type="button" className="w-tool-btn" title="表情" aria-label="Insert emoji" disabled={disabled}>
+          <button type="button" className="w-tool-btn" title={t('chat.input.tool.emoji')} aria-label={t('chat.input.tool.emoji')} disabled={disabled}>
             <EmojiIcon />
           </button>
         </div>
@@ -96,9 +96,9 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
         </button>
       </div>
       <div className="w-foot">
-        <span>按 Enter 发送 · Shift+Enter 换行</span>
+        <span>{t('chat.input.hint')}</span>
         <span className="w-foot-powered">
-          powered by <b>OneSyn · autoservice</b>
+          {t('chat.input.powered_by_label')} <b>{t('chat.input.powered_by_brand')}</b>
         </span>
       </div>
     </>

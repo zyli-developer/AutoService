@@ -26,7 +26,7 @@ function ChatTop({
   return (
     <div className="op-chat-top" data-testid="copilot-header">
       <div className={`op-chat-av ${isTakeover ? 'a4' : 'a1'}`}>
-        {isTakeover ? '人' : (conv?.customerId || convId).slice(0, 1).toUpperCase()}
+        {isTakeover ? t('operator.chat.avatar.takeover') : (conv?.customerId || convId).slice(0, 1).toUpperCase()}
       </div>
       <div className="op-chat-info">
         <h3 className="op-chat-h3">
@@ -49,7 +49,7 @@ function ChatTop({
           onClick={onClose}
           className="op-chat-act-btn"
         >
-          关闭
+          {t('operator.chat.close')}
         </button>
       </div>
     </div>
@@ -62,7 +62,7 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
   if (msg.sender === 'customer') {
     return (
       <div className="op-msg" data-testid={`copilot-message-${msg.id}`}>
-        <div className="op-msg-av cust">客</div>
+        <div className="op-msg-av cust">{t('operator.chat.avatar.customer')}</div>
         <div className="op-msg-body">
           <div className="op-msg-meta">
             <b>{t('operator.copilot.customer_says')}</b>
@@ -78,7 +78,7 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
     if (isTakeover) {
       return (
         <div className="op-msg" data-testid={`copilot-message-${msg.id}`}>
-          <div className="op-msg-av op">李</div>
+          <div className="op-msg-av op">{t('operator.chat.avatar.operator')}</div>
           <div className="op-msg-body">
             <div className="op-msg-meta">
               <b>{t('operator.copilot.operator')}</b>
@@ -92,11 +92,11 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
     }
     return (
       <div className="op-msg side" data-testid={`copilot-message-${msg.id}`}>
-        <div className="op-msg-av op">李</div>
+        <div className="op-msg-av op">{t('operator.chat.avatar.operator')}</div>
         <div className="op-msg-body">
           <div className="op-msg-meta">
             <b>{t('operator.copilot.operator')}</b>
-            <span className="op-msg-tag side">建议</span>
+            <span className="op-msg-tag side">{t('operator.chat.tag.suggestion')}</span>
             <span className="op-msg-time">{msg.ts}</span>
           </div>
           <div className="op-msg-text">{msg.text}</div>
@@ -107,7 +107,7 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
   // agent
   return (
     <div className="op-msg" data-testid={`copilot-message-${msg.id}`}>
-      <div className="op-msg-av ai">店</div>
+      <div className="op-msg-av ai">{t('operator.chat.avatar.agent')}</div>
       <div className="op-msg-body">
         <div className="op-msg-meta">
           <b>agent</b>
@@ -121,62 +121,63 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
 }
 
 function SidePanel({ conv }: { conv: any }) {
+  const { t } = useTranslation();
+  const draftPlaceholder = conv?.lastMessage
+    ? t('operator.panel.draft_placeholder_active', { snippet: (conv.lastMessage as string).slice(0, 60) })
+    : t('operator.panel.draft_placeholder_idle');
+
   return (
     <aside className="op-side-panel">
       <div className="op-sp-sec">
         <div className="op-sp-lbl">
-          <span>客户快照</span>
-          <span className="op-sp-meta">crm</span>
+          <span>{t('operator.panel.snapshot_title')}</span>
+          <span className="op-sp-meta">{t('operator.panel.crm_tag')}</span>
         </div>
         <div className="op-kv">
-          <span className="op-k">客户</span>
+          <span className="op-k">{t('operator.panel.customer')}</span>
           <span className="op-v">{conv?.customerId ?? '—'}</span>
         </div>
         <div className="op-kv">
-          <span className="op-k">分队</span>
+          <span className="op-k">{t('operator.panel.squad')}</span>
           <span className="op-v">{conv?.squadId ?? '—'}</span>
         </div>
         <div className="op-kv">
-          <span className="op-k">模式</span>
+          <span className="op-k">{t('operator.panel.mode')}</span>
           <span className="op-v">{conv?.mode ?? '—'}</span>
         </div>
         <div className="op-kv">
-          <span className="op-k">状态</span>
+          <span className="op-k">{t('operator.panel.state')}</span>
           <span className="op-v">{conv?.state ?? '—'}</span>
         </div>
         <div className="op-kv">
-          <span className="op-k">情绪</span>
-          <span className="op-v" style={{ color: 'var(--spring-700)' }}>● 中性</span>
+          <span className="op-k">{t('operator.panel.emotion')}</span>
+          <span className="op-v" style={{ color: 'var(--spring-700)' }}>{t('operator.panel.emotion_neutral')}</span>
         </div>
       </div>
 
       <div className="op-sp-sec">
         <div className="op-sp-lbl">
-          <span>Agent 拟回复</span>
+          <span>{t('operator.panel.draft_title')}</span>
           <span className="op-sp-live">
             <span className="op-sp-live-dot" />
-            streaming
+            {t('operator.panel.draft_live')}
           </span>
         </div>
-        <div className="op-draft">
-          {conv?.lastMessage
-            ? `回应「${(conv.lastMessage as string).slice(0, 60)}」的拟回复将出现在这里…`
-            : '等待 agent 起草回复…'}
-        </div>
+        <div className="op-draft">{draftPlaceholder}</div>
         <div className="op-draft-actions">
-          <button type="button" className="op-btn-mini pri">发送</button>
-          <button type="button" className="op-btn-mini">改写</button>
-          <button type="button" className="op-btn-mini">保留</button>
+          <button type="button" className="op-btn-mini pri">{t('operator.panel.draft.send')}</button>
+          <button type="button" className="op-btn-mini">{t('operator.panel.draft.rewrite')}</button>
+          <button type="button" className="op-btn-mini">{t('operator.panel.draft.keep')}</button>
         </div>
       </div>
 
       <div className="op-sp-sec">
         <div className="op-sp-lbl">
-          <span>知识库参考</span>
+          <span>{t('operator.panel.kb_title')}</span>
           <span className="op-sp-meta">— hits</span>
         </div>
         <div className="op-kb-empty">
-          知识库命中将在 agent 检索后出现
+          {t('operator.panel.kb_empty')}
         </div>
       </div>
     </aside>
@@ -184,6 +185,7 @@ function SidePanel({ conv }: { conv: any }) {
 }
 
 export function CopilotView({ send }: CopilotViewProps) {
+  const { t } = useTranslation();
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const copilotMessages = useOperatorStore((s) => s.copilotMessages);
   const conversations = useOperatorStore((s) => s.conversations);
@@ -208,13 +210,13 @@ export function CopilotView({ send }: CopilotViewProps) {
       <div className="op-chat-split">
         <div className="op-chat-col">
           <div className="op-stream-lbl">
-            <span>客户 ⇄ Agent · public 可见</span>
-            <b>{allMessages.length} 条消息</b>
+            <span>{t('operator.stream.lbl')}</span>
+            <b>{t('operator.stream.msg_count', { count: allMessages.length })}</b>
           </div>
           <div className="op-stream">
             {allMessages.length === 0 && (
               <div className="im-empty" style={{ padding: '40px 0' }}>
-                等待消息接入…
+                {t('operator.stream.waiting')}
               </div>
             )}
             {allMessages.map((msg) => (

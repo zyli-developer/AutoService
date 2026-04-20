@@ -30,19 +30,19 @@ export function IMTitlebar() {
       <div className="im-topbar-left">
         <div className="im-crumb">{t('operator.titlebar.title')}</div>
         <div className="im-page-title">
-          {activeSquadId ? `# ${activeSquadId}` : '我的分队'}
-          <span className="im-page-cnt">· {filtered.length} 个进行中</span>
+          {activeSquadId ? `# ${activeSquadId}` : t('operator.topbar.my_squad')}
+          <span className="im-page-cnt">{t('operator.topbar.in_progress', { count: filtered.length })}</span>
         </div>
       </div>
       <div className="im-topbar-right">
         <span className={`im-pill ${slaOk ? 'ok' : 'warn'}`}>
           <span className="im-pill-dot" />
-          {slaOk ? 'SLA 正常' : '待重连'}
+          {slaOk ? t('operator.topbar.sla_ok') : t('operator.topbar.sla_reconnecting')}
         </span>
-        <button type="button" className="im-iconbtn" title="搜索" aria-label="搜索">
+        <button type="button" className="im-iconbtn" title={t('operator.topbar.search')} aria-label={t('operator.topbar.search')}>
           <SearchIcon />
         </button>
-        <button type="button" className="im-iconbtn" title="筛选" aria-label="筛选">
+        <button type="button" className="im-iconbtn" title={t('operator.topbar.filter')} aria-label={t('operator.topbar.filter')}>
           <FilterIcon />
         </button>
         <LanguageSwitcher

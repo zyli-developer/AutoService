@@ -6,15 +6,15 @@ export function MerchantSite() {
   return (
     <div className="m-page">
       <div className="m-nav">
-        <div className="m-brand" data-testid="merchant-logo">{t('customer.merchant.title') || 'mystore'}</div>
+        <div className="m-brand" data-testid="merchant-logo">{t('customer.merchant.title')}</div>
         <a className="m-link active">{t('customer.merchant.nav.home')}</a>
         <a className="m-link">{t('customer.merchant.nav.products')}</a>
-        <a className="m-link">{'定价'}</a>
+        <a className="m-link">{t('customer.merchant.nav.pricing')}</a>
         <a className="m-link">{t('customer.merchant.nav.about')}</a>
-        <a className="m-link">{'联系我们'}</a>
+        <a className="m-link">{t('customer.merchant.nav.contact')}</a>
         <div className="m-nav-right">
-          <span className="m-cart">{'购物车 · 0'}</span>
-          <a className="m-login">{'登录'}</a>
+          <span className="m-cart">{t('customer.merchant.cart')}</span>
+          <a className="m-login">{t('customer.merchant.login')}</a>
           <LanguageSwitcher
             style={{
               padding: '2px 8px',
@@ -32,11 +32,11 @@ export function MerchantSite() {
       </div>
 
       <div className="m-hero">
-        <div className="m-kicker">{'本月限定 · 首月 8 折'}</div>
+        <div className="m-kicker">{t('customer.merchant.kicker')}</div>
         <h1 className="m-h1">{t('customer.merchant.welcome')}</h1>
         <p className="m-lead">
           {t('customer.merchant.subtitle')}
-          {' — 不耗人，不漏客。'}
+          {t('customer.merchant.subtitle_suffix')}
         </p>
       </div>
 
@@ -45,28 +45,28 @@ export function MerchantSite() {
           <div className="m-tile-ph" />
           <h4 className="m-tile-name">{t('customer.merchant.plan_a')}</h4>
           <div className="m-tile-desc">{t('customer.merchant.plan_a.desc')}</div>
-          <div className="m-tile-price">¥99 / 月</div>
+          <div className="m-tile-price">{t('customer.merchant.tile.basic_price')}</div>
         </div>
         <div className="m-tile featured">
           <div className="m-tile-ph featured" />
           <h4 className="m-tile-name">
             {t('customer.merchant.plan_b')}
-            <span className="m-tile-badge">{'热门'}</span>
+            <span className="m-tile-badge">{t('customer.merchant.tile.badge_hot')}</span>
           </h4>
           <div className="m-tile-desc">{t('customer.merchant.plan_b.desc')}</div>
-          <div className="m-tile-price">¥299 / 月</div>
+          <div className="m-tile-price">{t('customer.merchant.tile.pro_price')}</div>
         </div>
         <div className="m-tile">
           <div className="m-tile-ph" />
-          <h4 className="m-tile-name">{'企业定制'}</h4>
-          <div className="m-tile-desc">{'50 人以上团队 · 私有化部署'}</div>
-          <div className="m-tile-price">{'联系我们'}</div>
+          <h4 className="m-tile-name">{t('customer.merchant.tile.enterprise_name')}</h4>
+          <div className="m-tile-desc">{t('customer.merchant.tile.enterprise_desc')}</div>
+          <div className="m-tile-price">{t('customer.merchant.tile.enterprise_price')}</div>
         </div>
       </div>
 
       <div className="m-note">
         <span className="m-note-arr" />
-        <span>{'右下角是 AutoService 嵌入式客服 widget — 客户点开就开始对话'}</span>
+        <span>{t('customer.merchant.note')}</span>
       </div>
     </div>
   );

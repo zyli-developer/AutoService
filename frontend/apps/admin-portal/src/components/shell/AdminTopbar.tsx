@@ -25,7 +25,7 @@ export function AdminTopbar() {
   return (
     <header className="cs-topbar" data-testid="admin-topbar">
       <div className="cs-topbar-left">
-        <div className="cs-topbar-crumb">{`${tenant} · AutoService 管理后台`}</div>
+        <div className="cs-topbar-crumb">{`${tenant} · ${t('admin.topbar.suffix')}`}</div>
         <div className="cs-topbar-title">
           <span className="cs-topbar-dot" aria-hidden="true" />
           <span className="cs-topbar-tenant" data-testid="topbar-tenant">{tenant}</span>

@@ -68,12 +68,12 @@ export function IMInput({ send }: IMInputProps) {
     <div className="im-input">
       {activeCopilotConvId && !isTakeover && (
         <div className="im-comp-hint side">
-          💡 <b>输入建议</b> · 仅对 agent 可见 · 不会发给客户
+          💡 <b>{t('operator.input.hint.copilot_label')}</b> · {t('operator.input.hint.copilot_detail')}
         </div>
       )}
       {activeCopilotConvId && isTakeover && (
         <div className="im-comp-hint takeover">
-          <b>接管模式</b> · 你现在是 driver · 消息将直接发给客户 · AI 退居副驾驶
+          <b>{t('operator.input.hint.takeover_label')}</b> · {t('operator.input.hint.takeover_detail')}
         </div>
       )}
       <div className={`im-input-row ${isTakeover ? 'takeover' : ''}`}>
