@@ -61,6 +61,13 @@ export function App() {
     b.classList.add('sheet-' + sheet);
   }, [sheet]);
 
+  // Mirror modal open/closed to body.sheet-open so CSS can dim merchant only
+  // when the sheet is actually visible (and show FAB again when it's not)
+  useEffect(() => {
+    document.body.classList.toggle('sheet-open', isOpen);
+    return () => document.body.classList.remove('sheet-open');
+  }, [isOpen]);
+
   const toggleSheet = () => setSheet((s) => (s === 'peek' ? 'full' : 'peek'));
 
   const handleSend = async (content: string) => {
