@@ -32,12 +32,60 @@ CREATE TABLE IF NOT EXISTS proposals (
     created_at TEXT NOT NULL,
     data TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
-    category TEXT
+    category TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '_master'
 );
 
 CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
 CREATE INDEX IF NOT EXISTS idx_proposals_category ON proposals(category);
+CREATE INDEX IF NOT EXISTS idx_proposals_tenant ON proposals(tenant_id);
 """
+
+
+def apply_schema(conn: sqlite3.Connection) -> None:
+    """Create or migrate the ``proposals`` schema.
+
+    Idempotent: safe to call on a brand-new DB, an M1 legacy DB (no ``tenant_id``
+    column), or an already-migrated DB.
+
+    T2B.1 (tenant sandbox M2, spec §2.4):
+      - Fresh DB  -> ``PROPOSALS_SCHEMA`` is applied verbatim (includes
+        ``tenant_id`` column + index).
+      - Legacy DB -> ``ALTER TABLE … ADD COLUMN tenant_id TEXT NOT NULL
+        DEFAULT '_master'`` backfills existing rows and the tenant index is
+        created.
+      - Already migrated -> no-op (all statements are ``CREATE … IF NOT EXISTS``
+        or guarded by a ``PRAGMA table_info`` check).
+    """
+    existing_table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='proposals'"
+    ).fetchone()
+
+    if existing_table is None:
+        # Fresh DB — the full schema (including tenant_id) is created in one go.
+        conn.executescript(PROPOSALS_SCHEMA)
+        conn.commit()
+        return
+
+    # Table already present — inspect columns and add tenant_id if it's absent.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(proposals)").fetchall()}
+    if "tenant_id" not in cols:
+        conn.execute(
+            "ALTER TABLE proposals ADD COLUMN tenant_id TEXT NOT NULL "
+            "DEFAULT '_master'"
+        )
+
+    # Ensure all indexes exist (these are CREATE … IF NOT EXISTS, so idempotent).
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_proposals_category ON proposals(category)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_proposals_tenant ON proposals(tenant_id)"
+    )
+    conn.commit()
 
 VALID_CATEGORIES = {"response_quality", "workflow", "knowledge_gap", "tone"}
 VALID_PRIORITIES = {"high", "medium", "low"}
@@ -171,7 +219,9 @@ class ProposalPipeline:
     # ------------------------------------------------------------------
 
     def _init_db(self) -> None:
-        self._conn.executescript(PROPOSALS_SCHEMA)
+        # Route through ``apply_schema`` so the tenant_id migration (T2B.1)
+        # runs automatically for any connection — fresh or legacy.
+        apply_schema(self._conn)
 
     # ------------------------------------------------------------------
     # Step 1: Select conversations
@@ -224,8 +274,14 @@ class ProposalPipeline:
         self,
         analysis: dict,
         source_conversations: list[str],
+        tenant_id: str = "_master",
     ) -> dict:
-        """Create a proposal JSON dict with all required fields."""
+        """Create a proposal JSON dict with all required fields.
+
+        ``tenant_id`` defaults to ``"_master"`` for backwards compatibility with
+        M1 callers; the tenant sandbox migration (T2B.1) records it on the
+        proposal and on the SQLite row.
+        """
         evidence = analysis.get("evidence", [])
         priority = self._determine_priority(evidence)
 
@@ -240,6 +296,7 @@ class ProposalPipeline:
             "suggestion": analysis.get("suggestion", ""),
             "priority": priority,
             "status": "draft",
+            "tenant_id": tenant_id,
             "compliance_check": {"passed": True, "flags": []},
         }
 
@@ -336,15 +393,19 @@ class ProposalPipeline:
     # ------------------------------------------------------------------
 
     def _store_proposal(self, proposal: dict) -> None:
+        # ``tenant_id`` falls back to ``"_master"`` to stay compatible with
+        # proposals that predate the T2B.1 sandbox migration.
+        tenant_id = proposal.get("tenant_id", "_master")
         self._conn.execute(
-            "INSERT INTO proposals (id, created_at, data, status, category) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO proposals (id, created_at, data, status, category, tenant_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 proposal["id"],
                 proposal["created_at"],
                 json.dumps(proposal, ensure_ascii=False),
                 proposal["status"],
                 proposal["category"],
+                tenant_id,
             ),
         )
         self._conn.commit()
