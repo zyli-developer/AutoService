@@ -1,8 +1,9 @@
 project:
-  name: "AutoService-dev-a · M1 Sandbox Provisioning"
+  name: "AutoService-dev-a · M2 Tenant Dream Sandbox"
   branch: "dev-a"
   main_branch: "dev"
   generated_at: "2026-04-20"
+  plans_dir: docs/plans/m2
   parallel_capacity: 2
   team:
     - id: Dev1
@@ -17,6 +18,13 @@ project:
       target: "约 3 工作日（18-25h 实际编码 + 测试）"
       gate: "§10 验收 9 条全通过"
       scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md"
+      status: "shipped"
+      plans_dir: docs/plans   # legacy — root-level artifacts kept for history
+    M2:
+      name: "Tenant-side Dream Sandbox"
+      scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md"
+      plan_doc: "docs/superpowers/plans/2026-04-20-tenant-sandbox-m2.md"
+      plans_dir: docs/plans/m2
 
   conventions:
     commit_style: "conventional commits (feat/fix/chore/test/refactor)"

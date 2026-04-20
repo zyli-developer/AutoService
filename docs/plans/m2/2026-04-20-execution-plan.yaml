@@ -1,0 +1,388 @@
+metadata:
+  generated_at: "2026-04-20"
+  source:
+    tasks: "docs/plans/m2/2026-04-20-tasks.yaml"
+    project: "docs/plans/project.yaml"
+  parallel_capacity: 2
+  milestone: M2
+  note: |
+    Batches compress the plan-authored 38-deep linear chain by allowing intra-phase
+    parallelism where files do not overlap. Solo-dev + Claude parallel subagents
+    (superpowers:dispatching-parallel-agents) can drive 2 tasks concurrently.
+    Estimated wall-clock: 6–7 working days (~54h of effort).
+
+# ────────────────────────────────────────────────────────────────
+# Topological stages — one per batch; batches ordered left-to-right
+# ────────────────────────────────────────────────────────────────
+batches:
+  # ── Phase 1 — Bootstrap + _master seed ──────────────────────
+  - id: batch-0
+    name: "P1 Bootstrap foundation"
+    milestone: M2
+    phase: P1
+    schedule:
+      start: "Day 1 AM"
+      duration: "4h"
+    tasks:
+      - id: T1B.1
+        owner: Dev1
+        mode: solo
+      - id: T1B.2
+        owner: Dev1
+        mode: solo  # serial after T1B.1 (yellow — LLM prompt review)
+    pre_check: "None (first batch)"
+    gate: "config.local.yaml schema readable; soul_generator emits 5 roles including dream"
+
+  - id: batch-1
+    name: "P1 Tenant bootstrap + lifespan"
+    milestone: M2
+    phase: P1
+    schedule:
+      start: "Day 1 PM"
+      duration: "3h"
+    tasks:
+      - id: T1B.3
+        owner: Dev1
+        mode: solo
+      - id: T1B.4
+        owner: Dev1
+        mode: solo  # shares master_tenant.py with T1B.3 → serial
+      - id: T1B.5
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-0 gate passed"
+    gate: "Master + tenant bootstrap idempotent; uvicorn boots in both modes"
+
+  # ── Phase 2 — Schema migrations (parallel) ──────────────────
+  - id: batch-2
+    name: "P2 Schema migrations (parallel)"
+    milestone: M2
+    phase: P2
+    schedule:
+      start: "Day 2 AM"
+      duration: "2h"
+    tasks:
+      - id: T2B.1
+        owner: Dev1
+        mode: parallel   # proposal_pipeline.py (standalone)
+      - id: T2B.2
+        owner: Subagent
+        mode: parallel   # memory_pool.py (standalone; no file overlap)
+      - id: T2B.3
+        owner: Subagent
+        mode: parallel   # new dream_runs.py module
+    pre_check: "batch-1 gate passed; M1 tests baseline green"
+    gate: "proposals.tenant_id + memory_pool.tenant_id + dream_runs.db schemas live; migrations tests pass"
+
+  # ── Phase 3 — Dream Agent tools (serial on dream_agent.py) ──
+  - id: batch-3
+    name: "P3 Dream agent tool trio"
+    milestone: M2
+    phase: P3
+    schedule:
+      start: "Day 2 PM"
+      duration: "3h"
+    tasks:
+      - id: T3B.1
+        owner: Dev1
+        mode: solo   # dream_agent.py — serial on file
+      - id: T3B.2
+        owner: Dev1
+        mode: solo
+      - id: T3B.3
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-2 gate passed"
+    gate: "emit_proposal + kb_search + list_souls tools unit-tested"
+
+  - id: batch-4
+    name: "P3 run_dream core loop"
+    milestone: M2
+    phase: P3
+    schedule:
+      start: "Day 3 AM"
+      duration: "8h (large, yellow)"
+    tasks:
+      - id: T3B.4
+        owner: Dev1
+        mode: solo
+        review_checkpoint: true   # yellow — agent strategy review
+    pre_check: "batch-3 gate passed"
+    gate: "run_dream emits a draft proposal; max_tool_turns cap honored; dream_runs row written"
+
+  - id: batch-5
+    name: "P3 dream pool + API (parallel)"
+    milestone: M2
+    phase: P3
+    schedule:
+      start: "Day 3 PM"
+      duration: "3h"
+    tasks:
+      - id: T3B.5
+        owner: Dev1
+        mode: parallel    # cc_pool.py (yellow — regression risk)
+        review_checkpoint: true
+      - id: T3B.6
+        owner: Subagent
+        mode: parallel    # api_routes.py (different file; /api/dream/* block)
+    pre_check: "batch-4 gate passed"
+    gate: "cc_pool role=dream isolated; /api/dream/trigger + /api/dream/runs respond"
+
+  # ── Phase 4 — DreamScheduler ────────────────────────────────
+  - id: batch-6
+    name: "P4 DreamScheduler"
+    milestone: M2
+    phase: P4
+    schedule:
+      start: "Day 4 AM"
+      duration: "5h"
+    tasks:
+      - id: T4B.1
+        owner: Dev1
+        mode: solo
+        review_checkpoint: true   # yellow — heuristics strategy
+      - id: T4B.2
+        owner: Dev1
+        mode: solo
+      - id: T4B.3
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-5 gate passed"
+    gate: "Idle tenant auto-triggers; scheduler.refresh() honors /dream-config changes"
+
+  # ── Phase 5 — Auth (serial on auth.py + api_routes.py) ──────
+  - id: batch-7
+    name: "P5 Auth foundations (schema + token flow)"
+    milestone: M2
+    phase: P5
+    schedule:
+      start: "Day 4 PM"
+      duration: "4h"
+    tasks:
+      - id: T5B.1
+        owner: Dev1
+        mode: solo
+      - id: T5B.2
+        owner: Dev1
+        mode: solo
+      - id: T5B.3
+        owner: Dev1
+        mode: solo
+      - id: T5B.4
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-6 gate passed"
+    gate: "request-login → verify → cookie → logout round-trip"
+
+  - id: batch-8
+    name: "P5 Auth gating + session extension"
+    milestone: M2
+    phase: P5
+    schedule:
+      start: "Day 5 AM"
+      duration: "3h"
+    tasks:
+      - id: T5B.5
+        owner: Dev1
+        mode: solo
+      - id: T5B.6
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-7 gate passed"
+    gate: "require_tenant_access enforces cross-tenant denial; /api/session/mode returns auth state"
+
+  # ── Phase 6 — admin-portal TenantLayout ─────────────────────
+  - id: batch-9
+    name: "P6 Frontend shell hooks"
+    milestone: M2
+    phase: P6
+    schedule:
+      start: "Day 5 PM"
+      duration: "3h"
+    tasks:
+      - id: T6F.1
+        owner: Dev1
+        mode: solo
+      - id: T6F.2
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-8 gate passed"
+    gate: "useSessionMode + useTenantId real impl; AuthGate + LoginPage integrated into App.tsx"
+
+  - id: batch-10
+    name: "P6 Shell components (parallel)"
+    milestone: M2
+    phase: P6
+    schedule:
+      start: "Day 6 AM"
+      duration: "2h"
+    tasks:
+      - id: T6F.3
+        owner: Dev1
+        mode: parallel   # AdminRail.tsx
+      - id: T6F.4
+        owner: Subagent
+        mode: parallel   # AdminTopbar.tsx + AvatarMenu.tsx (no overlap with AdminRail)
+    pre_check: "batch-9 gate passed"
+    gate: "AdminRail variant switch; AdminTopbar + AvatarMenu (Logout) render correctly"
+
+  - id: batch-11
+    name: "P6 TenantLayout + ChatTab"
+    milestone: M2
+    phase: P6
+    schedule:
+      start: "Day 6 AM"
+      duration: "4h"
+    tasks:
+      - id: T6F.5
+        owner: Dev1
+        mode: solo
+      - id: T6F.6
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-10 gate passed"
+    gate: "4-tab TenantLayout with ChatTab wired to /api/admin/chat"
+
+  # ── Phase 7 — Fork runtime (mixed lines, more parallelism) ──
+  - id: batch-12
+    name: "P7 Middleware + helper"
+    milestone: M2
+    phase: P7
+    schedule:
+      start: "Day 6 PM"
+      duration: "3h"
+    tasks:
+      - id: T7B.1
+        owner: Dev1
+        mode: solo
+      - id: T7B.2
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-11 gate passed"
+    gate: "TenantContext routes master vs tenant; tenant_root() resolves paths in both modes"
+
+  - id: batch-13
+    name: "P7 Frontend routing + infra (parallel)"
+    milestone: M2
+    phase: P7
+    schedule:
+      start: "Day 7 AM"
+      duration: "2h"
+    tasks:
+      - id: T7F.3
+        owner: Dev1
+        mode: parallel   # customer-chat/operator-console main.tsx
+      - id: T7S.4
+        owner: Subagent
+        mode: parallel   # scripts/setup.sh + Makefile (no overlap)
+    pre_check: "batch-12 gate passed"
+    gate: "Frontends pick URL scheme by mode; make setup mode-aware"
+
+  - id: batch-14
+    name: "P7 Smoke + management chat (parallel)"
+    milestone: M2
+    phase: P7
+    schedule:
+      start: "Day 7 AM"
+      duration: "1h"
+    tasks:
+      - id: T7S.5
+        owner: Dev1
+        mode: parallel   # tests/fork_runtime/
+      - id: T7B.6
+        owner: Subagent
+        mode: parallel   # api_routes.py /api/management/chat (no overlap w/ tests)
+    pre_check: "batch-13 gate passed"
+    gate: "Fork-mode boot smoke green; /api/management/chat → _master routing verified"
+
+  # ── Phase 8 — ForkCreator automation + E2E ──────────────────
+  - id: batch-15
+    name: "P8 ForkCreator automation (yellow)"
+    milestone: M2
+    phase: P8
+    schedule:
+      start: "Day 7 PM"
+      duration: "9h (large, yellow)"
+    tasks:
+      - id: T8B.1
+        owner: Dev1
+        mode: solo
+        review_checkpoint: true   # yellow — external CLI + failure recovery
+      - id: T8B.2
+        owner: Dev1
+        mode: solo
+    pre_check: "batch-14 gate passed"
+    gate: "GitHubApiForkCreator smoke green; LocalTarballForkCreator writes config.local.yaml"
+
+  - id: batch-16
+    name: "M2 Acceptance E2E (yellow, manual)"
+    milestone: M2
+    phase: P8
+    schedule:
+      start: "Day 8"
+      duration: "6h (large, yellow, manual)"
+    tasks:
+      - id: T8S.3
+        owner: Dev1
+        mode: solo
+        review_checkpoint: true   # yellow — live-LLM + network; manual run
+    pre_check: "batch-15 gate passed"
+    gate: "spec §8 8-step acceptance passes end-to-end"
+
+# ────────────────────────────────────────────────────────────────
+# Milestones
+# ────────────────────────────────────────────────────────────────
+milestones:
+  - id: M2
+    name: "Tenant-side Dream Sandbox"
+    phase: [P1, P2, P3, P4, P5, P6, P7, P8]
+    batches: [batch-0, batch-1, batch-2, batch-3, batch-4, batch-5, batch-6, batch-7, batch-8, batch-9, batch-10, batch-11, batch-12, batch-13, batch-14, batch-15, batch-16]
+    schedule:
+      target: "Day 7–8 EOD"
+    gate_checks:
+      - "All 38 tasks marked done in task-status.md"
+      - "pytest tests/ — full suite green (excludes -m e2e)"
+      - "pytest -m e2e tests/e2e/test_m2_acceptance.py — spec §8 acceptance 8/8"
+      - "admin-portal build passes; vitest --run green"
+      - "scripts/setup.sh succeeds on fresh master + fresh tenant checkouts"
+      - "No uncommitted changes; conventional-commits log clean"
+    smoke_test:
+      - scenario: "Spec §8 full E2E acceptance"
+        command: "pytest -m e2e tests/e2e/test_m2_acceptance.py"
+        expected: "All 8 acceptance steps pass"
+
+# ────────────────────────────────────────────────────────────────
+# Parallel opportunities (Claude subagent dispatch candidates)
+# ────────────────────────────────────────────────────────────────
+parallel_dispatch:
+  batch-2: "T2B.1 || T2B.2 || T2B.3 — three independent migration modules"
+  batch-5: "T3B.5 || T3B.6 — cc_pool.py vs api_routes.py"
+  batch-10: "T6F.3 || T6F.4 — AdminRail vs AdminTopbar/AvatarMenu"
+  batch-13: "T7F.3 || T7S.4 — frontend routing vs scripts/setup.sh"
+  batch-14: "T7S.5 || T7B.6 — smoke tests vs /api/management/chat"
+
+# ────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────
+summary:
+  total_batches: 17
+  total_tasks: 38
+  critical_path_hours: 54
+  estimated_duration: "6–7 working days (8h/day + Claude subagent parallelism)"
+  review_checkpoints: 6   # yellow tasks
+  parallel_dispatch_batches: 5
+  effort_by_phase:
+    P1: 7h
+    P2: 2h
+    P3: 14h
+    P4: 5h
+    P5: 7h
+    P6: 9h
+    P7: 6h
+    P8: 15h
+
+warnings:
+  - "Phase 5 serialises 6 tasks on auth.py + api_routes.py — real bottleneck; cannot parallelise."
+  - "Phase 8 contains 15h of effort in 2 large yellow tasks (gh CLI integration + E2E). High uncertainty; plan a dedicated day."
+  - "T3B.4 (run_dream large) is on critical path and yellow — schedule early in Day 3 before interrupt-prone afternoons."
+  - "E2E (T8S.3) requires real Anthropic key + gh CLI + uvicorn; run manually, not in CI."
