@@ -27,6 +27,7 @@ async def _join_cust_and_op(engine, conv, make_participant):
         # §4 table
         (ConversationMode.AUTO, ParticipantRole.AGENT, MessageVisibility.PUBLIC, MessageVisibility.PUBLIC),
         (ConversationMode.AUTO, ParticipantRole.CUSTOMER, MessageVisibility.PUBLIC, MessageVisibility.PUBLIC),
+        (ConversationMode.AUTO, ParticipantRole.OPERATOR, MessageVisibility.PUBLIC, MessageVisibility.SIDE),
         (ConversationMode.COPILOT, ParticipantRole.AGENT, MessageVisibility.PUBLIC, MessageVisibility.PUBLIC),
         (ConversationMode.COPILOT, ParticipantRole.OPERATOR, MessageVisibility.PUBLIC, MessageVisibility.SIDE),
         (ConversationMode.TAKEOVER, ParticipantRole.AGENT, MessageVisibility.PUBLIC, MessageVisibility.SIDE),

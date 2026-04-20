@@ -243,7 +243,36 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         alert_engine = AlertEngine(aggregator)
         alert_engine.set_notify(_push_alert_to_admins)
         app.state.alert_engine = alert_engine
-        logger.info("AlertEngine wired with admin WS push")
+
+        # Per-record breach → immediate sla_alert frame to admins (Issue 5).
+        # Complements AlertEngine's window-based aggregate alerts.
+        def _on_per_record_breach(info: dict) -> None:
+            from autoservice.gateway.connection import build_frame
+            frame = build_frame("sla_alert", {
+                "severity": info["severity"],
+                "message": (
+                    f"SLA threshold breached: {info['metric']}={info['value']:.0f} "
+                    f"({info['comparator']} {info['limit']})"
+                ),
+                "details": info,
+                "source": "per_record",
+            })
+            async def _push():
+                stale: list[str] = []
+                for sid, ws in list(_admin_connections.items()):
+                    try:
+                        await ws.send_json(frame)
+                    except Exception:
+                        stale.append(sid)
+                for sid in stale:
+                    _admin_connections.pop(sid, None)
+            try:
+                asyncio.create_task(_push())
+            except RuntimeError:
+                pass
+        aggregator.set_breach_callback(_on_per_record_breach)
+
+        logger.info("AlertEngine wired with admin WS push (aggregate + per-record)")
     except Exception:
         logger.warning("AlertEngine init failed, alerts disabled", exc_info=True)
 
@@ -253,6 +282,23 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             _make_endpoint(role),
             name=f"ws_{role}",
         )
+
+    @app.on_event("startup")
+    async def _warm_cc_pool() -> None:
+        # Eagerly init pool so .autoservice/cc_pool_status.json appears
+        # right after `make start`, instead of waiting for the first message.
+        try:
+            await _get_pool()
+        except Exception:
+            logger.warning("eager CCPool warm-up failed", exc_info=True)
+
+    @app.on_event("shutdown")
+    async def _shutdown_cc_pool() -> None:
+        try:
+            from autoservice.cc_pool import shutdown_pool
+            await shutdown_pool()
+        except Exception:
+            logger.debug("CCPool shutdown failed", exc_info=True)
 
     return app
 

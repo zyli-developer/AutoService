@@ -197,6 +197,51 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 _PERIOD_TO_WINDOW: dict[str, str] = {"5m": "5m", "1h": "1h", "24h": "24h"}
 
 
+@api_router.get("/conversations/active")
+async def list_active_conversations(
+    squad_id: str | None = None, operator_id: str | None = None,
+) -> dict[str, Any]:
+    """Return active (non-closed) conversations, optionally filtered by squad
+    or operator. Used by the operator console on login to seed the
+    conversation list without waiting for live events."""
+    engine = _ws_engine()
+    if engine is None:
+        return {"conversations": []}
+    convs = await engine.list_active_conversations(
+        operator_id=operator_id, squad_id=squad_id,
+    )
+    items: list[dict[str, Any]] = []
+    for c in convs:
+        # Pull last message for preview (used by conversation card)
+        try:
+            msgs = await engine.get_messages(c.id, viewer_role="operator", limit=100)
+        except Exception:
+            msgs = []
+        last_msg = msgs[-1] if msgs else None
+        last_content = last_msg.content if last_msg else ""
+        last_sender = last_msg.source if last_msg else ""
+        last_ts = (
+            last_msg.timestamp.isoformat()
+            if last_msg and hasattr(last_msg.timestamp, "isoformat")
+            else (c.updated_at.isoformat() if hasattr(c.updated_at, "isoformat") else "")
+        )
+        items.append({
+            "id": c.id,
+            "squad_id": c.metadata.get("squad_id", ""),
+            "customer_id": next(
+                (p.id for p in c.participants if p.role.value == "customer"),
+                "",
+            ),
+            "mode": c.mode.value if hasattr(c.mode, "value") else str(c.mode),
+            "state": c.state.value if hasattr(c.state, "value") else str(c.state),
+            "last_message": last_content,
+            "last_sender": "customer" if (last_sender and last_sender != "agent" and not last_sender.startswith("op")) else ("agent" if last_sender == "agent" else "operator"),
+            "last_activity_ts": last_ts,
+            "takeover_operator_id": c.takeover_operator_id,
+        })
+    return {"conversations": items}
+
+
 @api_router.get("/sla/summary")
 async def sla_summary(period: str = "5m") -> dict[str, Any]:
     """Return current SLA metrics across all 7 types for a given time window."""

@@ -67,7 +67,8 @@ export function handleEventFrame(
       updateConversation(convId, { state: 'closed', lastActivityTs: ts });
       break;
     case 'message.sent': {
-      const sender = event.data.sender_role === 'customer' ? 'customer' as const : 'agent' as const;
+      const _src = (event.data.source as string) ?? '';
+      const sender = (_src.startsWith('cust') || _src === 'customer') ? 'customer' as const : 'agent' as const;
       const text = (event.data.text ?? event.data.content ?? '') as string;
       updateConversation(convId, {
         lastMessage: text,
@@ -90,6 +91,7 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   const addConversation = useOperatorStore((s) => s.addConversation);
   const updateConversation = useOperatorStore((s) => s.updateConversation);
   const addCopilotMessage = useOperatorStore((s) => s.addCopilotMessage);
+  const updateCopilotMessage = useOperatorStore((s) => s.updateCopilotMessage);
 
   const clientRef = useRef<WSClient | null>(null);
 
@@ -111,6 +113,38 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         const currentSquads = useOperatorStore.getState().squads;
         currentSquads.forEach((squadId) => {
           client.send('subscribe' as any, { scope: { squad_id: squadId } }).catch(() => {});
+        });
+
+        // Seed active conversation list so the operator sees existing
+        // conversations on (re)login without waiting for live events.
+        // Uses Vite proxy (/api -> localhost:8000) so the fetch is same-origin.
+        currentSquads.forEach((squadId) => {
+          const url = `/api/conversations/active?squad_id=${encodeURIComponent(squadId)}`;
+          fetch(url)
+            .then((r) => (r.ok ? r.json() : { conversations: [] }))
+            .then((data: { conversations?: Array<Record<string, unknown>> }) => {
+              const items = data.conversations ?? [];
+              const store = useOperatorStore.getState();
+              for (const c of items) {
+                const id = c.id as string;
+                if (!id || store.conversations[id]) continue;
+                store.addSquad(String(c.squad_id || squadId));
+                store.addConversation({
+                  id,
+                  squadId: String(c.squad_id || squadId),
+                  customerId: String(c.customer_id || 'customer'),
+                  mode: (c.mode as Conversation['mode']) ?? 'auto',
+                  state: (c.state as Conversation['state']) ?? 'active',
+                  lastMessage: String(c.last_message || ''),
+                  lastMessageSender: (c.last_sender as Conversation['lastMessageSender']) ?? '',
+                  lastActivityTs: String(c.last_activity_ts || new Date().toISOString()),
+                  takeoverOperatorId: (c.takeover_operator_id as string | null) ?? null,
+                });
+              }
+            })
+            .catch(() => {
+              /* ignore — live events will backfill */
+            });
         });
       },
       onClose: () => {
@@ -196,6 +230,17 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
           }
         }
 
+        if (frame.type === 'message_edited') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string | undefined;
+          const msg = p.message as Record<string, unknown> | undefined;
+          const messageId = (msg?.id as string) ?? (p.message_id as string);
+          const newContent = (msg?.content as string) ?? (p.new_content as string);
+          if (convId && messageId && newContent !== undefined) {
+            updateCopilotMessage(convId, messageId, { text: newContent });
+          }
+        }
+
         if (frame.type === 'takeover_timer_armed') {
           const p = frame.payload as {
             conversation_id: string;
@@ -231,24 +276,9 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         }
 
         if (frame.type === 'event') {
+          // event frames update conversation metadata only (mode, state, etc.)
+          // copilot messages are handled exclusively via broadcast `message` frames
           handleEventFrame(frame, addConversation, updateConversation);
-
-          const evtPayload = frame.payload as EventPayload;
-          const evt = evtPayload?.event;
-          if (evt?.type === 'message.sent' && evt.conversation_id) {
-            const state = useOperatorStore.getState();
-            if (state.activeCopilotConvId === evt.conversation_id) {
-              const sender = evt.data.sender_role === 'customer' ? 'customer' as const
-                : evt.data.sender_role === 'operator' ? 'operator' as const
-                : 'agent' as const;
-              addCopilotMessage(evt.conversation_id, {
-                id: evt.id,
-                text: (evt.data.text ?? evt.data.content ?? '') as string,
-                sender,
-                ts: evt.timestamp || new Date().toISOString(),
-              });
-            }
-          }
         }
       },
     });

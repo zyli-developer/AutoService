@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from autoservice.conversation_engine import ConversationEngine
 from autoservice.conversation_engine.errors import ConversationNotFound
-from autoservice.conversation_engine.types import Participant, ParticipantRole
+from autoservice.conversation_engine.types import MessageVisibility, Participant, ParticipantRole
 
 from .connection import build_frame
 from .errors import ERR_INTERNAL, ERR_NOT_FOUND, ERR_VALIDATION, make_error_payload
@@ -243,18 +243,19 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
                 ref=env.id,
             )
         ]
-    # On /resolve success, push csat_request to customer connections (T6C.1)
-    if command == "/resolve" and conversation_id:
+    # On /resolve or /abandon success, push csat_request to customer (T6C.1)
+    if command in ("/resolve", "/abandon") and conversation_id:
+        reason = "resolved" if command == "/resolve" else "abandoned"
         asyncio.create_task(
-            _push_csat_request(conversation_id),
+            _push_csat_request(conversation_id, reason=reason),
             name=f"csat-request-{conversation_id}",
         )
-        # Record resolution_rate in SLAAggregator (T6D.1)
+        # Record resolution_rate in SLAAggregator (1.0 = resolved, 0.0 = abandoned)
         try:
             from autoservice.api_routes import get_sla_aggregator
             from autoservice.sla_aggregator import MetricType
             sla = get_sla_aggregator()
-            sla.record(MetricType.RESOLUTION_RATE, 1.0)
+            sla.record(MetricType.RESOLUTION_RATE, 1.0 if command == "/resolve" else 0.0)
         except Exception:
             logger.warning("Failed to record resolution SLA for conv=%s", conversation_id)
 
@@ -270,6 +271,14 @@ async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> lis
                 sla.record(MetricType.ACCEPT_MS, latency_ms)
         except Exception:
             logger.warning("Failed to record accept SLA for conv=%s", conversation_id)
+
+    # On /release or /copilot (handing back to AI), auto-reply to any unanswered
+    # customer question. Customer's message sent during TAKEOVER never got an AI
+    # response — now that operator has released, the AI picks up.
+    if command in ("/release", "/copilot") and conversation_id:
+        await _trigger_ai_reply_if_pending(
+            engine, conversation_id, log_reason=f"post-{command.lstrip('/')}",
+        )
 
     return [
         build_frame(
@@ -483,8 +492,22 @@ async def _call_engine(
             except ConversationNotFound:
                 conv_id = None
         if not conv_id:
+            # Compute squad BEFORE create_conversation so the squad_id lands
+            # in conv.metadata before conversation.created is emitted. Fixes
+            # the race where squad-scoped subscribers miss the first event.
+            squad_id_hint: str | None = None
+            try:
+                from autoservice.web_gateway import _get_squad_plugin
+                sp = _get_squad_plugin()
+                if sp:
+                    squad_id_hint = sp.choose_squad(channel="web")
+            except Exception:
+                pass
+            meta: dict[str, Any] = {"channel": "web"}
+            if squad_id_hint:
+                meta["squad_id"] = squad_id_hint
             conv = await engine.create_conversation(
-                channel="web", external_id=source,
+                channel="web", external_id=source, metadata=meta,
             )
             conv_id = conv.id
             now = datetime.now(timezone.utc)
@@ -498,14 +521,6 @@ async def _call_engine(
             )
             # Track creation time for SLA first_reply_ms (T6D.1)
             _conv_created_at[conv_id] = _time.time()
-            # Trigger squad assignment
-            try:
-                from autoservice.web_gateway import _get_squad_plugin
-                sp = _get_squad_plugin()
-                if sp:
-                    await sp.on_conversation_created(conv)
-            except Exception:
-                pass
         msg = await engine.send_message(
             conv_id, source=source, content=payload["content"],
         )
@@ -529,8 +544,21 @@ async def _call_engine(
             pass
         await _broadcast_to_squad(customer_frame, conv_id, exclude_ws=ws)
 
-        # Fire-and-forget: trigger agent response via CCPool
-        if ws is not None:
+        # Fire-and-forget: trigger agent response via CCPool.
+        # In TAKEOVER, AI still generates a SIDE suggestion so the operator
+        # sees a draft in the sidebar (Gate will downgrade agent PUBLIC → SIDE).
+        # In AUTO/COPILOT, AI drives the reply as PUBLIC to customer.
+        from autoservice.conversation_engine.types import ConversationMode
+        try:
+            conv_now = await engine.get_conversation(conv_id)
+            current_mode = getattr(conv_now, "mode", None)
+        except Exception:
+            current_mode = None
+        mode_name = current_mode.value if hasattr(current_mode, "value") else str(current_mode)
+        if ws is None:
+            logger.warning("[AI-trigger] skip: ws is None conv=%s", conv_id)
+        else:
+            logger.warning("[AI-trigger] firing conv=%s mode=%s", conv_id, mode_name)
             asyncio.create_task(
                 _generate_agent_reply(engine, conv_id, payload["content"], ws),
                 name=f"agent-reply-{conv_id}",
@@ -546,26 +574,57 @@ async def _call_engine(
         })]
 
     if frame_type == "operator_message":
+        from autoservice.conversation_engine.errors import UnknownParticipant
         conv_id = payload["conversation_id"]
         operator_id = payload.get("operator_id", "operator")
-        msg = await engine.send_message(
-            conv_id, source=operator_id, content=payload["content"],
-        )
+        try:
+            msg = await engine.send_message(
+                conv_id, source=operator_id, content=payload["content"],
+            )
+        except UnknownParticipant:
+            # Auto-join operator and retry (mirrors command auto-join)
+            try:
+                await engine.join(
+                    conv_id,
+                    Participant(id=operator_id, role=ParticipantRole.OPERATOR,
+                                joined_at=datetime.now(timezone.utc)),
+                )
+            except Exception:
+                pass
+            msg = await engine.send_message(
+                conv_id, source=operator_id, content=payload["content"],
+            )
         frame = _message_frame(msg)
         frame["payload"]["source_display"] = {"id": operator_id, "role": "operator"}
 
-        # Push to the customer WS for this conversation (if registered)
-        cust_ws = _customer_ws_by_conv.get(conv_id)
-        if cust_ws is not None and cust_ws is not ws:
-            try:
-                await cust_ws.send_json(frame)
-            except Exception:
-                _customer_ws_by_conv.pop(conv_id, None)
+        # Only PUBLIC messages reach the customer. SIDE messages (operator
+        # suggestions in auto/copilot mode) stay inside the operator/admin
+        # fan-out (see conversation-engine.md §4 Gate + Q9).
+        is_public = msg.visibility == MessageVisibility.PUBLIC
+        if is_public:
+            cust_ws = _customer_ws_by_conv.get(conv_id)
+            if cust_ws is not None and cust_ws is not ws:
+                try:
+                    await cust_ws.send_json(frame)
+                except Exception:
+                    _customer_ws_by_conv.pop(conv_id, None)
 
-        # Broadcast to other operators subscribed to this squad (excluding the sender)
+        # Broadcast to other operators/admin subscribed to this squad (excluding
+        # the sender). Subscribers need SIDE drafts too — visibility is filtered
+        # on the read path, not here.
         await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
 
-        return [frame]
+        # If the operator just sent a SIDE instruction and there's an unanswered
+        # customer question, auto-trigger AI so the instruction is acted on.
+        if msg.visibility == MessageVisibility.SIDE:
+            await _trigger_ai_reply_if_pending(
+                engine, conv_id, log_reason="operator-SIDE",
+            )
+
+        # Do NOT echo the frame back to the sender: they already inserted it
+        # optimistically (IMInput.tsx). Echoing would produce duplicate lines
+        # with different IDs (server-assigned vs client random UUID).
+        return []
 
     if frame_type == "csat_response":
         conv_id = payload["conversation_id"]
@@ -819,12 +878,24 @@ def _now_iso_ms() -> str:
 async def _collect_operator_suggestions(
     engine: ConversationEngine, conv_id: str, limit: int = 5,
 ) -> str:
-    """Collect recent SIDE-visibility messages as operator suggestions for agent context."""
+    """Collect SIDE-visibility operator instructions that arrived *after* the
+    last agent PUBLIC reply. Each agent turn consumes the pending instructions;
+    next turn only sees fresh ones. Prevents stale instructions from being
+    re-injected into every prompt.
+    """
     try:
-        msgs = await engine.get_messages(conv_id, viewer_role="operator", limit=20)
+        msgs = await engine.get_messages(conv_id, viewer_role="operator", limit=200)
+        # Find the last agent PUBLIC message's sequence_number
+        last_agent_seq = 0
+        for m in msgs:
+            if m.source == "agent" and m.visibility.value == "public":
+                if m.sequence_number > last_agent_seq:
+                    last_agent_seq = m.sequence_number
         side_msgs = [
             m for m in msgs
-            if m.visibility.value == "side" and m.source != "agent"
+            if m.visibility.value == "side"
+               and m.source != "agent"
+               and m.sequence_number > last_agent_seq
         ][-limit:]
         if not side_msgs:
             return ""
@@ -841,18 +912,104 @@ async def _collect_operator_suggestions(
 # CSAT request push (T6C.1)
 # ---------------------------------------------------------------------------
 
-async def _push_csat_request(conversation_id: str) -> None:
+async def _trigger_ai_reply_if_pending(
+    engine: ConversationEngine, conv_id: str, *, log_reason: str,
+) -> None:
+    """Trigger AI reply if the last customer PUBLIC message has no agent
+    PUBLIC reply yet. Used for /release and operator-SIDE-instruction paths,
+    where AI should respond to an unanswered customer question.
+
+    Idempotent against concurrent triggers: if an agent-reply task with the
+    same conversation's name is already running, skip.
+    """
+    # Dedup: don't double-fire if another reply task is in flight
+    task_name = f"agent-reply-{conv_id}"
+    for t in asyncio.all_tasks():
+        if t.get_name() == task_name and not t.done():
+            logger.debug("[AI-trigger] skip %s: task %s in flight", log_reason, task_name)
+            return
+    # Identify customer participant(s) so we don't mistake an operator's public
+    # message for a customer question. Without this the AI would roleplay as
+    # the customer after /release.
+    from autoservice.conversation_engine.types import ParticipantRole
+    try:
+        conv = await engine.get_conversation(conv_id)
+        customer_ids = {p.id for p in conv.participants if p.role == ParticipantRole.CUSTOMER}
+    except Exception:
+        logger.exception("[AI-trigger] get_conversation failed conv=%s", conv_id)
+        return
+    if not customer_ids:
+        logger.debug("[AI-trigger] %s: no customer participant in conv=%s", log_reason, conv_id)
+        return
+    try:
+        msgs = await engine.get_messages(conv_id, viewer_role="operator", limit=50)
+    except Exception:
+        logger.exception("[AI-trigger] get_messages failed conv=%s", conv_id)
+        return
+    # Find latest customer PUBLIC message (match by participant id, not by
+    # excluding 'agent' — operator messages also have source != 'agent').
+    last_customer = None
+    for m in reversed(msgs):
+        vis = m.visibility.value if hasattr(m.visibility, "value") else str(m.visibility)
+        if vis == "public" and m.source in customer_ids:
+            last_customer = m
+            break
+    if last_customer is None:
+        return
+    # Any later PUBLIC message from agent OR operator counts as a reply — if
+    # the operator already answered during TAKEOVER, don't re-fire AI on
+    # release.
+    answered = any(
+        n.source not in customer_ids
+        and (n.visibility.value if hasattr(n.visibility, "value") else str(n.visibility)) == "public"
+        and n.sequence_number > last_customer.sequence_number
+        for n in msgs
+    )
+    if answered:
+        return
+    cust_ws = _customer_ws_by_conv.get(conv_id)
+    if cust_ws is None:
+        logger.warning("[AI-trigger] %s: no customer WS for conv=%s", log_reason, conv_id)
+        return
+    logger.warning(
+        "[AI-trigger] %s conv=%s replying to pending: %.40s",
+        log_reason, conv_id, last_customer.content,
+    )
+    asyncio.create_task(
+        _generate_agent_reply(engine, conv_id, last_customer.content, cust_ws),
+        name=task_name,
+    )
+
+
+_CSAT_PROMPTS = {
+    "resolved": "How would you rate this conversation?",
+    "abandoned": "We're sorry we couldn't fully resolve your issue. Would you mind rating your experience?",
+}
+
+
+async def _push_csat_request(
+    conversation_id: str, *, reason: str = "resolved",
+) -> None:
     """Push S10 csat_request frame to customer + subscribed operator connections.
 
-    Called fire-and-forget after /resolve succeeds.  Uses squad-filtered
-    broadcast (T6A.2) so only relevant operators see the CSAT event.
+    Called fire-and-forget after /resolve or /abandon succeeds. Prompt copy
+    differs by reason. Uses squad-filtered broadcast (T6A.2).
     """
     try:
         frame = build_frame("csat_request", {
             "conversation_id": conversation_id,
-            "prompt": "How would you rate this conversation?",
+            "prompt": _CSAT_PROMPTS.get(reason, _CSAT_PROMPTS["resolved"]),
             "options": [1, 2, 3, 4, 5],
+            "reason": reason,
         })
+        # Push to the customer's direct WS (subscription registry would miss it
+        # since customers don't subscribe to squads).
+        cust_ws = _customer_ws_by_conv.get(conversation_id)
+        if cust_ws is not None:
+            try:
+                await cust_ws.send_json(frame)
+            except Exception:
+                _customer_ws_by_conv.pop(conversation_id, None)
         await _broadcast_to_squad(frame, conversation_id)
     except Exception:
         logger.debug("csat_request push failed for conv=%s", conversation_id)
@@ -888,7 +1045,15 @@ async def _generate_agent_reply(
         prompt_parts = []
         if suggestions:
             prompt_parts.append(suggestions)
-        prompt_parts.append(f"Customer message: {customer_text}\n\nReply briefly in the same language as the customer.")
+            prompt_parts.append(
+                f"Customer message: {customer_text}\n\n"
+                "You are a customer service AI. The operator has given you instructions above — "
+                "follow them when replying to the customer. Reply in the same language as the customer."
+            )
+        else:
+            prompt_parts.append(
+                f"Customer message: {customer_text}\n\nReply briefly in the same language as the customer."
+            )
         prompt = "\n".join(prompt_parts)
 
         # Collect response
@@ -910,18 +1075,18 @@ async def _generate_agent_reply(
 
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
 
-        # Store agent reply in engine
-        # T6E.8: Send a SIDE-visibility draft to operator connections before final reply
-        from autoservice.conversation_engine.types import MessageVisibility
-        draft_msg = await engine.send_message(
-            conv_id, source="agent", content=reply_text.strip(),
-            requested_visibility=MessageVisibility.SIDE,
-            metadata={"draft": True},
-        )
-        draft_frame = _message_frame(draft_msg)
-        draft_frame["payload"]["message"]["visibility"] = "side"
-        await _broadcast_to_squad(draft_frame, conv_id, exclude_ws=None)
-        logger.info("Agent draft pushed to operators: conv=%s len=%d", conv_id, len(reply_text))
+        # Re-check mode — operator may have hijacked while CC SDK was streaming.
+        # If so, discard the reply: operator is now driving and customer should
+        # see operator's message, not a stale AI reply.
+        from autoservice.conversation_engine.types import ConversationMode
+        try:
+            conv_now = await engine.get_conversation(conv_id)
+            current_mode = getattr(conv_now, "mode", None)
+        except Exception:
+            current_mode = None
+        if current_mode == ConversationMode.TAKEOVER:
+            logger.info("Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id)
+            return
 
         # Store agent reply in engine (PUBLIC visibility for customer)
         agent_msg = await engine.send_message(

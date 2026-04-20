@@ -77,6 +77,7 @@ export interface OperatorState {
   openCopilot: (convId: string) => void;
   closeCopilot: () => void;
   addCopilotMessage: (convId: string, msg: CopilotMessage) => void;
+  updateCopilotMessage: (convId: string, messageId: string, patch: Partial<CopilotMessage>) => void;
   setTakeoverWarning: (conversationId: string, w: TakeoverWarning) => void;
   clearTakeoverWarning: (conversationId: string) => void;
   setTakeoverArmed: (conversationId: string, armed: { armedAt: string; idleMs: number; warningMs: number }) => void;
@@ -170,17 +171,25 @@ export const useOperatorStore = create<OperatorState>((set) => ({
   addCopilotMessage: (convId, msg) =>
     set((state) => {
       const existing = state.copilotMessages[convId] ?? [];
-      // Dedup by id OR by same sender+text within 5 seconds
       if (existing.some((m) => m.id === msg.id)) return state;
-      if (existing.some((m) =>
-        m.sender === msg.sender && m.text === msg.text &&
-        Math.abs(new Date(m.ts).getTime() - new Date(msg.ts).getTime()) < 5000
-      )) return state;
       return {
         copilotMessages: {
           ...state.copilotMessages,
           [convId]: [...existing, msg],
         },
+      };
+    }),
+
+  updateCopilotMessage: (convId, messageId, patch) =>
+    set((state) => {
+      const existing = state.copilotMessages[convId];
+      if (!existing) return state;
+      const idx = existing.findIndex((m) => m.id === messageId);
+      if (idx < 0) return state;
+      const next = [...existing];
+      next[idx] = { ...next[idx], ...patch };
+      return {
+        copilotMessages: { ...state.copilotMessages, [convId]: next },
       };
     }),
 

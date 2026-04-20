@@ -11,16 +11,24 @@ Subscribes to EventBus events and computes:
 - resolution_rate — conversations resolved vs total closed
 
 Provides P50/P95 percentiles per window for dashboard and alerting.
+
+Per-record threshold breach detection (Issue 5):
+- Install a breach callback via set_breach_callback(fn)
+- Each record() call checks thresholds; breaches fire fn(breach_info) synchronously
+- Threshold config centralized in SLA_THRESHOLDS
 """
 
 from __future__ import annotations
 
+import logging
 import time
 import bisect
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
+
+_log = logging.getLogger(__name__)
 
 
 class MetricType(str, Enum):
@@ -44,6 +52,36 @@ WINDOW_SECONDS = {
     WindowSize.ONE_HOUR: 3600,
     WindowSize.TWENTY_FOUR_HOUR: 86400,
 }
+
+
+# ---------------------------------------------------------------------------
+# Threshold breach detection (Issue 5)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class _Threshold:
+    """Per-metric threshold spec. Breach when comparator(value, limit) is True."""
+    limit: float
+    comparator: str  # "gt" = value > limit, "lt" = value < limit
+    severity: str    # "warning" | "critical"
+
+
+# Defaults — override per-deployment via SLAAggregator.set_thresholds().
+# Kept conservative (informational, not enforcing).
+SLA_THRESHOLDS: dict[MetricType, _Threshold] = {
+    MetricType.FIRST_REPLY_MS: _Threshold(limit=10_000.0, comparator="gt", severity="warning"),
+    MetricType.ACCEPT_MS:      _Threshold(limit=30_000.0, comparator="gt", severity="warning"),
+    MetricType.TTFB_MS:        _Threshold(limit=5_000.0,  comparator="gt", severity="warning"),
+    MetricType.CSAT_SCORE:     _Threshold(limit=3.0,      comparator="lt", severity="critical"),
+}
+
+
+def _is_breach(value: float, thr: _Threshold) -> bool:
+    if thr.comparator == "gt":
+        return value > thr.limit
+    if thr.comparator == "lt":
+        return value < thr.limit
+    return False
 
 
 @dataclass
@@ -137,12 +175,45 @@ class SLAAggregator:
                 self._buffers[(metric, window)] = RingBuffer(
                     window_seconds=WINDOW_SECONDS[window],
                 )
+        self._thresholds: dict[MetricType, _Threshold] = dict(SLA_THRESHOLDS)
+        self._breach_cb: Callable[[dict[str, Any]], None] | None = None
+
+    def set_thresholds(self, thresholds: dict[MetricType, _Threshold]) -> None:
+        """Override per-metric breach thresholds."""
+        self._thresholds = dict(thresholds)
+
+    def set_breach_callback(
+        self, cb: Callable[[dict[str, Any]], None] | None,
+    ) -> None:
+        """Install a sync callback invoked on each record() that breaches.
+
+        Callback receives: {metric, value, limit, severity, comparator, timestamp}.
+        Exceptions are swallowed to avoid poisoning the metric recording path.
+        """
+        self._breach_cb = cb
 
     def record(self, metric: MetricType, value: float, timestamp: Optional[float] = None) -> None:
-        """Record a metric value into all 3 time windows."""
+        """Record a metric value into all 3 time windows. Fires breach callback
+        if the value crosses the configured threshold for this metric."""
         ts = timestamp or time.time()
         for window in WindowSize:
             self._buffers[(metric, window)].add(value, ts)
+        thr = self._thresholds.get(metric)
+        if thr is None or self._breach_cb is None:
+            return
+        if not _is_breach(value, thr):
+            return
+        try:
+            self._breach_cb({
+                "metric": metric.value,
+                "value": value,
+                "limit": thr.limit,
+                "comparator": thr.comparator,
+                "severity": thr.severity,
+                "timestamp": ts,
+            })
+        except Exception:
+            _log.warning("SLA breach callback raised", exc_info=True)
 
     def get_percentiles(self, metric: MetricType, window: WindowSize) -> PercentileResult:
         """Get P50/P95 for a metric in a specific window."""

@@ -18,10 +18,12 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator
@@ -286,16 +288,52 @@ class CCPool(AsyncPool[CCClient]):
 
 
 # ---------------------------------------------------------------------------
+# Status snapshot (for out-of-process observability, e.g. `make pool-status`)
+# ---------------------------------------------------------------------------
+
+STATUS_FILE = Path.cwd() / ".autoservice" / "cc_pool_status.json"
+STATUS_WRITE_INTERVAL = 5.0
+
+
+def _write_status_snapshot(pool: "CCPool") -> None:
+    status = pool.status()
+    status["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATUS_FILE.write_text(json.dumps(status, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _clear_status_snapshot() -> None:
+    if STATUS_FILE.exists():
+        try:
+            STATUS_FILE.unlink()
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
 
 _pool: CCPool | None = None
 _pool_lock = asyncio.Lock()
+_status_writer_task: asyncio.Task | None = None
+
+
+async def _status_writer_loop(pool: "CCPool", interval: float) -> None:
+    try:
+        while True:
+            try:
+                _write_status_snapshot(pool)
+            except Exception as exc:
+                log.debug("status snapshot write failed: %s", exc)
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
 
 
 async def get_pool(config: PoolConfig | None = None) -> CCPool:
     """Get or create the global pool singleton."""
-    global _pool
+    global _pool, _status_writer_task
     if _pool is not None and _pool._started:
         return _pool
 
@@ -306,12 +344,26 @@ async def get_pool(config: PoolConfig | None = None) -> CCPool:
             config = load_pool_config()
         _pool = CCPool(config)
         await _pool.start()
+        if _status_writer_task is None or _status_writer_task.done():
+            _write_status_snapshot(_pool)
+            _status_writer_task = asyncio.create_task(
+                _status_writer_loop(_pool, STATUS_WRITE_INTERVAL),
+                name="cc-pool-status-writer",
+            )
         return _pool
 
 
 async def shutdown_pool() -> None:
     """Shutdown the global pool."""
-    global _pool
+    global _pool, _status_writer_task
+    if _status_writer_task is not None and not _status_writer_task.done():
+        _status_writer_task.cancel()
+        try:
+            await _status_writer_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    _status_writer_task = None
     if _pool is not None:
         await _pool.shutdown()
         _pool = None
+    _clear_status_snapshot()
