@@ -1,0 +1,470 @@
+metadata:
+  generated_at: "2026-04-20"
+  source:
+    gap_analysis: "docs/plans/2026-04-20-gap-analysis.yaml"
+    task_hints: "docs/plans/2026-04-20-task-hints.yaml"
+  source_type: "ingested"
+  milestones:
+    M1:
+      name: "Master-side Sandbox Provisioning"
+      scope: "Master 端沙盒链路 + 模拟 publish + Dream 配置留位；fork 运行时/Tenant 侧 admin/Dream agent 化推迟 M2"
+
+tasks:
+  # ──────────────────────────────────────────────────────────────
+  # Backend lane (autoservice/)
+  # ──────────────────────────────────────────────────────────────
+  - id: T1B.1
+    name: "沙盒目录 schema + /upload KB + souls 落盘"
+    description: "Step 0 修复 bug #1 #5：/upload 时写 .autoservice/sandbox/<tid>/kb/kb.db 索引；soul_generator.save_drafts 目标改到 sandbox/souls/；拷贝 dream_soul.md 静态模板；写 config.json 骨架"
+    line: backend
+    type: green
+    phase: P1
+    module: onboarding
+    gap_ref: GAP-001
+    cross_references: [GAP-005]
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/onboarding.py"
+        type: code
+      - path: "autoservice/soul_generator.py"
+        type: code
+      - path: "autoservice/dream_soul_template.md"
+        type: doc
+    may_touch:
+      - ".autoservice/sandbox/ (runtime dir, gitignored)"
+    verification: "pytest tests/onboarding/test_upload_persists_souls_and_kb.py"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.2
+    name: "/activate 幂等 merge + channels 落盘"
+    description: "修复 bug #3 #6：/activate 改为读现有 config.json 后 merge，channels 正确写入，不再覆盖；URL 模板改 path 形态返回 /t/<tid>/chat"
+    line: backend
+    type: green
+    phase: P1
+    module: onboarding
+    gap_ref: GAP-001
+    cross_references: []
+    depends_on: [T1B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/onboarding.py"
+        type: code
+    may_touch: []
+    verification: "pytest tests/onboarding/test_activate_is_idempotent.py"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.3
+    name: "/rehearsal/generate 落盘 + /rehearsal/review 新端点"
+    description: "修复 bug #4：/rehearsal/generate 产出后写 rehearsal.json（全 pending）；新增 /api/rehearsal/review 按 dialog_id 更新 review_status"
+    line: backend
+    type: green
+    phase: P1
+    module: rehearsal
+    gap_ref: null
+    cross_references: []
+    depends_on: [T1B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+    may_touch: []
+    verification: "pytest tests/api/test_rehearsal_review_persists.py"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.4
+    name: "cc_pool per-tenant soul 注入"
+    description: "create_cc_client(role, tenant_id=None) + _load_soul() 按 tenant_id 从 sandbox/souls/ 读 soul 作为 system prompt；worker 生命周期核实（spec §4.2 风险点）"
+    line: backend
+    type: yellow
+    phase: P1
+    module: cc_pool
+    gap_ref: GAP-012
+    cross_references: []
+    depends_on: [T1B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/cc_pool.py"
+        type: code
+    may_touch:
+      - "autoservice/gateway/message_router.py (传 tenant_id)"
+    verification: "pytest tests/cc_pool/test_cc_pool_tenant_soul_injection.py — 两个 tenant 对话风格可区分"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+    review_reason: "cc_pool worker 启动时是否固定 system prompt 未验证；可能需改为 per-tenant 小池 + LRU 回收；设计风险需要 reviewer 核实"
+
+  - id: T1B.5
+    name: "/api/session/mode endpoint (master-only)"
+    description: "返回 {mode: 'master', role: 'platform_admin'}；M1 硬编码 master 分支；tenant 分支留 stub（未来 fork 部署用）"
+    line: backend
+    type: green
+    phase: P1
+    module: api_routes
+    gap_ref: null
+    cross_references: []
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+    may_touch: []
+    verification: "curl /api/session/mode 返回 {mode: 'master', ...}"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.6
+    name: "Dream 配置 sync 到 config.json.dream"
+    description: "修复 bug #9：/api/management/chat 收到 /dream-config 确认命令时单向 sync 4 参数 (trigger/coverage/risk/canary) 到 sandbox/config.json.dream；读路径不变（仍用 DreamConfigSession 内存）"
+    line: backend
+    type: yellow
+    phase: P1
+    module: dream-engine
+    gap_ref: GAP-005
+    cross_references: []
+    depends_on: [T1B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/api_routes.py"
+        type: code
+    may_touch:
+      - "autoservice/dream_config_dialog.py (可能需要 export 最终结果 hook)"
+    verification: "手工：ManagementChat 走完 /dream-config → 检查 sandbox/<tid>/config.json.dream 含 4 参数"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+    review_reason: "改动现有 dream_config_dialog 状态机边界，需避免破坏 T6C.3 已验证的 /approve /reject 流；reviewer 验证读路径未回归"
+
+  - id: T1B.7
+    name: "Publish gate + tarball + 归档 + ForkCreator 抽象"
+    description: "修复 bug #2：新增 autoservice/publish.py（_check_publish_gate / _build_publish_archive / _write_publish_record / _write_runbook / _archive_sandbox + ForkCreator 协议 + LocalTarballForkCreator 实现）；api_routes.py 加 /api/onboard/publish / /api/onboard/unfreeze 端点"
+    line: backend
+    type: green
+    phase: P1
+    module: publish
+    gap_ref: GAP-003
+    cross_references: []
+    depends_on: [T1B.1, T1B.3, T1B.6]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/publish.py"
+        type: code
+      - path: "autoservice/api_routes.py"
+        type: code
+    may_touch:
+      - ".autoservice/published/ (runtime dir, gitignored)"
+      - ".autoservice/archived/ (runtime dir, gitignored)"
+    verification: "pytest tests/publish/test_publish_gate_checks.py — gate 条件 + tarball 内容 + 沙盒归档 + 410 访问"
+    estimated_effort: large
+    status: pending
+    owner: null
+    artifacts: []
+
+  # ──────────────────────────────────────────────────────────────
+  # Frontend lane (frontend/)
+  # ──────────────────────────────────────────────────────────────
+  - id: T1F.1
+    name: "useTenantId 通用 hook"
+    description: "frontend/packages/shared/ 新增：从 URL path (:tenantId) 或 query (?tenant=) 读出 tenant_id；屏蔽 sandbox/fork 部署差异"
+    line: frontend
+    type: green
+    phase: P1
+    module: shared
+    gap_ref: GAP-004
+    cross_references: []
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "frontend/packages/shared/useTenantId.ts"
+        type: code
+      - path: "frontend/packages/shared/useTenantId.test.ts"
+        type: test
+    may_touch:
+      - "frontend/packages/shared/index.ts (export)"
+    verification: "vitest frontend/packages/shared/useTenantId.test.ts"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.2
+    name: "useSessionMode hook"
+    description: "调 /api/session/mode 返回 {mode, role, tenant_id?}；M1 仅 master 分支可用，tenant 分支 stub"
+    line: frontend
+    type: green
+    phase: P1
+    module: shared
+    gap_ref: null
+    cross_references: []
+    depends_on: [T1B.5]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/packages/shared/useSessionMode.ts"
+        type: code
+      - path: "frontend/packages/shared/useSessionMode.test.ts"
+        type: test
+    may_touch: []
+    verification: "vitest frontend/packages/shared/useSessionMode.test.ts"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.3
+    name: "customer-chat 路由 + tenant 化"
+    description: "修复 bug #8：路由改 /t/:tenantId/chat + useTenantId() 替换硬编码 ws://localhost:8000；WS URL 模板化"
+    line: frontend
+    type: green
+    phase: P1
+    module: customer-chat
+    gap_ref: GAP-004
+    cross_references: []
+    depends_on: [T1F.1, T1B.4]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/customer-chat/src/App.tsx"
+        type: code
+    may_touch:
+      - "frontend/apps/customer-chat/src/main.tsx (router wrap)"
+    verification: "启 backend + 前端 → /t/tenant_foo/chat 可加载 + WS 连接成功；日志含 tenant_foo"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.4
+    name: "operator-console 路由 + tenant 化"
+    description: "修复 bug #8：路由改 /t/:tenantId/operator + useTenantId() 替换硬编码 ws://localhost:8000"
+    line: frontend
+    type: green
+    phase: P1
+    module: operator-console
+    gap_ref: GAP-004
+    cross_references: [GAP-013]
+    depends_on: [T1F.1, T1B.4]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/operator-console/src/components/WorkspacePage.tsx"
+        type: code
+    may_touch:
+      - "frontend/apps/operator-console/src/hooks/useOperatorWS.ts"
+      - "frontend/apps/operator-console/src/store/operatorStore.ts"
+    verification: "/t/tenant_foo/operator 可加载 + WS 带 tenant_foo"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.5
+    name: "admin-portal 双模式分发 + Master/Tenant 布局骨架"
+    description: "admin-portal/src/App.tsx 根据 useSessionMode 渲染 MasterLayout (M1 真实) 或 TenantLayout (stub)；新增 layouts/MasterLayout.tsx 和 layouts/TenantLayout.tsx"
+    line: frontend
+    type: green
+    phase: P1
+    module: admin-portal
+    gap_ref: null
+    cross_references: []
+    depends_on: [T1F.2]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/App.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/layouts/TenantLayout.tsx"
+        type: code
+    may_touch:
+      - "frontend/apps/admin-portal/src/components/shell/AdminRail.tsx (迁移 tab 组)"
+    verification: "admin-portal 默认加载 MasterLayout；TenantLayout stub 显示 'feature not available in M1'"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.6
+    name: "租户列表 + 代入预览 tabs"
+    description: "新增 master 子组件：TenantListTab (列 sandbox 租户，/master/tenants 路由) + TenantPreviewTab (iframe 嵌入 /t/<tid>/chat，/master/tenants/:id/preview 路由)"
+    line: frontend
+    type: green
+    phase: P1
+    module: admin-portal
+    gap_ref: null
+    cross_references: []
+    depends_on: [T1F.5, T1F.3]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/master/TenantListTab.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx"
+        type: code
+    may_touch:
+      - "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx (注册路由)"
+    verification: "/master/tenants 列出 sandbox 目录下所有租户；点击进入 /master/tenants/:id/preview 能在 iframe 内对话"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1F.7
+    name: "WizardTab 迁移 + 一键对外按钮接端点 + 审核按钮接端点"
+    description: "路由从 /admin/wizard 迁到 /master/tenants/new；Step 4 一键对外按钮接 /api/onboard/publish；Step 2 审核按钮接 /api/rehearsal/review"
+    line: frontend
+    type: green
+    phase: P1
+    module: admin-portal
+    gap_ref: GAP-001
+    cross_references: [GAP-003]
+    depends_on: [T1F.5, T1B.7, T1B.3]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx"
+        type: code
+    may_touch:
+      - "frontend/apps/admin-portal/src/components/wizard/SandboxReady.tsx (publish 按钮 onClick)"
+      - "frontend/apps/admin-portal/src/components/wizard/VirtualRehearsalStep.tsx (审核按钮 onClick)"
+    verification: "走完向导 → publish 成功 → 沙盒归档 + tarball + runbook 落地"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  # ──────────────────────────────────────────────────────────────
+  # Shared lane (cross-cutting)
+  # ──────────────────────────────────────────────────────────────
+  - id: T1S.1
+    name: "端到端沙盒 provisioning smoke test"
+    description: "覆盖 §10 验收 9 步：/master/tenants 空 → 向导走完 → 沙盒产物齐全 → /t/<tid>/chat 对话 → 多租户隔离 → 代入预览 → dream 落盘 → publish → fork 手工"
+    line: shared
+    type: green
+    phase: P1
+    module: e2e
+    gap_ref: null
+    cross_references: []
+    depends_on: [T1F.7, T1B.7]
+    blocked_by: []
+    deliverables:
+      - path: "tests/e2e/test_sandbox_provisioning.py"
+        type: test
+    may_touch: []
+    verification: "端到端 9 步全通过"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Dependency graph (adjacency: task → [tasks that depend on it])
+# ────────────────────────────────────────────────────────────────
+dependency_graph:
+  T1B.1: [T1B.2, T1B.3, T1B.4, T1B.6, T1B.7]
+  T1B.2: []
+  T1B.3: [T1B.7, T1F.7]
+  T1B.4: [T1F.3, T1F.4]
+  T1B.5: [T1F.2]
+  T1B.6: [T1B.7]
+  T1B.7: [T1F.7, T1S.1]
+  T1F.1: [T1F.3, T1F.4]
+  T1F.2: [T1F.5]
+  T1F.3: [T1F.6]
+  T1F.4: []
+  T1F.5: [T1F.6, T1F.7]
+  T1F.6: []
+  T1F.7: [T1S.1]
+  T1S.1: []
+
+critical_path:
+  - T1B.1
+  - T1B.6
+  - T1B.7
+  - T1F.7
+  - T1S.1
+critical_path_length: 5
+
+# ────────────────────────────────────────────────────────────────
+# Phases (single phase P1 → milestone M1)
+# ────────────────────────────────────────────────────────────────
+phases:
+  - id: P1
+    name: "Master-side Sandbox Provisioning"
+    milestone: M1
+    tasks:
+      - T1B.1
+      - T1B.2
+      - T1B.3
+      - T1B.4
+      - T1B.5
+      - T1B.6
+      - T1B.7
+      - T1F.1
+      - T1F.2
+      - T1F.3
+      - T1F.4
+      - T1F.5
+      - T1F.6
+      - T1F.7
+      - T1S.1
+    gate: "§10 验收 9 条全通过：Master 端向导 → 沙盒产物 → 多租户隔离 → publish tarball + runbook + 归档 → fork 手工验证"
+
+# ────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────
+summary:
+  total_tasks: 15
+  by_type:
+    green: 13
+    yellow: 2
+    red: 0
+  by_line:
+    backend: 7
+    frontend: 7
+    shared: 1
+  by_phase:
+    P1: 15
+  critical_path_length: 5
+  estimated_duration: "约 2-3 天（两条 lane 并行：backend + frontend）"
+  coverage:
+    gap_covered_m1:
+      - GAP-001
+      - GAP-003
+      - GAP-004
+      - GAP-005  # 仅留位：静态 dream_soul + config 落盘
+      - GAP-012  # 部分：cc_pool soul 注入，非真 DB/进程隔离
+      - GAP-013  # 顺带覆盖：operator-console 也做 tenant 化
+    gap_deferred_m2:
+      - GAP-002  # 管理群 IM 化
+      - GAP-006  # 晨起推送 IM
+      - GAP-007  # Agent confidence → HumanRequested
+      - GAP-008  # 接管态 sidebar hint 回传
+      - GAP-009  # 平台监控事件流
+      - GAP-010  # 中风险二次确认
+      - GAP-011  # 灰度双值对比 UI
+      - GAP-014  # compliance by countries
+      - GAP-015  # 时间预算埋点
+      - GAP-016  # 团队邀请
+      - GAP-017  # Copilot 采纳/拒绝回执
+      - GAP-018  # memory_pool TTL
+    design_driven_no_gap:
+      - T1B.5    # session/mode endpoint
+      - T1F.2    # useSessionMode
+      - T1F.5    # MasterLayout/TenantLayout
+      - T1F.6    # TenantListTab/TenantPreviewTab
+
+warnings:
+  - "T1B.4 (Yellow) 有 cc_pool worker 生命周期风险；建议 code-reviewer 提前核实"
+  - "T1B.6 (Yellow) 改动 dream_config_dialog 边界；T6C.3 回归需同时跑"
+  - "T1B.7 是 critical path 上的 large 任务；早启动避免堵塞 T1F.7 + T1S.1"
+  - "backend (7) vs frontend (7) 平衡；shared 只有 1 个，可并行性好"
+  - "P0 gap 中 GAP-002 / GAP-006 已按用户决策推迟 M2，不影响 M1 gate"

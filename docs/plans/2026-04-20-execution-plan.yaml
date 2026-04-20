@@ -1,0 +1,231 @@
+metadata:
+  generated_at: "2026-04-20"
+  source:
+    tasks: "docs/plans/2026-04-20-tasks.yaml"
+    project: "docs/plans/project.yaml"
+  parallel_capacity: 2
+  milestone: M1
+
+# ────────────────────────────────────────────────────────────────
+# Topological stages (tasks with same dep depth)
+# ────────────────────────────────────────────────────────────────
+topological_stages:
+  stage_0: [T1B.1, T1B.5, T1F.1]
+  stage_1: [T1B.2, T1B.3, T1B.4, T1B.6, T1F.2]
+  stage_2: [T1B.7, T1F.3, T1F.4, T1F.5]
+  stage_3: [T1F.6, T1F.7]
+  stage_4: [T1S.1]
+
+critical_path:
+  tasks: [T1B.1, T1B.6, T1B.7, T1F.7, T1S.1]
+  total_hours_estimated: 22
+
+# ────────────────────────────────────────────────────────────────
+# Batches (parallel_capacity = 2)
+# ────────────────────────────────────────────────────────────────
+batches:
+  - id: batch-0
+    name: "Foundation — 沙盒目录 schema + 通用 hooks"
+    milestone: M1
+    schedule:
+      start: "Day 1 AM"
+      duration: "约 4h"
+    tasks:
+      - id: T1B.1
+        owner: Dev1
+        mode: solo
+        slot: A
+        est_hours: 4
+        notes: "All backend tasks gate on this; start first, focus mode"
+      - id: T1F.1
+        owner: Dev1
+        mode: parallel
+        slot: B
+        est_hours: 1
+        notes: "可通过 subagent 并行；小任务"
+      - id: T1B.5
+        owner: Dev1
+        mode: solo
+        slot: A
+        est_hours: 1
+        notes: "T1B.1 完成后顺手接着做（同 slot 串行）"
+    pre_check: "无 (首批次)"
+    gate: ".autoservice/sandbox/<tid>/ 可创建产物；useTenantId 测试通过；/api/session/mode 返回 master"
+    expected_artifacts:
+      - "autoservice/onboarding.py (modified)"
+      - "autoservice/soul_generator.py (modified)"
+      - "autoservice/dream_soul_template.md (new)"
+      - "autoservice/api_routes.py (modified for /session/mode)"
+      - "frontend/packages/shared/useTenantId.ts (new + test)"
+
+  - id: batch-1
+    name: "Backend fan-out + Frontend 双模式 hook"
+    milestone: M1
+    schedule:
+      start: "Day 1 PM"
+      duration: "约 4h"
+    tasks:
+      - id: T1B.4
+        owner: Dev1
+        mode: solo
+        slot: A
+        est_hours: 4
+        type: yellow
+        notes: "Yellow: cc_pool worker 生命周期需验证；若 worker 启动时固定 prompt 则改为 per-tenant 小池 + LRU。建议先 pair with code-reviewer subagent 审风险"
+      - id: T1B.2
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 1
+      - id: T1B.3
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 1
+      - id: T1B.6
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 1
+        type: yellow
+        notes: "Yellow: 改动 dream_config_dialog 边界；完成后跑 T6C.3 回归"
+      - id: T1F.2
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 1
+    pre_check: "batch-0 gate 通过：沙盒目录产物可生成"
+    gate: "cc_pool 按 tenant 注入 soul；rehearsal 持久化；dream 配置落盘；useSessionMode 可用"
+    expected_artifacts:
+      - "autoservice/cc_pool.py (modified, tenant-aware)"
+      - "autoservice/api_routes.py (modified for rehearsal + dream sync)"
+      - "autoservice/onboarding.py (modified for /activate idempotent)"
+      - "frontend/packages/shared/useSessionMode.ts (new + test)"
+
+  - id: batch-2
+    name: "Publish gate + 三端 tenant 化 + Admin 双模式骨架"
+    milestone: M1
+    schedule:
+      start: "Day 2"
+      duration: "约 9h"
+    tasks:
+      - id: T1B.7
+        owner: Dev1
+        mode: solo
+        slot: A
+        est_hours: 8
+        notes: "Large：publish.py 新模块 + /publish /unfreeze 端点 + gate 检查 + tarball 打包 + runbook 生成 + 归档。Critical path 上的瓶颈，早启动"
+      - id: T1F.3
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 3
+      - id: T1F.4
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 3
+      - id: T1F.5
+        owner: Dev1
+        mode: solo
+        slot: B
+        est_hours: 3
+    pre_check: "batch-1 gate 通过：cc_pool tenant-aware"
+    gate: "publish 端点可产 tarball + 归档沙盒；三端都能在 /t/<tid>/ 路由下加载；admin-portal 进入 MasterLayout"
+    expected_artifacts:
+      - "autoservice/publish.py (new)"
+      - "autoservice/api_routes.py (modified for /publish /unfreeze)"
+      - "frontend/apps/customer-chat/src/App.tsx (modified)"
+      - "frontend/apps/operator-console/src/components/WorkspacePage.tsx (modified)"
+      - "frontend/apps/admin-portal/src/App.tsx (modified)"
+      - "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx (new)"
+      - "frontend/apps/admin-portal/src/layouts/TenantLayout.tsx (new, stub)"
+
+  - id: batch-3
+    name: "Master tabs + Wizard 迁移接线（并行）"
+    milestone: M1
+    schedule:
+      start: "Day 3 AM"
+      duration: "约 4h"
+    tasks:
+      - id: T1F.6
+        owner: Dev1
+        mode: parallel
+        slot: A
+        est_hours: 3
+        notes: "可 subagent 并行，与 T1F.7 不冲突（不同文件）"
+      - id: T1F.7
+        owner: Dev1
+        mode: parallel
+        slot: B
+        est_hours: 3
+        notes: "接 publish + review 端点；是 critical path"
+    pre_check: "batch-2 gate 通过：publish 后端可用 + admin 布局就绪"
+    gate: "/master/tenants 列表可用；/master/tenants/:id/preview 可嵌入 iframe；/master/tenants/new 向导走完可 publish"
+    expected_artifacts:
+      - "frontend/apps/admin-portal/src/components/master/TenantListTab.tsx (new)"
+      - "frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx (new)"
+      - "frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx (modified)"
+
+  - id: batch-4
+    name: "E2E smoke + M1 gate"
+    milestone: M1
+    schedule:
+      start: "Day 3 PM"
+      duration: "约 4h"
+    tasks:
+      - id: T1S.1
+        owner: Dev1
+        mode: solo
+        slot: A
+        est_hours: 4
+    pre_check: "batch-3 gate 通过：向导可 publish"
+    gate: "§10 验收 9 步端到端全通过；可交付"
+    expected_artifacts:
+      - "tests/e2e/test_sandbox_provisioning.py (new)"
+
+# ────────────────────────────────────────────────────────────────
+# Milestone gate
+# ────────────────────────────────────────────────────────────────
+milestones:
+  - id: M1
+    name: "Master-side Sandbox Provisioning"
+    batches: [batch-0, batch-1, batch-2, batch-3, batch-4]
+    schedule:
+      target: "Day 3 EOD"
+      buffer: "+20% = Day 4 AM"
+    gate_checks:
+      - "task-status.md 中 M1 下所有 15 个 tasks 标 completed"
+      - "pytest tests/ — 全绿"
+      - "docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §10 验收 9 条人工逐条过"
+      - "make check passes（plugin 发现无错）"
+      - "T6C.3 回归通过（T1B.6 改动 dream_config_dialog 后）"
+    smoke_test:
+      - scenario: "Full sandbox provisioning → publish → archive"
+        command: "pytest tests/e2e/test_sandbox_provisioning.py -v"
+        expected: "9/9 通过 + tarball 可手工 fork"
+
+# ────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────
+summary:
+  total_batches: 5
+  estimated_duration: "约 3 工作日（25h 实际工作 + 20% buffer）"
+  critical_path_length: 5
+  yellow_tasks: [T1B.4, T1B.6]
+  red_tasks: []
+  parallel_moments:
+    - batch: batch-0
+      pairs: [[T1B.1, T1F.1]]
+    - batch: batch-1
+      pairs: [[T1B.4, T1B.2/T1B.3/T1B.6/T1F.2]]
+    - batch: batch-2
+      pairs: [[T1B.7, T1F.3/T1F.4/T1F.5]]
+    - batch: batch-3
+      pairs: [[T1F.6, T1F.7]]
+
+warnings:
+  - "batch-2 T1B.7 是 large 任务（~8h），占 critical path；务必早启动，必要时拆成 'publish.py 核心逻辑' + 'api 端点接线' 两个子任务并行"
+  - "T1B.4 Yellow：在 batch-1 开始前先用 superpowers:receiving-code-review 跑一次设计风险 pre-flight"
+  - "T1B.6 Yellow：完成后必须跑 T6C.3 回归（/approve /reject 流），避免破坏已稳定的 dream_config_dialog"
+  - "batch-3 两个任务真并行（不同文件），推荐用 superpowers:dispatching-parallel-agents"

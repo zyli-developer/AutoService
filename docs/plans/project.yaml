@@ -1,0 +1,24 @@
+project:
+  name: "AutoService-dev-a · M1 Sandbox Provisioning"
+  branch: "dev-a"
+  main_branch: "dev"
+  generated_at: "2026-04-20"
+  parallel_capacity: 2
+  team:
+    - id: Dev1
+      line: main
+      branch: dev-a
+      skills: [fullstack, python, typescript, react]
+      notes: "Solo developer + Claude Code executor. Claude can dispatch parallel subagents (via superpowers:dispatching-parallel-agents) for non-conflicting work."
+
+  milestones:
+    M1:
+      name: "Master-side Sandbox Provisioning"
+      target: "约 3 工作日（18-25h 实际编码 + 测试）"
+      gate: "§10 验收 9 条全通过"
+      scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md"
+
+  conventions:
+    commit_style: "conventional commits (feat/fix/chore/test/refactor)"
+    branch_strategy: "single-branch dev-a with frequent commits"
+    pr_policy: "merge to dev only when M1 gate passes"
