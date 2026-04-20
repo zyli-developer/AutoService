@@ -44,6 +44,9 @@ importers:
       '@autoservice/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@autoservice/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@autoservice/ws-client':
         specifier: workspace:*
         version: link:../../packages/ws-client
