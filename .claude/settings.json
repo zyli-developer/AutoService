@@ -26,19 +26,13 @@
   "enableAllProjectMcpServers": true,
   "enabledPlugins": {
     "dev-loop-skills@ezagent42": true,
-    "prd2impl@prd2impl": true
+    "prd2impl@ezagent42": true
   },
   "extraKnownMarketplaces": {
     "ezagent42": {
       "source": {
         "source": "git",
         "url": "https://github.com/ezagent42/ezagent42.git"
-      }
-    },
-    "prd2impl": {
-      "source": {
-        "source": "directory",
-        "path": "d:/Work/h2os.cloud/prd2impl"
       }
     }
   },
