@@ -37,7 +37,6 @@ export function ChatModal({
   const endRef = useRef<HTMLDivElement>(null);
   useAutoScroll(bodyRef as React.RefObject<HTMLElement>, [messages.length]);
 
-  // Force scroll to bottom on new messages
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, isAgentTyping]);
@@ -45,17 +44,41 @@ export function ChatModal({
   return (
     <div className="web-modal" data-testid="chat-modal">
       <div className="web-modal-header">
-        <div className="web-modal-title" data-testid="modal-title">
-          {t('customer.chat.title')}
+        <div className="w-hd-av">{'店'}</div>
+        <div className="w-hd-info">
+          <div className="web-modal-title" data-testid="modal-title">
+            {t('customer.chat.title')}
+          </div>
+          <div className="w-hd-sub">
+            <span className="w-hd-dot" />
+            {'通常 30 秒内回复 · 今天 09:00 – 24:00'}
+          </div>
         </div>
-        <div
-          className="web-modal-close"
-          onClick={onClose}
-          data-testid="modal-close"
-          role="button"
-          aria-label={t('customer.chat.close')}
-        >
-          {'×'}
+        <div className="w-hd-actions">
+          <button
+            type="button"
+            className="w-hd-btn"
+            data-testid="modal-minimize"
+            onClick={onClose}
+            aria-label="Minimize chat"
+            title="收起"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="w-hd-btn"
+            onClick={onClose}
+            data-testid="modal-close"
+            aria-label={t('customer.chat.close')}
+            title="关闭"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       </div>
       <ConnectionBanner
@@ -64,6 +87,7 @@ export function ChatModal({
         replayCount={replayCount}
       />
       <div className="web-modal-body" ref={bodyRef} data-testid="message-list">
+        <div className="w-day">{'今天 · 09:38'}</div>
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}

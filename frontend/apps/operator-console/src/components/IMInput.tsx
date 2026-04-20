@@ -7,6 +7,8 @@ interface IMInputProps {
   send: (frame: Envelope) => void;
 }
 
+const CMD_HINTS = ['/hijack', '/release', '/resolve', '/assign'];
+
 export function IMInput({ send }: IMInputProps) {
   const { t } = useTranslation();
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
@@ -35,7 +37,6 @@ export function IMInput({ send }: IMInputProps) {
 
     addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts });
 
-    // Send via WebSocket operator_message frame (unified operator write path)
     send({
       v: 1,
       type: 'operator_message',
@@ -56,25 +57,58 @@ export function IMInput({ send }: IMInputProps) {
     }
   };
 
+  const insertCmd = (cmd: string) => {
+    setInputText((prev) => {
+      if (!prev) return cmd + ' ';
+      return prev.endsWith(' ') ? prev + cmd + ' ' : prev + ' ' + cmd + ' ';
+    });
+  };
+
   return (
     <div className="im-input">
-      <div className="im-input-row">
+      {activeCopilotConvId && !isTakeover && (
+        <div className="im-comp-hint side">
+          💡 <b>输入建议</b> · 仅对 agent 可见 · 不会发给客户
+        </div>
+      )}
+      {activeCopilotConvId && isTakeover && (
+        <div className="im-comp-hint takeover">
+          <b>接管模式</b> · 你现在是 driver · 消息将直接发给客户 · AI 退居副驾驶
+        </div>
+      )}
+      <div className={`im-input-row ${isTakeover ? 'takeover' : ''}`}>
         <textarea
           data-testid="copilot-input"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          rows={1}
+          rows={2}
         />
         <button
+          type="button"
           data-testid="copilot-send"
           onClick={handleSend}
           disabled={!inputText.trim() || !activeCopilotConvId}
+          className={isTakeover ? 'jade' : ''}
         >
           {t('common.send')}
         </button>
       </div>
+      {activeCopilotConvId && (
+        <div className="im-cmd-hint">
+          {CMD_HINTS.map((cmd) => (
+            <button
+              key={cmd}
+              type="button"
+              className="im-cmd-hint-btn"
+              onClick={() => insertCmd(cmd)}
+            >
+              {cmd}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

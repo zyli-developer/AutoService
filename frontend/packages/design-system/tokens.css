@@ -1,75 +1,274 @@
-/* Design tokens extracted from docs/prd/autoservice-full-journey.html */
+/* =====================================================================
+   AutoService Design System — OneSyn 智道元生 江峡泼墨
+   River Gorge × Ink Splash
+   Single-file import for colors, type, spacing, motion, elevation.
+   Legacy tokens (--cream, --paper, --ink, --aurora-*) are kept as
+   compatibility aliases mapped to OneSyn equivalents so existing CSS
+   and inline `style={{ color: 'var(--silver)' }}` keep working.
+   ===================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500&family=Source+Serif+4:wght@400;500&family=Source+Code+Pro:wght@400;500&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@400;500&display=swap');
 
 :root {
-  /* Surface — soft warm light */
-  --cream: #fafaf7;
-  --paper: #ffffff;
-  --oat: rgba(24,24,27,.08);
-  --oat-l: rgba(24,24,27,.04);
+  /* ==================================================================
+     COLOR RAMPS — 8 ramps named by Chinese imagery + English
+     ================================================================== */
+
+  /* Ink 墨 — neutral skeleton */
+  --ink-50:   #F4F2EF;
+  --ink-200:  #C8C0B4;
+  --ink-400:  #8E8A82;
+  --ink-700:  #4A4A46;
+  --ink-900:  #1A1A1A;
+
+  /* Mountain 岚 — default text ramp */
+  --mountain-50:  #ECEEF3;
+  --mountain-200: #C2C8D5;
+  --mountain-400: #8A94A8;
+  --mountain-600: #5A6478;
+  --mountain-900: #2E3545;
+
+  /* Indigo 靛 — Workmode primary */
+  --indigo-50:  #EBF0F8;
+  --indigo-200: #8FA8CC;
+  --indigo-500: #2B4D86;
+  --indigo-700: #173260;
+  --indigo-900: #0C1C3D;
+
+  /* Jade 翠 — Editorial primary */
+  --jade-50:  #E0F0EA;
+  --jade-200: #7CC4A0;
+  --jade-500: #1F8C65;
+  --jade-700: #106B4C;
+  --jade-900: #0D3F30;
+
+  /* Goose 鹅 — punctuation highlight */
+  --goose-50:  #FCEAE0;
+  --goose-200: #F4A988;
+  --goose-500: #E54D1F;
+  --goose-700: #A3320C;
+  --goose-900: #5C1A05;
+
+  /* Vermillion 朱 */
+  --vermillion-50:  #FCE5E2;
+  --vermillion-200: #ED9286;
+  --vermillion-500: #CE2218;
+  --vermillion-700: #951810;
+  --vermillion-900: #4F0C08;
+
+  /* Spring 芽 — success */
+  --spring-50:  #EEF5DC;
+  --spring-200: #C5DD7E;
+  --spring-500: #8EBA3A;
+  --spring-700: #5D8720;
+  --spring-900: #33500F;
+
+  /* Sand 沙 — auxiliary warm */
+  --sand-50:  #F8F1E6;
+  --sand-200: #E8D5B5;
+  --sand-400: #C9A87A;
+  --sand-600: #9A7B4E;
+  --sand-900: #5E4A2D;
+
+  /* Gold 金 — premium */
+  --gold-50:  #FDF5E0;
+  --gold-200: #F0D060;
+  --gold-500: #D4A22E;
+  --gold-700: #A07B18;
+  --gold-900: #5C4808;
+
+  /* ==================================================================
+     SEMANTIC TOKENS (Workmode default)
+     ================================================================== */
+  --color-bg:                  #FAFAF8;
+  --color-bg-surface:          #FFFFFF;
+  --color-bg-surface-tinted:   #F4F2EF;
+  --color-bg-elevated:         #FFFFFF;
+
+  --color-text:                #2E3545;
+  --color-text-secondary:      #5A6478;
+  --color-text-muted:          #8E8A82;
+  --color-text-inverse:        #ECEEF3;
+  --color-text-ink:            #1A1A1A;
+
+  --color-border:              #E5E0D7;
+  --color-border-strong:       #C8C0B4;
+  --color-border-subtle:       #F0EDE5;
+
+  --color-primary:             #2B4D86;
+  --color-primary-hover:       #173260;
+  --color-primary-subtle:      #EBF0F8;
+  --color-primary-text:        #0C1C3D;
+
+  --color-accent:              #1F8C65;
+  --color-accent-subtle:       #E0F0EA;
+  --color-accent-text:         #0D3F30;
+
+  --color-success:             #8EBA3A;
+  --color-success-subtle:      #EEF5DC;
+  --color-success-text:        #33500F;
+
+  --color-highlight:           #E54D1F;
+  --color-highlight-subtle:    #FCEAE0;
+  --color-highlight-text:      #A3320C;
+
+  --color-premium:             #D4A22E;
+  --color-premium-subtle:      #FDF5E0;
+  --color-premium-text:        #5C4808;
+
+  --color-danger:              #CE2218;
+  --color-danger-hover:        #951810;
+  --color-danger-subtle:       #FCE5E2;
+  --color-danger-text:         #4F0C08;
+
+  /* ==================================================================
+     LEGACY TOKEN ALIASES — map old names to OneSyn equivalents.
+     Anything still using `var(--ink)` or `var(--aurora-3)` keeps working.
+     ================================================================== */
+
+  /* Surface */
+  --cream:        #FAFAF8;
+  --paper:        #FFFFFF;
+  --oat:          rgba(46, 53, 69, .10);
+  --oat-l:        rgba(46, 53, 69, .04);
 
   /* Text */
-  --silver: rgba(24,24,27,.45);
-  --charcoal: rgba(24,24,27,.88);
-  --ink: #18181b;
+  --silver:       #8E8A82;
+  --charcoal:     #2E3545;
+  --ink:          #2B4D86;          /* primary CTA — was #18181b, now indigo-500 */
 
-  /* M-scale: Merchant / Primary (blue) */
-  --m300: #dbeafe;
-  --m600: #1b61c9;
-  --m800: #181d26;
+  /* Merchant scale */
+  --m300:         #EBF0F8;
+  --m600:         #2B4D86;
+  --m800:         #0C1C3D;
 
-  /* S-scale: Customer (cyan) */
-  --s500: #3bd3fd;
-  --s800: #0089ad;
+  /* Customer scale */
+  --s500:         #2B4D86;
+  --s800:         #173260;
 
-  /* L-scale: Warning (yellow/amber) */
-  --l400: #f8cc65;
-  --l500: #fbbd41;
-  --l700: #d08a11;
-  --l800: #9d6a09;
+  /* Warning amber */
+  --l400:         #F0D060;
+  --l500:         #D4A22E;
+  --l700:         #A07B18;
+  --l800:         #5C4808;
 
-  /* U-scale: Platform (purple) */
-  --u300: #c1b0ff;
-  --u500: #8a5cf6;
-  --u800: #43089f;
-  --u900: #32037d;
+  /* Platform purple → mapped to sand for OneSyn warmth */
+  --u300:         #E8D5B5;
+  --u500:         #9A7B4E;
+  --u800:         #5E4A2D;
+  --u900:         #4A4A46;
 
-  /* Accent: Urgent (pink) */
-  --p: #fc7981;
+  /* Urgent — vermillion */
+  --p:            #CE2218;
 
-  /* Aurora palette — Customer */
-  --aurora-1: #6ee7b7;          /* mint */
-  --aurora-2: #67e8f9;          /* cyan */
-  --aurora-3: #a78bfa;          /* violet */
-  --role-primary: #6ee7b7;
-  --role-primary-dim: rgba(110,231,183,.15);
-  --role-glow: rgba(110,231,183,.25);
+  /* Aurora palette — remapped from mint/cyan/violet to jade/indigo/sand */
+  --aurora-1:     #1F8C65;
+  --aurora-2:     #2B4D86;
+  --aurora-3:     #9A7B4E;
+  --role-primary:     #1F8C65;
+  --role-primary-dim: rgba(31, 140, 101, .12);
+  --role-glow:        rgba(31, 140, 101, .20);
 
-  /* Aurora palette — Operator */
-  --role-op-primary: #67e8f9;
-  --role-op-dim: rgba(103,232,249,.15);
+  --role-op-primary: #2B4D86;
+  --role-op-dim:     rgba(43, 77, 134, .10);
 
-  /* Aurora palette — Admin */
-  --role-admin-primary: #a78bfa;
-  --role-admin-dim: rgba(167,139,250,.15);
+  --role-admin-primary: #9A7B4E;
+  --role-admin-dim:     rgba(154, 123, 78, .10);
 
-  /* Glass */
-  --glass-bg: rgba(255,255,255,.6);
-  --glass-border: rgba(24,24,27,.06);
-  --glass-bg-hover: rgba(255,255,255,.85);
+  /* Glass — flatter under OneSyn */
+  --glass-bg:        #FFFFFF;
+  --glass-border:    #E5E0D7;
+  --glass-bg-hover:  #FFFFFF;
 
-  /* Shadow — refined, layered */
-  --shd: 0 1px 2px rgba(24,24,27,.04), 0 2px 8px rgba(24,24,27,.04);
-  --shd-md: 0 4px 12px rgba(24,24,27,.06), 0 2px 4px rgba(24,24,27,.04);
-  --shd-hover: 0 8px 24px rgba(24,24,27,.08), 0 4px 8px rgba(24,24,27,.04);
-  --shd-btn: 0 1px 2px rgba(24,24,27,.06), 0 2px 6px rgba(24,24,27,.08);
-  --shd-btn-hover: 0 2px 4px rgba(24,24,27,.08), 0 6px 16px rgba(24,24,27,.12);
+  /* Shadows — Mountain-blue tinted */
+  --shd:            0 1px 2px rgba(46, 53, 69, .04), 0 1px 1px rgba(46, 53, 69, .03);
+  --shd-md:         0 1px 2px rgba(46, 53, 69, .06), 0 1px 3px rgba(46, 53, 69, .04);
+  --shd-hover:      0 1px 3px rgba(46, 53, 69, .08), 0 4px 12px rgba(46, 53, 69, .06);
+  --shd-btn:        0 1px 2px rgba(46, 53, 69, .06), 0 1px 3px rgba(46, 53, 69, .04);
+  --shd-btn-hover:  0 1px 3px rgba(46, 53, 69, .08), 0 4px 12px rgba(46, 53, 69, .06);
 
-  /* Typography */
-  --font-display: 'DM Sans', 'Noto Sans SC', sans-serif;
-  --font-sans: 'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --shadow-soft:     0 1px 2px rgba(46, 53, 69, .04), 0 1px 1px rgba(46, 53, 69, .03);
+  --shadow-card:     0 1px 2px rgba(46, 53, 69, .06), 0 1px 3px rgba(46, 53, 69, .04);
+  --shadow-elevated: 0 1px 3px rgba(46, 53, 69, .08), 0 4px 12px rgba(46, 53, 69, .06),
+                     0 0 0 0.5px rgba(46, 53, 69, .04) inset;
+  --shadow-editorial-modal: 0 8px 32px -8px rgba(46, 53, 69, .12);
+
+  /* ==================================================================
+     TYPOGRAPHY — OneSyn family
+     ================================================================== */
+  --font-display: "Source Serif 4", "Source Serif Pro",
+                  "Source Han Serif SC", "Noto Serif SC",
+                  "Songti SC", Georgia, serif;
+  --font-serif:   var(--font-display);
+  --font-sans:    "Source Sans 3", "Source Sans Pro",
+                  "Source Han Sans SC", "Noto Sans SC",
+                  system-ui, sans-serif;
+  --font-mono:    "Source Code Pro", "JetBrains Mono",
+                  "Sarasa Mono SC", ui-monospace, monospace;
+
+  /* Type scale — 1.2 ratio, anchored at 16px */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 16px;
+  --text-lg: 19px;
+  --text-xl: 23px;
+  --text-2xl: 28px;
+  --text-3xl: 34px;
+  --text-display: 56px;
+
+  /* Letter-spacing */
+  --tracking-display: -0.01em;
+  --tracking-heading: 0.02em;
+  --tracking-body:    0.10px;
+  --tracking-caption: 0.20px;
+  --tracking-button:  0.05px;
+
+  /* ==================================================================
+     SPACING — 4px scale
+     ================================================================== */
+  --s-0:  0;
+  --s-1:  4px;
+  --s-2:  8px;
+  --s-3:  12px;
+  --s-4:  16px;
+  --s-5:  24px;
+  --s-6:  32px;
+  --s-8:  48px;
+  --s-10: 64px;
+  --s-12: 96px;
+  --s-16: 128px;
+
+  /* ==================================================================
+     RADII
+     ================================================================== */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* ==================================================================
+     MOTION
+     ================================================================== */
+  --duration-instant:    80ms;
+  --duration-fast:       160ms;
+  --duration-base:       240ms;
+  --duration-slow:       400ms;
+  --duration-deliberate: 640ms;
+
+  --ease-daily:     cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-ink-bloom: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ==================================================================
+     CHART PALETTES
+     ================================================================== */
+  --chart-1: #2B4D86;
+  --chart-2: #1F8C65;
+  --chart-3: #C9A87A;
+  --chart-4: #D4A22E;
+  --chart-5: #E54D1F;
+  --chart-6: #5A6478;
+  --chart-7: #8EBA3A;
 }
 
 * { box-sizing: border-box; }
@@ -77,8 +276,16 @@
 html, body {
   margin: 0;
   font-family: var(--font-sans);
-  color: var(--charcoal);
+  color: var(--color-text);
   font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: var(--tracking-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
 }
