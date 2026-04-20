@@ -42,8 +42,15 @@ function useStepComplete(step: number): boolean {
 
 export function WizardTab() {
   const { t } = useTranslation();
-  const { tenantId, wizardStep, setWizardStep } = useAdminStore();
+  const { tenantId, wizardStep, setWizardStep, generationResult } = useAdminStore();
   const currentStepComplete = useStepComplete(wizardStep);
+
+  // IMPORTANT: prefer the tenant_id that /api/onboard/upload actually created
+  // (generationResult.tenantId, e.g. "tenant_8f3a12bd") over the login-time
+  // tenantId (adminStore.tenantId, e.g. "mystore"). The sandbox directory
+  // on disk is created under the generated id, so Steps 1-4 (activate /
+  // rehearsal / compliance / publish) must use it, not the login id.
+  const effectiveTenantId = generationResult?.tenantId || tenantId || 'default';
 
   return (
     <div data-testid="tab-wizard">
@@ -64,9 +71,9 @@ export function WizardTab() {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        {wizardStep === 0 && <MaterialUploadStep tenantId={tenantId || 'default'} onGenerated={() => setWizardStep(1)} />}
-        {wizardStep === 1 && <ChannelConfigStep tenantId={tenantId || 'default'} />}
-        {wizardStep === 2 && <VirtualRehearsalStep tenantId={tenantId || 'default'} />}
+        {wizardStep === 0 && <MaterialUploadStep tenantId={effectiveTenantId} onGenerated={() => setWizardStep(1)} />}
+        {wizardStep === 1 && <ChannelConfigStep tenantId={effectiveTenantId} />}
+        {wizardStep === 2 && <VirtualRehearsalStep tenantId={effectiveTenantId} />}
         {wizardStep === 3 && <ComplianceCheckStep />}
         {wizardStep === 4 && <SandboxReady />}
       </div>

@@ -38,7 +38,12 @@ const API_BASE =
 
 export function SandboxReady() {
   const { t } = useTranslation();
-  const tenantId = useAdminStore((s) => s.tenantId) || 'default';
+  // Prefer the tenant_id that /api/onboard/upload actually created (the one
+  // that has a real sandbox dir on disk) over the login-time tenantId.
+  // See WizardTab comment for the same precedence rule.
+  const generationResult = useAdminStore((s) => s.generationResult);
+  const loginTenantId = useAdminStore((s) => s.tenantId);
+  const tenantId = generationResult?.tenantId || loginTenantId || 'default';
 
   const [publishing, setPublishing] = useState(false);
   const [result, setResult] = useState<PublishResult | null>(null);
