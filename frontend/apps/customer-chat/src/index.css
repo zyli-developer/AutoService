@@ -959,14 +959,12 @@ html, body, #root {
   .web-modal.sheet-peek { top: 46vh; }
   .web-modal.sheet-full { top: 8vh; }
 
-  /* Inner surface: rounded top, heavy shadow, full height */
-  .web-modal .web-modal-header,
+  /* Inner surface: body + input get the sheet's white background. The
+     header keeps its indigo gradient (from default styles) so the
+     brand avatar, title, subtitle, and close button stay legible. */
   .web-modal .web-modal-body,
   .web-modal .web-modal-input {
     background: var(--color-bg-surface);
-  }
-  .web-modal .web-modal-header {
-    border-radius: 0;
   }
   .web-modal {
     box-shadow:
