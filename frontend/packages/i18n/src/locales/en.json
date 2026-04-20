@@ -177,6 +177,11 @@
   "operator.mobile.desc": "The operator console needs side-by-side squad cards, chat stream, CRM panel, and Copilot suggestions. PRD v1.1 §8 scopes this release to desktop Web only.",
   "operator.mobile.min_width_label": "Recommended min width",
   "operator.mobile.min_width_value": "1280 px",
+  "operator.mobile.open_menu": "Open navigation",
+  "operator.mobile.tabbar.aria": "Three-pane tabs",
+  "operator.mobile.tab.queue": "Queue",
+  "operator.mobile.tab.chat": "Chat",
+  "operator.mobile.tab.crm": "Details",
 
   "admin.login.title": "AutoService Admin",
   "admin.login.subtitle": "Enter your tenant ID to sign in",
