@@ -80,7 +80,10 @@ export function handleEventFrame(
   }
 }
 
-export function useOperatorWS(url: string): { send: (frame: Envelope) => void } {
+export function useOperatorWS(url: string): {
+  send: (frame: Envelope) => void;
+  fetchHistory: (conversationId: string) => void;
+} {
   const isLoggedIn = useOperatorStore((s) => s.isLoggedIn);
   const operatorId = useOperatorStore((s) => s.operatorId);
   const squads = useOperatorStore((s) => s.squads);
@@ -94,7 +97,9 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   const clientRef = useRef<WSClient | null>(null);
 
   useEffect(() => {
-    if (!isLoggedIn || !operatorId) return;
+    // Skip when not logged in, or when the caller hasn't provided a URL yet
+    // (e.g. no tenant context — WorkspacePage renders NoTenantFallback instead).
+    if (!isLoggedIn || !operatorId || !url) return;
 
     setWsStatus('connecting');
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App } from '../App';
 import { useOperatorStore, initialState } from '../store/operatorStore';
 import { _setWSClientImpl } from '../hooks/useOperatorWS';
@@ -11,16 +12,29 @@ beforeEach(() => {
   _setWSClientImpl(createFakeWSClientClass() as any);
 });
 
+// Wrap <App /> in a tenant-scoped route so WorkspacePage's useTenantId()
+// resolves (T1F.4). Operator console now expects /t/:tenantId/operator.
+function renderApp(initialPath = '/t/tenant_test/operator') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/t/:tenantId/operator" element={<App />} />
+        <Route path="/" element={<App />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('integration', () => {
   it('TC-016: shows LoginPage when not logged in', () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByTestId('input-operator-id')).toBeInTheDocument();
     expect(screen.queryByTestId('workspace-page')).toBeNull();
   });
 
   it('TC-017: after login shows WorkspacePage', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.type(screen.getByTestId('input-operator-id'), 'op-001');
     await user.click(screen.getByTestId('btn-login'));
     expect(await screen.findByTestId('workspace-page')).toBeInTheDocument();
@@ -29,7 +43,7 @@ describe('integration', () => {
 
   it('TC-018: adding squad makes channel appear in sidebar', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.type(screen.getByTestId('input-operator-id'), 'op-001');
     await user.click(screen.getByTestId('btn-login'));
     await screen.findByTestId('workspace-page');
@@ -40,7 +54,7 @@ describe('integration', () => {
 
   it('TC-019: clicking different channel changes activeSquadId', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.type(screen.getByTestId('input-operator-id'), 'op-001');
     await user.click(screen.getByTestId('btn-login'));
     await screen.findByTestId('workspace-page');
@@ -54,7 +68,7 @@ describe('integration', () => {
 
   it('TC-020: clicking logout returns to LoginPage', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.type(screen.getByTestId('input-operator-id'), 'op-001');
     await user.click(screen.getByTestId('btn-login'));
     await screen.findByTestId('workspace-page');
