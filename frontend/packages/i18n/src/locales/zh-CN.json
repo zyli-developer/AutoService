@@ -177,11 +177,6 @@
   "operator.mobile.desc": "客服工作台需要同屏并看分队卡片、聊天流、CRM 侧栏与 Copilot 建议。PRD v1.1 §8 明确本期仅支持桌面 Web。",
   "operator.mobile.min_width_label": "最小推荐宽度",
   "operator.mobile.min_width_value": "1280 px",
-  "operator.mobile.open_menu": "打开导航",
-  "operator.mobile.tabbar.aria": "三栏切换",
-  "operator.mobile.tab.queue": "分队",
-  "operator.mobile.tab.chat": "聊天",
-  "operator.mobile.tab.crm": "详情",
 
   "admin.login.title": "AutoService 管理后台",
   "admin.login.subtitle": "请输入租户 ID 登录",

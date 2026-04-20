@@ -3,8 +3,6 @@ import { useOperatorStore } from '../store/operatorStore';
 
 interface IMSidebarProps {
   onLogout: () => void;
-  open?: boolean;
-  onClose?: () => void;
 }
 
 const InboxIcon = () => (
@@ -33,7 +31,7 @@ const BellIcon = () => (
   </svg>
 );
 
-export function IMSidebar({ onLogout, open = false, onClose }: IMSidebarProps) {
+export function IMSidebar({ onLogout }: IMSidebarProps) {
   const { t } = useTranslation();
   const operatorId = useOperatorStore((s) => s.operatorId);
   const squads = useOperatorStore((s) => s.squads);
@@ -47,14 +45,8 @@ export function IMSidebar({ onLogout, open = false, onClose }: IMSidebarProps) {
   const totalConvs = Object.keys(conversations).length;
   const operatorDisplay = operatorId ?? t('operator.sidebar.default_operator');
 
-  // Wrap squad selection so the mobile drawer auto-closes after a pick
-  const pickSquad = (s: string | null) => {
-    setActiveSquad(s as any);
-    onClose?.();
-  };
-
   return (
-    <aside className={`im-sidebar ${open ? 'open' : ''}`} data-testid="im-sidebar">
+    <aside className="im-sidebar" data-testid="im-sidebar">
       <div className="im-brand">
         <div className="im-brand-wm">{'OneSyn · autoservice'}</div>
         <div className="im-brand-sub">{'operator / v1.1'}</div>
@@ -75,7 +67,7 @@ export function IMSidebar({ onLogout, open = false, onClose }: IMSidebarProps) {
         <li
           className={`im-nav-item ${!activeSquadId ? 'active' : ''}`}
           data-testid="channel-all"
-          onClick={() => pickSquad(null)}
+          onClick={() => setActiveSquad(null as any)}
         >
           <InboxIcon />
           <span>{t('operator.sidebar.all_conversations')}</span>
@@ -88,7 +80,7 @@ export function IMSidebar({ onLogout, open = false, onClose }: IMSidebarProps) {
               key={squadId}
               className={`im-nav-item ${activeSquadId === squadId ? 'active' : ''}`}
               data-testid={`channel-${squadId}`}
-              onClick={() => pickSquad(squadId)}
+              onClick={() => setActiveSquad(squadId)}
             >
               <SquadIcon />
               <span>{squadId}</span>
