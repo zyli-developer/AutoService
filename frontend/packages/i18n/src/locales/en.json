@@ -212,6 +212,7 @@
   "admin.wizard.upload.url": "Website URL",
   "admin.wizard.upload.files": "Upload files (PDF/CSV/TXT)",
   "admin.wizard.upload.choose_file": "Choose file",
+  "admin.wizard.upload.no_file_selected": "No file selected",
   "admin.wizard.upload.generate_agent": "🤖 Generate Agent",
   "admin.wizard.upload.generating": "Generating...",
   "admin.wizard.upload.files_selected": "{{count}} file(s) selected",

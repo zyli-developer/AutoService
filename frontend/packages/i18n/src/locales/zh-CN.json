@@ -212,6 +212,7 @@
   "admin.wizard.upload.url": "公司官网 URL",
   "admin.wizard.upload.files": "上传文件 (PDF/CSV/TXT)",
   "admin.wizard.upload.choose_file": "选择文件",
+  "admin.wizard.upload.no_file_selected": "未选择任何文件",
   "admin.wizard.upload.generate_agent": "🤖 生成 Agent",
   "admin.wizard.upload.generating": "生成中...",
   "admin.wizard.upload.files_selected": "{{count}} 个文件已选择",

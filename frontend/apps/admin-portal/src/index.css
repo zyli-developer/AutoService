@@ -290,24 +290,39 @@ html, body, #root {
   font-family: var(--font-mono);
 }
 
-[data-testid="tab-wizard"] .cs-card input[type="file"] {
-  display: block;
-  width: 100%;
-  font-size: 13px !important;
-  font-family: var(--font-sans) !important;
-  color: var(--color-text-muted);
-  cursor: pointer;
+/* Hidden native file input (wrapped in custom .cs-file-picker label) */
+.cs-file-input-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
   padding: 0 !important;
-  border: none !important;
-  border-bottom: none !important;
-  background: transparent !important;
-  letter-spacing: 0.1px;
+  margin: -1px !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
 }
 
-[data-testid="tab-wizard"] .cs-card input[type="file"]::-webkit-file-upload-button,
-[data-testid="tab-wizard"] .cs-card input[type="file"]::file-selector-button {
+.cs-file-picker {
+  display: flex !important;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-size: inherit !important;
+  color: var(--color-text-muted);
+  font-weight: 400 !important;
+}
+
+.cs-file-picker-btn {
+  display: inline-flex;
+  align-items: center;
   padding: 9px 18px;
-  margin-right: 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-surface);
@@ -315,19 +330,33 @@ html, body, #root {
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
-  transition: border-color var(--duration-fast), background var(--duration-fast), transform var(--duration-fast);
-  -webkit-appearance: none;
-  box-shadow: var(--shadow-soft);
   letter-spacing: 0.1px;
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--duration-fast), background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
+  flex-shrink: 0;
 }
 
-[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::-webkit-file-upload-button,
-[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::file-selector-button {
+.cs-file-picker:hover .cs-file-picker-btn {
   border-color: var(--color-primary);
   background: var(--color-primary-subtle);
   color: var(--color-primary-text);
   transform: translateY(-1px);
+}
+
+.cs-file-picker:focus-within .cs-file-picker-btn {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(43, 77, 134, .15);
+}
+
+.cs-file-picker-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.1px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 /* ===== Wizard buttons ===== */
