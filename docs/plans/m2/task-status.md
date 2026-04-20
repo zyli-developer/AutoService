@@ -23,7 +23,7 @@
 | 2026-04-21 | batch-4 完成（T3B.4 run_dream yellow + inline reviewer APPROVED）| `ec972cd` |
 | 2026-04-21 | 模板修复：m2/cc-prompt-templates.md + CLAUDE.md autorun 约定 | 本次 commit |
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
-| 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| PENDING |
+| 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
 
 ## 更新规则
 
@@ -64,7 +64,7 @@
 | T3B.2 | kb_search tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests, FTS JOIN bug fixed vs soul_generator) |
 | T3B.3 | list_souls tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests) |
 | T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | ✅ done | Subagent af82565 | `ec972cd` (10 tests, inline reviewer APPROVED, cc_pool.acquire(role=) deferred to T3B.5) |
-| T3B.5 | cc_pool role='dream' support | 🟡 yellow | medium | ✅ done | Subagent T3B.5 | PENDING (9 tests + 0 regression, inline reviewer APPROVED) |
+| T3B.5 | cc_pool role='dream' support | 🟡 yellow | medium | ✅ done | Subagent T3B.5 | `21ed7bb` (9 tests + 0 regression, inline reviewer APPROVED) |
 | T3B.6 | /api/dream/trigger + /api/dream/runs | green | small | ✅ done | Subagent T3B.6 | `475f32f` (15 tests, 0 regression) |
 
 **Gate**：run_dream 产生 draft proposal；cc_pool 隔离验证。
