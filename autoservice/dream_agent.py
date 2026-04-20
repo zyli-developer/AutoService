@@ -713,38 +713,22 @@ def _build_initial_context(
 async def _acquire_dream_client(cc_pool, tenant_id: str, system_prompt: str):
     """Acquire a Claude client suitable for the Dream agent loop.
 
-    Spec §2.5 says ``cc_pool.acquire(role="dream", tenant_id=...)`` should
-    yield a CC client with the tenant's ``dream_soul.md`` injected as the
-    system prompt. That pool-side surface is landed by T3B.5 — at T3B.4
-    time the existing ``CCPool.acquire()`` may not accept the kwargs.
+    Spec §2.5 / CON-06: ``cc_pool.acquire(role="dream", tenant_id=...)``
+    yields a CC client from the deployment-level dream pool (size=1,
+    independent from the customer pool) with the tenant's
+    ``dream_soul.md`` injected as the system prompt. This adapter is the
+    single call site; T3B.5 landed the pool-side surface, so no fallback
+    is needed.
 
-    Strategy: try the spec shape first; on ``TypeError`` (unknown kwargs)
-    fall back to the kwarg-less base ``acquire()`` and log a TODO. The
-    factory ``autoservice.cc_pool.create_cc_client`` is *not* re-invoked
-    here because that would bypass pool bookkeeping; if the pool cannot
-    materialise a dream client we surface the error to the caller.
-
-    Returns whatever the pool hands us — typically a ``PooledInstance``
-    context manager. The caller must use it in an ``async with`` block.
+    Returns the async-context-manager handed back by the pool. The caller
+    must use it in an ``async with`` block — the pool's checkin / release
+    fires on exit and routes the instance back to the dream pool.
 
     .. note::
-       Tests mock the LLM end-to-end; this adapter is only exercised by
-       integration paths. T3B.5 will update :mod:`autoservice.cc_pool` to
-       natively accept ``role`` / ``tenant_id`` and the ``TypeError``
-       branch can be removed then.
+       Tests mock the LLM end-to-end via the ``llm_send`` seam; this
+       adapter is only exercised by integration paths.
     """
-    try:
-        return cc_pool.acquire(role="dream", tenant_id=tenant_id)
-    except TypeError:
-        # TODO(T3B.5): cc_pool.acquire does not yet accept role/tenant_id.
-        # Once that lands, drop this branch and the warning below.
-        logger.warning(
-            "cc_pool.acquire() rejected role/tenant_id kwargs — falling back "
-            "to base signature. Dream soul is NOT being injected at pool "
-            "level; run_dream() is using the pool's default system prompt. "
-            "Fix: T3B.5.",
-        )
-        return cc_pool.acquire()
+    return cc_pool.acquire(role="dream", tenant_id=tenant_id)
 
 
 # ── Agent loop ────────────────────────────────────────────────────────────

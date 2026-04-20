@@ -22,7 +22,8 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -320,6 +321,15 @@ async def create_cc_client(
 # CCPool — thin subclass with query() convenience
 # ---------------------------------------------------------------------------
 
+#: Set of roles :meth:`CCPool.acquire` accepts. "customer" is the default
+#: M1 path (preserved for back-compat); "dream" routes through the
+#: module-level :data:`_dream_pool` (spec §2.5 + CON-06). Extending this set
+#: is the intended extension path — add the role here, wire up pool
+#: selection in ``acquire``/``_pool_for_role``, and keep the single-source
+#: NotImplementedError message in sync.
+_KNOWN_ROLES: frozenset[str] = frozenset({"customer", "dream"})
+
+
 class CCPool(AsyncPool[CCClient]):
     """Pool of pre-created Claude Code SDK instances.
 
@@ -376,6 +386,73 @@ class CCPool(AsyncPool[CCClient]):
         """End a stateful session, release the instance back to pool."""
         await self.release_sticky(chat_id)
 
+    # ------------------------------------------------------------------
+    # Role-aware acquire (T3B.5 — spec §2.5 + CON-06)
+    # ------------------------------------------------------------------
+
+    def acquire(
+        self,
+        timeout: float | None = None,
+        *,
+        role: str = "customer",
+        tenant_id: str | None = None,
+    ) -> Any:
+        """Acquire a pooled CC client for *role*.
+
+        The ``role="customer"`` path (default, no kwargs) preserves the
+        M1 ``AsyncPool.acquire()`` semantics byte-for-byte — all existing
+        M1 call sites (``CCPool.query``, ``CCPool.session_query``, and the
+        ``async with pool.acquire() as instance`` pattern in channels /
+        operator / customer code) go through the parent implementation
+        unchanged. Adding a role kwarg here **must not** reduce the
+        expressivity of the base signature.
+
+        ``role="dream"`` routes through the module-level :data:`_dream_pool`
+        (spec §2.5: *"Dream 使用独立小池 dream_pool（部署级 size=1）…不抢
+        普通 agent 的 pool 名额"*). The dream pool is lazily initialised on
+        first acquire so tests that never touch dream do not pay the cost
+        of a second warmup.
+
+        Future roles raise :class:`NotImplementedError` with a pointer to
+        this function so the extension path is obvious.
+
+        Args:
+            timeout: Acquisition timeout. Mirrors
+                :meth:`AsyncPool.acquire` for the customer path. For the
+                dream path the dream pool's own ``checkout_timeout`` is
+                used when ``None`` (spec §2.5 size=1 — queueing is
+                expected and intentional).
+            role: ``"customer"`` (default) or ``"dream"``.
+            tenant_id: Only consulted when ``role="dream"``; selects which
+                tenant's ``souls/dream_soul.md`` to inject as the system
+                prompt. When ``None`` the bootstrap fallback is used (see
+                :func:`_load_dream_soul`).
+
+        Returns:
+            An async-context-manager yielding a
+            :class:`socialware.pool.PooledInstance[CCClient]`. Always usable
+            as ``async with pool.acquire(...) as inst``. For the dream
+            role, the returned instance is tagged with
+            ``_pool_role='dream'`` so :meth:`release` (and future
+            leak-detection tooling) can route it back to the correct
+            pool unambiguously.
+        """
+        if role == "customer":
+            # Preserve M1 hot path — do not introduce bookkeeping overhead
+            # here. The parent implementation is the single source of
+            # truth for the customer acquire/release contract.
+            return super().acquire(timeout=timeout)
+
+        if role == "dream":
+            return _acquire_dream(tenant_id=tenant_id, timeout=timeout)
+
+        raise NotImplementedError(
+            f"cc_pool.acquire: role={role!r} is not implemented. "
+            f"Known roles: {sorted(_KNOWN_ROLES)}. "
+            "Add new roles via autoservice.cc_pool._KNOWN_ROLES and "
+            "wire a pool selector; see T3B.5 / T4B.* for examples."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Status snapshot (for out-of-process observability, e.g. `make pool-status`)
@@ -401,7 +478,7 @@ def _clear_status_snapshot() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton
+# Module-level singleton — customer pool
 # ---------------------------------------------------------------------------
 
 _pool: CCPool | None = None
@@ -443,9 +520,262 @@ async def get_pool(config: PoolConfig | None = None) -> CCPool:
         return _pool
 
 
+# ---------------------------------------------------------------------------
+# Dream pool (T3B.5 — spec §2.5 + CON-06)
+# ---------------------------------------------------------------------------
+#
+# Design notes (for the reviewer):
+#
+# 1. *Independence* — the dream pool is a separate :class:`AsyncPool`
+#    instance, **not** a partition of the customer pool. A dream run that
+#    blocks on LLM network I/O can never consume a customer checkout slot.
+#    Spec §2.5: "不抢普通 agent 的 pool 名额".
+#
+# 2. *Size = 1 hard cap* — a cloned :class:`PoolConfig` is used so overriding
+#    ``min_size`` / ``max_size`` / ``warmup_count`` to 1 does not mutate the
+#    customer pool's config. Multi-tenant idle/scheduled triggers serialise
+#    through this single slot (spec §2.5: *"多租户触发时排队"*). The
+#    customer pool's ``max_size`` is left untouched.
+#
+# 3. *Role tagging on checkout* — every :class:`PooledInstance` returned
+#    from the dream path has ``_pool_role='dream'`` stamped on it (dynamic
+#    attribute on a dataclass is fine — :class:`PooledInstance` does not
+#    use ``__slots__``). The ``async with`` wrapper produced by the base
+#    ``AsyncPool.acquire()`` routes release back through the same pool that
+#    checked out the instance, so cross-contamination is not possible via
+#    the public API. The tag is kept as defence-in-depth for logging / leak
+#    detection.
+#
+# 4. *Shutdown symmetry* — :func:`shutdown_pool` tears both down.
+
+
+def _resolve_dream_tenant_root(tenant_id: str | None) -> Path | None:
+    """Resolve a tenant's on-disk root for dream-soul lookup.
+
+    Mirrors the resolution order of
+    :func:`autoservice.dream_agent._resolve_tenant_root` — sandbox first
+    (master layout), plugins second (fork layout) — but anchors both
+    candidates at :func:`pathlib.Path.cwd` rather than the module-level
+    ``PROJECT_ROOT``. The cwd anchor matches the existing customer-role
+    :func:`_load_soul` in this module (see above), keeps the two code
+    paths consistent, and lets tests that ``monkeypatch.chdir`` into a
+    tmp tree exercise the lookup without mutating the real repo.
+
+    Design note (reviewer concern #3): the spec wants the dream role to
+    use the same path convention as customer-role soul injection. Both
+    now use cwd-based lookup under ``.autoservice/sandbox/<tid>/souls/``
+    first and ``plugins/<tid>/souls/`` second. The
+    :func:`dream_agent._resolve_tenant_root` helper is intended for the
+    *tool layer* (``kb_search``, ``list_souls``) that runs inside a
+    ``run_dream`` loop with an explicit ``sandbox_root`` override — the
+    pool layer has no such override seam, so anchoring at cwd is the
+    correct choice here.
+    """
+    if not tenant_id:
+        return None
+    # Same injection guard as :func:`_load_soul` — reject path-escape
+    # attempts before touching the filesystem.
+    if "/" in tenant_id or "\\" in tenant_id or ".." in tenant_id:
+        log.warning("Rejecting suspicious tenant_id for dream soul: %r", tenant_id)
+        return None
+
+    cwd = Path.cwd()
+    sandbox_candidate = cwd / ".autoservice" / "sandbox" / tenant_id
+    if sandbox_candidate.exists():
+        return sandbox_candidate
+    plugin_candidate = cwd / "plugins" / tenant_id
+    if plugin_candidate.exists():
+        return plugin_candidate
+    return None
+
+
+def _load_dream_soul(tenant_id: str | None) -> str:
+    """Return the dream soul for *tenant_id*, falling back to the constant.
+
+    Resolution order (mirrors :func:`dream_agent._load_dream_soul` so the
+    pool-injected prompt matches what the agent-loop-layer computes):
+
+      1. ``<sandbox>/<tenant_id>/souls/dream_soul.md`` — master-side.
+      2. ``plugins/<tenant_id>/souls/dream_soul.md`` — fork-side.
+      3. :data:`autoservice.soul_generator._FALLBACK_DREAM_SOUL` — always
+         present (inlined constant; never raises).
+
+    The fallback is the same well-formed prompt :mod:`dream_agent` uses —
+    keeping the two paths in sync means an admin wizard that regenerates
+    the tenant's dream soul will see the change on the next dream checkout
+    (pool warm instances reload on recycle; see below).
+    """
+    # Deferred import — :mod:`soul_generator` is a heavier dependency.
+    from autoservice.soul_generator import _FALLBACK_DREAM_SOUL
+
+    tenant_root = _resolve_dream_tenant_root(tenant_id)
+    if tenant_root is not None:
+        soul_path = tenant_root / "souls" / "dream_soul.md"
+        try:
+            if soul_path.is_file():
+                return soul_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            log.warning(
+                "Dream soul read failed (%s) — using fallback for tenant %s",
+                exc, tenant_id,
+            )
+    return _FALLBACK_DREAM_SOUL
+
+
+def _dream_pool_config(base: PoolConfig) -> PoolConfig:
+    """Clone *base* with dream-specific caps (size=1 per spec §2.5).
+
+    Keeping the other tunables (``cli_path``, ``model``, ``cwd``,
+    ``permission_mode`` …) in sync with the customer pool means the dream
+    pool picks up the same local CLI binary and proxy config. Only the
+    sizing knobs change.
+    """
+    return replace(
+        base,
+        min_size=1,
+        max_size=1,
+        warmup_count=1,
+        # ``max_sticky_bindings=1`` keeps the size=1 invariant under any
+        # future sticky-aware dream use (currently dream does not use
+        # sticky sessions; this is defence-in-depth).
+        max_sticky_bindings=1,
+    )
+
+
+_dream_pool: AsyncPool[CCClient] | None = None
+_dream_pool_lock = asyncio.Lock()
+
+
+async def _get_dream_pool() -> AsyncPool[CCClient]:
+    """Lazily build the module-level dream pool.
+
+    Uses a double-checked lock so concurrent first-callers do not race
+    the warmup. Once started the pool is reused indefinitely until
+    :func:`shutdown_pool` tears it down.
+    """
+    global _dream_pool
+    if _dream_pool is not None and _dream_pool._started:
+        return _dream_pool
+    async with _dream_pool_lock:
+        if _dream_pool is not None and _dream_pool._started:
+            return _dream_pool
+        dream_cfg = _dream_pool_config(load_pool_config())
+
+        async def _factory() -> CCClient:
+            # The dream pool warms up BEFORE a tenant_id is known — we
+            # inject the fallback soul at warmup so the warmed instance
+            # always has a valid system prompt. Per-tenant souls are
+            # swapped in at acquire time by recycling the instance when
+            # the tenant_id changes (see :func:`_acquire_dream`).
+            return await create_cc_client(
+                dream_cfg, system_prompt=_load_dream_soul(None),
+            )
+
+        pool = AsyncPool[CCClient](
+            config=dream_cfg,
+            factory=_factory,
+            instance_prefix="cc-dream",
+            logger=log,
+        )
+        await pool.start()
+        _dream_pool = pool
+        return _dream_pool
+
+
+@asynccontextmanager
+async def _acquire_dream(
+    *, tenant_id: str | None, timeout: float | None
+) -> AsyncIterator[PooledInstance[CCClient]]:
+    """Async context manager yielding a dream-role pooled instance.
+
+    Per-tenant soul injection strategy: the dream pool holds at most one
+    warm instance, so for the first acquire after a fresh start or after
+    a tenant switch we recycle the warmed-with-fallback instance and
+    create a new one carrying the requested tenant's soul. This avoids
+    the alternative — threading per-call system prompts through the base
+    :class:`AsyncPool`, which would break the "prompt-is-set-at-client-
+    construction" invariant that :class:`CCClient` relies on.
+
+    The recycle only happens when the tenant actually changed, so repeat
+    acquires for the same tenant are zero-cost hot-path lookups.
+    """
+    pool = await _get_dream_pool()
+
+    # Work out the desired soul up front — if it matches the warm
+    # instance's existing soul, no recycle needed. We stamp
+    # ``_dream_tenant_id`` on the PooledInstance the first time we
+    # acquire for a given tenant; subsequent acquires compare against
+    # that stamp.
+    desired_tenant_id = tenant_id  # None means "use fallback"
+
+    instance = await pool.checkout(timeout=timeout)
+    try:
+        existing_tid = getattr(instance, "_dream_tenant_id", _UNSET)
+        if existing_tid is _UNSET or existing_tid != desired_tenant_id:
+            # Tenant boundary crossed (or this is the first real use of
+            # the warm instance). Recycle with the correct soul injected.
+            log.info(
+                "dream pool: recycling instance %s for tenant switch "
+                "(%r -> %r)",
+                instance.id,
+                existing_tid if existing_tid is not _UNSET else "<unset>",
+                desired_tenant_id,
+            )
+            await pool._destroy_instance(instance)  # noqa: SLF001 — internal API
+            # Build the replacement directly so we can override the
+            # system prompt (the pool's warmup factory always uses the
+            # fallback; acquire-time factory override is the cleanest
+            # way to inject a tenant-specific soul without a second
+            # pool).
+            instance = await _make_tenant_dream_instance(
+                pool, desired_tenant_id,
+            )
+        # Tag the instance so release / leak-detection can identify it.
+        instance._pool_role = "dream"  # type: ignore[attr-defined]
+        instance._dream_tenant_id = desired_tenant_id  # type: ignore[attr-defined]
+        yield instance
+    finally:
+        await pool.checkin(instance)
+
+
+# Sentinel for "attribute never set". ``None`` is a legitimate tenant_id
+# value (meaning "use fallback"), so we need a distinct marker.
+_UNSET: Any = object()
+
+
+async def _make_tenant_dream_instance(
+    pool: AsyncPool[CCClient], tenant_id: str | None,
+) -> PooledInstance[CCClient]:
+    """Build + track a fresh dream :class:`PooledInstance` for *tenant_id*.
+
+    Mirrors :meth:`AsyncPool._create_instance` but bypasses the stored
+    factory so we can inject a per-tenant system prompt. The resulting
+    instance IS tracked by the pool so status/health reporting still works.
+    """
+    dream_cfg = pool._config  # noqa: SLF001
+    client = await create_cc_client(
+        dream_cfg, system_prompt=_load_dream_soul(tenant_id),
+    )
+    pool._instance_counter += 1  # noqa: SLF001
+    instance_id = (
+        f"{pool._instance_prefix}-{pool._instance_counter:03d}"  # noqa: SLF001
+    )
+    instance = PooledInstance(client=client, id=instance_id)
+    pool._track(instance)  # noqa: SLF001
+    log.debug(
+        "dream pool: created instance %s for tenant=%r", instance_id, tenant_id,
+    )
+    return instance
+
+
 async def shutdown_pool() -> None:
-    """Shutdown the global pool."""
-    global _pool, _status_writer_task
+    """Shutdown both the global customer pool and the dream pool.
+
+    Order matters only for log readability — customer pool first (it's the
+    bigger one), dream pool second. A failure in either does not prevent
+    the other from shutting down (see the try-finally chain).
+    """
+    global _pool, _dream_pool, _status_writer_task
     if _status_writer_task is not None and not _status_writer_task.done():
         _status_writer_task.cancel()
         try:
@@ -453,7 +783,14 @@ async def shutdown_pool() -> None:
         except (asyncio.CancelledError, Exception):
             pass
     _status_writer_task = None
-    if _pool is not None:
-        await _pool.shutdown()
+    try:
+        if _pool is not None:
+            await _pool.shutdown()
+    finally:
         _pool = None
+        try:
+            if _dream_pool is not None:
+                await _dream_pool.shutdown()
+        finally:
+            _dream_pool = None
     _clear_status_snapshot()
