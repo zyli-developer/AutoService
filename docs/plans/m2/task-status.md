@@ -5,11 +5,22 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：0
-- **进行中**：0
+- **已完成**：11
+- **进行中**：1（T3B.4 后台 subagent 执行中）
 - **阻塞**：0
-- **待办**：38
-- **完成率**：0% (0/38)
+- **待办**：26
+- **完成率**：29% (11/38)
+- **最后更新**：2026-04-21
+
+### 会话日志
+
+| 日期 | 事件 | Commits |
+|------|------|---------|
+| 2026-04-21 | batch-0 完成（T1B.1 + T1B.2 yellow） | `178919c`, `9def883` |
+| 2026-04-21 | batch-1 完成（T1B.3→T1B.5）| `dc49ff0` |
+| 2026-04-21 | batch-2 完成（T2B.1 ∥ T2B.2 ∥ T2B.3 · 3 个 subagent 并行）| `1f42aa4` |
+| 2026-04-21 | batch-3 完成（T3B.1→T3B.3 · 1 个 subagent）| `e18b183` |
+| 2026-04-21 | batch-4 T3B.4 run_dream 启动（yellow, large, 后台 subagent + self-review）| 待 |
 
 ## 更新规则
 
@@ -24,11 +35,11 @@
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T1B.1 | config.local.yaml schema expectations | green | small | ⏳ pending | — | — |
-| T1B.2 | soul_generator 5 roles (add dream) | 🟡 yellow | medium | ⏳ pending | — | — |
-| T1B.3 | ensure_master_tenant() bootstrap | green | medium | ⏳ pending | — | — |
-| T1B.4 | ensure_local_admin() fork-side bootstrap | green | small | ⏳ pending | — | — |
-| T1B.5 | web_gateway lifespan mode-aware startup | green | small | ⏳ pending | — | — |
+| T1B.1 | config.local.yaml schema expectations | green | small | ✅ done | Dev1 | `178919c` (8 tests) |
+| T1B.2 | soul_generator 5 roles (add dream) | 🟡 yellow | medium | ✅ done | Dev1 | `9def883` (11 tests, reviewer APPROVED) |
+| T1B.3 | ensure_master_tenant() bootstrap | green | medium | ✅ done | Dev1 | `dc49ff0` (4 tests) |
+| T1B.4 | ensure_local_admin() fork-side bootstrap | green | small | ✅ done | Dev1 | `dc49ff0` (4 tests) |
+| T1B.5 | web_gateway lifespan mode-aware startup | green | small | ✅ done | Dev1 | `dc49ff0` (3 tests) |
 
 **Gate**：Master + tenant boot hooks active；5-role souls 生成正确。
 
@@ -36,9 +47,9 @@
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T2B.1 | proposals.tenant_id migration | green | small | ⏳ pending | — | — |
-| T2B.2 | memory_pool.tenant_id migration + API | green | small | ⏳ pending | — | — |
-| T2B.3 | dream_runs.db schema + repository | green | small | ⏳ pending | — | — |
+| T2B.1 | proposals.tenant_id migration | green | small | ✅ done | Subagent a471feed | `1f42aa4` (6 tests) |
+| T2B.2 | memory_pool.tenant_id migration + API | green | small | ✅ done | Subagent a5f2cbf | `1f42aa4` (9 tests) |
+| T2B.3 | dream_runs.db schema + repository | green | small | ✅ done | Subagent a869663 | `1f42aa4` (12 tests) |
 
 **Gate**：三张表 schema live；M1 数据未破坏。
 
@@ -46,10 +57,10 @@
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T3B.1 | emit_proposal tool | green | small | ⏳ pending | — | — |
-| T3B.2 | kb_search tool | green | small | ⏳ pending | — | — |
-| T3B.3 | list_souls tool | green | small | ⏳ pending | — | — |
-| T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | ⏳ pending | — | — |
+| T3B.1 | emit_proposal tool | green | small | ✅ done | Subagent a74376f | `e18b183` (16 tests, includes signature guard) |
+| T3B.2 | kb_search tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests, FTS JOIN bug fixed vs soul_generator) |
+| T3B.3 | list_souls tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests) |
+| T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | 🔄 in_progress | Subagent af82565 | 后台运行 + code-reviewer self-review |
 | T3B.5 | cc_pool role='dream' support | 🟡 yellow | medium | ⏳ pending | — | — |
 | T3B.6 | /api/dream/trigger + /api/dream/runs | green | small | ⏳ pending | — | — |
 
@@ -120,11 +131,11 @@
 
 | Batch | 阶段 | 状态 | Gate 检查 |
 |-------|------|------|-----------|
-| batch-0 | P1 | ⏳ pending | — |
-| batch-1 | P1 | ⏳ pending | — |
-| batch-2 | P2 | ⏳ pending | — |
-| batch-3 | P3 | ⏳ pending | — |
-| batch-4 | P3 | ⏳ pending | — |
+| batch-0 | P1 | ✅ 完成 | T1B.1 config schema + T1B.2 dream role ok；8+11 tests；reviewer APPROVED |
+| batch-1 | P1 | ✅ 完成 | master + tenant bootstrap + lifespan ok；11 tests；uvicorn 两种模式启动 OK |
+| batch-2 | P2 | ✅ 完成 | 3 张表 tenant_id 迁移完毕；27 tests + 0 regression（94 total） |
+| batch-3 | P3 | ✅ 完成 | 3 个 dream 工具落盘；34 tests + 0 regression（113 total） |
+| batch-4 | P3 | 🔄 进行中 | T3B.4 run_dream 后台 subagent（yellow + self-review）|
 | batch-5 | P3 | ⏳ pending | — |
 | batch-6 | P4 | ⏳ pending | — |
 | batch-7 | P5 | ⏳ pending | — |
