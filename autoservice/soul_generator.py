@@ -425,13 +425,22 @@ def save_drafts(
 ) -> dict[str, Path]:
     """Save soul drafts to disk.
 
-    Writes to plugins/<tenant_id>/souls_draft/ to avoid overwriting
-    any manually edited agent soul.md files.
+    Default target is the tenant sandbox souls directory
+    (`.autoservice/sandbox/<tenant_id>/souls/`). The sandbox is the
+    canonical pre-publish workspace; `plugins/<tenant_id>/` is only
+    occupied after `/publish` materializes a fork. See
+    docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §2.1 / §3.1.
 
     Returns dict of role → file path.
     """
     if output_dir is None:
-        output_dir = PROJECT_ROOT / "plugins" / result.tenant_id / "souls_draft"
+        output_dir = (
+            PROJECT_ROOT
+            / ".autoservice"
+            / "sandbox"
+            / result.tenant_id
+            / "souls"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     paths: dict[str, Path] = {}
