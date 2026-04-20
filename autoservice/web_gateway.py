@@ -284,6 +284,33 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         )
 
     @app.on_event("startup")
+    async def _bootstrap_internal_tenants() -> None:
+        """M2 spec §2.7/§2.8 — ensure _master or _local_admin exists per mode."""
+        try:
+            from autoservice import bootstrap, master_tenant
+            mode = bootstrap.get_deployment_mode()
+            if mode == "master":
+                created = master_tenant.ensure_master_tenant()
+                logger.info(
+                    "master-mode bootstrap: _master %s",
+                    "provisioned" if created else "already present",
+                )
+            else:
+                created = master_tenant.ensure_local_admin()
+                logger.info(
+                    "tenant-mode bootstrap: _local_admin %s",
+                    "provisioned" if created else "already present",
+                )
+        except FileNotFoundError:
+            # Absent config.local.yaml → non-fatal in dev (M1 default behavior);
+            # later auth setup will fail loudly if actually needed.
+            logger.warning(
+                "skipping internal-tenant bootstrap: .autoservice/config.local.yaml not found",
+            )
+        except Exception:
+            logger.warning("internal-tenant bootstrap failed", exc_info=True)
+
+    @app.on_event("startup")
     async def _warm_cc_pool() -> None:
         # Eagerly init pool so .autoservice/cc_pool_status.json appears
         # right after `make start`, instead of waiting for the first message.
