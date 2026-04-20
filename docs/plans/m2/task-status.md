@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：12
+- **已完成**：13
 - **进行中**：0
 - **阻塞**：0
-- **待办**：26
-- **完成率**：32% (12/38)
+- **待办**：25
+- **完成率**：34% (13/38)
 - **最后更新**：2026-04-21
 
 ### 会话日志
@@ -22,6 +22,7 @@
 | 2026-04-21 | batch-3 完成（T3B.1→T3B.3 · 1 个 subagent）| `e18b183` |
 | 2026-04-21 | batch-4 完成（T3B.4 run_dream yellow + inline reviewer APPROVED）| `ec972cd` |
 | 2026-04-21 | 模板修复：m2/cc-prompt-templates.md + CLAUDE.md autorun 约定 | 本次 commit |
+| 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| <pending-commit> |
 
 ## 更新规则
 
@@ -63,7 +64,7 @@
 | T3B.3 | list_souls tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests) |
 | T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | ✅ done | Subagent af82565 | `ec972cd` (10 tests, inline reviewer APPROVED, cc_pool.acquire(role=) deferred to T3B.5) |
 | T3B.5 | cc_pool role='dream' support | 🟡 yellow | medium | ⏳ pending | — | — |
-| T3B.6 | /api/dream/trigger + /api/dream/runs | green | small | ⏳ pending | — | — |
+| T3B.6 | /api/dream/trigger + /api/dream/runs | green | small | ✅ done | Subagent T3B.6 | <pending-commit> (15 tests, 0 regression) |
 
 **Gate**：run_dream 产生 draft proposal；cc_pool 隔离验证。
 
@@ -137,7 +138,7 @@
 | batch-2 | P2 | ✅ 完成 | 3 张表 tenant_id 迁移完毕；27 tests + 0 regression（94 total） |
 | batch-3 | P3 | ✅ 完成 | 3 个 dream 工具落盘；34 tests + 0 regression（113 total） |
 | batch-4 | P3 | ✅ 完成 | T3B.4 run_dream 完成；10 tests + 99 regression；inline reviewer APPROVED |
-| batch-5 | P3 | ⏳ pending | — |
+| batch-5 | P3 | ⏳ 部分完成 | T3B.5 pending / T3B.6 ✅ done (15 tests + 0 regression) |
 | batch-6 | P4 | ⏳ pending | — |
 | batch-7 | P5 | ⏳ pending | — |
 | batch-8 | P5 | ⏳ pending | — |

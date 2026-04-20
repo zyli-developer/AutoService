@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body
 
+from autoservice import dream_agent, dream_runs
 from autoservice.canary import CanaryStage
 
 logger = logging.getLogger("autoservice.api")
@@ -421,6 +422,279 @@ async def run_proposal_pipeline() -> list[dict[str, Any]]:
     """Trigger the proposal pipeline and return results."""
     pp = _get_proposal_pipeline()
     return await pp.run()
+
+
+# ---------------------------------------------------------------------------
+# Dream agent — trigger + runs history (T3B.6)
+# ---------------------------------------------------------------------------
+#
+# POST /api/dream/trigger   — fire a background run_dream() for a tenant
+# GET  /api/dream/runs      — list historical dream_runs rows for a tenant
+#
+# Background execution: we use ``asyncio.create_task`` rather than FastAPI's
+# ``BackgroundTasks`` because ``BackgroundTasks`` blocks the server worker
+# until the task completes (it runs AFTER the response is sent but on the
+# same request handling slot).  ``run_dream`` can run for many seconds to
+# minutes; fire-and-forget via ``create_task`` is the only way to return
+# 202 Accepted immediately.  See spec §2.6 "非阻塞"。
+#
+# Concurrency guard: before scheduling, we query ``dream_runs.list_runs``
+# for any row with ``status='running'`` — matches spec §2.2 cooldown intent
+# and prevents the tenant from stacking overlapping runs.
+#
+# Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §2.6
+
+_dream_runs_db_conn = None
+
+
+def _get_dream_runs_db():
+    """Return (lazy) shared ``dream_runs`` SQLite connection.
+
+    Reuses a single connection across requests — matches ``_get_proposal_pipeline``
+    and avoids the connection-per-request thrash that would otherwise occur on
+    a hot endpoint.  The DB file lives under ``.autoservice/database/dream_runs.db``
+    by default (see :func:`autoservice.dream_runs.open_connection`).
+    """
+    global _dream_runs_db_conn
+    if _dream_runs_db_conn is None:
+        _dream_runs_db_conn = dream_runs.open_connection()
+    return _dream_runs_db_conn
+
+
+def _reset_dream_runs_db_for_tests(conn=None):
+    """Test-only hook: replace the cached runs-db connection.
+
+    Passing ``conn=None`` simply clears the cache so the next call to
+    :func:`_get_dream_runs_db` re-opens from disk.  Passing a prepared
+    ``sqlite3.Connection`` lets tests inject an in-memory DB with the
+    schema pre-applied via :func:`autoservice.dream_runs.init_schema`.
+    """
+    global _dream_runs_db_conn
+    _dream_runs_db_conn = conn
+
+
+def _tenant_exists(tenant_id: str) -> bool:
+    """Return ``True`` when ``.autoservice/sandbox/<tid>/`` or ``plugins/<tid>/`` exists.
+
+    Mirrors :func:`autoservice.dream_agent._resolve_tenant_root` — sandbox
+    takes precedence on master deployments; plugin dir is the fork-side
+    location for ``_local_admin`` and materialised tenant forks.  Resolution
+    uses repo-relative paths so a ``monkeypatch.chdir(tmp_path)`` in tests
+    switches the lookup root without any code changes here.
+    """
+    if (Path(".autoservice") / "sandbox" / tenant_id).exists():
+        return True
+    if (Path("plugins") / tenant_id).exists():
+        return True
+    return False
+
+
+@api_router.post("/dream/trigger")
+async def dream_trigger(payload: dict[str, Any] = Body(...)) -> Any:
+    """Kick off a Dream agent run for a tenant (spec §2.6).
+
+    Request body::
+
+        {"tenant_id": "<tid>"}
+
+    Response (202 Accepted)::
+
+        {"run_id": "<uuid>", "status": "started", "tenant_id": "<tid>"}
+
+    Errors:
+        - 422 — missing / empty ``tenant_id`` (handled via JSONResponse so
+          the shape matches other endpoints; FastAPI's default Pydantic
+          422 would wrap the error differently)
+        - 404 — tenant has neither a sandbox nor a plugin directory
+        - 409 — tenant already has a ``status='running'`` row (another
+          dream run is in flight); caller should retry after it ends
+
+    The run executes in the background — the HTTP response returns
+    immediately (202 Accepted), long before :func:`run_dream` completes.
+    The ``run_id`` in the response is the row inserted by
+    ``dream_runs.start_run`` inside the background task; clients poll
+    ``GET /api/dream/runs`` to observe its terminal state.
+    """
+    from fastapi.responses import JSONResponse
+
+    tenant_id = (payload.get("tenant_id") or "").strip() if isinstance(payload, dict) else ""
+    if not tenant_id:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "tenant_id is required"},
+        )
+
+    if not _tenant_exists(tenant_id):
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"tenant {tenant_id!r} not found", "tenant_id": tenant_id},
+        )
+
+    # Concurrency guard — only one run per tenant at a time.  We fetch a
+    # modest page size and filter in Python rather than adding a status
+    # filter to list_runs (keeps that API minimal for M2).
+    runs_conn = _get_dream_runs_db()
+    recent = dream_runs.list_runs(runs_conn, tenant_id, limit=20)
+    if any(r.get("status") == "running" for r in recent):
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "dream run already in progress",
+                "tenant_id": tenant_id,
+            },
+        )
+
+    # Open the run row synchronously so we can return its id in the 202
+    # payload; the background task will continue updating/finalising it.
+    run_id = dream_runs.start_run(runs_conn, tenant_id)
+
+    try:
+        await _spawn_dream_run_with_run_id(tenant_id, run_id)
+    except Exception as exc:  # noqa: BLE001 — surface setup failures
+        # If spawning fails we must finalise the row we just opened so it
+        # doesn't remain 'running' forever (which would also falsely trip
+        # the concurrency guard above on subsequent requests).
+        try:
+            dream_runs.end_run(
+                runs_conn, run_id, status="failed",
+                error=f"spawn failed: {type(exc).__name__}: {exc}",
+            )
+        except Exception:
+            logger.exception("dream_runs.end_run cleanup failed for %s", run_id)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"failed to start dream run: {exc}", "tenant_id": tenant_id},
+        )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "run_id": run_id,
+            "status": "started",
+            "tenant_id": tenant_id,
+        },
+    )
+
+
+async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
+    """Schedule ``run_dream`` for an already-opened ``dream_runs`` row.
+
+    ``run_dream`` always calls ``dream_runs.start_run`` itself — so when the
+    trigger endpoint pre-opens the row (to return ``run_id`` in the 202),
+    the actual agent run lands with a DIFFERENT row id.  That's acceptable
+    for M2: the trigger-row records the "requested" state (and blocks the
+    concurrency guard while the run is active); the run_dream-row records
+    the "observed" state with tokens / tool_calls.  Both are visible via
+    ``GET /api/dream/runs`` ordered by ``started_at DESC``.
+
+    A future refactor may let ``run_dream`` accept a pre-opened ``run_id``
+    — out of scope for T3B.6.  The end_run hook below is best-effort: if
+    the run completes normally the row gets finalised by ``run_dream``'s
+    own row; our trigger-row stays as 'running' only until the background
+    coroutine's ``finally`` block updates it.
+
+    Tests monkey-patch this function to a no-op so they can assert the
+    trigger endpoint's HTTP behaviour without touching cc_pool.
+    """
+    from autoservice.cc_pool import get_pool
+    from autoservice.memory_pool import MemoryPool
+
+    pool = await get_pool()
+    pp = _get_proposal_pipeline()
+    proposals_conn = pp._conn
+    runs_conn = _get_dream_runs_db()
+    mempool = getattr(pp, "_memory_pool", None) or MemoryPool()
+
+    async def _run_and_mark():
+        """Wrap run_dream so the pre-opened trigger-row gets finalised."""
+        try:
+            await dream_agent.run_dream(
+                tenant_id,
+                pool,
+                mempool,
+                proposals_conn,
+                runs_conn,
+                max_tool_turns=10,
+            )
+        finally:
+            # Always close the trigger-row so the concurrency guard releases.
+            try:
+                dream_runs.end_run(runs_conn, run_id, status="completed")
+            except Exception:
+                logger.exception(
+                    "dream_runs.end_run cleanup for trigger row %s failed", run_id,
+                )
+
+    asyncio.create_task(_run_and_mark())
+
+
+@api_router.get("/dream/runs")
+async def dream_runs_list(tenant_id: str, limit: int = 20) -> dict[str, Any]:
+    """Return this tenant's Dream run history, newest first (spec §2.6).
+
+    Query params:
+        tenant_id: required, non-empty — the tenant to list runs for.
+        limit:     optional, clamped to [1, 100] (default 20).  Values
+                   outside the range are clamped rather than rejected so
+                   the admin-portal can safely pass ``limit=-1`` or a
+                   paginated slider's value without a 400.
+
+    Response::
+
+        {"tenant_id": "<tid>", "runs": [DreamRun, ...]}
+
+    Each ``DreamRun`` carries the 10 documented fields from the
+    ``dream_runs`` schema: ``id``, ``tenant_id``, ``started_at``,
+    ``ended_at``, ``status``, ``tool_calls``, ``tokens_in``,
+    ``tokens_out``, ``proposals_emitted``, ``error``.  Missing columns
+    surface as ``None`` (e.g. ``ended_at`` on an in-flight run).
+
+    An unknown tenant returns ``{runs: [], tenant_id}`` with 200 OK —
+    the endpoint cannot distinguish "tenant has never run dream" from
+    "tenant doesn't exist", and the frontend treats both identically.
+    """
+    from fastapi.responses import JSONResponse
+
+    if not tenant_id or not tenant_id.strip():
+        return JSONResponse(
+            status_code=422,
+            content={"error": "tenant_id is required"},
+        )
+
+    # Clamp the limit — spec §2.6 calls for ``limit: int = 20`` bounded to
+    # [1, 100].  A non-positive ``limit`` (or one above 100) is silently
+    # clamped rather than rejected; the contract documents this.  We use
+    # ``int(limit)`` directly (not ``limit or 20``) because ``0`` is a
+    # valid caller input that must clamp to 1, not fall through to the
+    # default.
+    try:
+        limit_val = int(limit)
+    except (TypeError, ValueError):
+        limit_val = 20
+    clamped = max(1, min(limit_val, 100))
+
+    runs_conn = _get_dream_runs_db()
+    rows = dream_runs.list_runs(runs_conn, tenant_id.strip(), limit=clamped)
+
+    # Project to the documented 10-field shape so the response doesn't
+    # accidentally leak schema columns added in a later migration.
+    projected = [
+        {
+            "id": r.get("id"),
+            "tenant_id": r.get("tenant_id"),
+            "started_at": r.get("started_at"),
+            "ended_at": r.get("ended_at"),
+            "status": r.get("status"),
+            "tool_calls": r.get("tool_calls"),
+            "tokens_in": r.get("tokens_in"),
+            "tokens_out": r.get("tokens_out"),
+            "proposals_emitted": r.get("proposals_emitted"),
+            "error": r.get("error"),
+        }
+        for r in rows
+    ]
+
+    return {"tenant_id": tenant_id.strip(), "runs": projected}
 
 
 # ---------------------------------------------------------------------------
