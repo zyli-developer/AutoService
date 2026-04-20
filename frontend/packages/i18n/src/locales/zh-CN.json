@@ -186,6 +186,8 @@
   "admin.nav.wizard": "向导",
   "admin.nav.proposals": "提案",
   "admin.nav.billing": "账单",
+  "admin.nav.section.master": "平台 · 租户管理",
+  "admin.nav.master_tenants": "租户列表",
   "admin.nav.section.ops": "运营",
   "admin.nav.section.config": "配置",
   "admin.usage.title": "本月消息用量",

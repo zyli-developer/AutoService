@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 
@@ -44,6 +45,13 @@ const ChevIcon = () => (
     <path d="M6 9l6 6 6-6" />
   </svg>
 );
+const TenantsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 21V7l6-4 6 4v14" />
+    <path d="M15 21V11l6 4v6" />
+    <path d="M9 9v0M9 13v0M9 17v0" />
+  </svg>
+);
 
 const ITEMS: RailItem[] = [
   { key: 'notifications', icon: <ChatIcon />, labelKey: 'admin.nav.management_chat', group: 'ops' },
@@ -60,12 +68,23 @@ interface AdminRailProps {
 
 export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const tenantId = useAdminStore((s) => s.tenantId);
   const activeTab = useAdminStore((s) => s.activeTab);
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
 
+  const isMasterRoute = location.pathname.startsWith('/master/');
+
   const handlePick = (key: TabKey) => {
     setActiveTab(key);
+    // If we're currently on a /master/* route, jump back to legacy shell so the tab is visible
+    if (isMasterRoute) navigate('/');
+    onClose?.();
+  };
+
+  const handleMasterTenants = () => {
+    navigate('/master/tenants');
     onClose?.();
   };
 
@@ -105,6 +124,19 @@ export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
         </div>
         <span className="cs-workspace-chev"><ChevIcon /></span>
       </div>
+
+      <div className="cs-nav-sec">{t('admin.nav.section.master')}</div>
+      <ul className="cs-nav">
+        <li
+          data-testid="tab-master-tenants"
+          className={`cs-nav-item ${isMasterRoute ? 'active' : ''}`}
+          onClick={handleMasterTenants}
+          aria-current={isMasterRoute ? 'page' : undefined}
+        >
+          <TenantsIcon />
+          <span className="cs-nav-label">{t('admin.nav.master_tenants')}</span>
+        </li>
+      </ul>
 
       <div className="cs-nav-sec">{t('admin.nav.section.ops')}</div>
       <ul className="cs-nav">{opsItems.map(renderItem)}</ul>

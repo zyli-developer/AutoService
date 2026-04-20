@@ -186,6 +186,8 @@
   "admin.nav.wizard": "Wizard",
   "admin.nav.proposals": "Proposals",
   "admin.nav.billing": "Billing",
+  "admin.nav.section.master": "Platform · Tenant mgmt",
+  "admin.nav.master_tenants": "Tenants",
   "admin.nav.section.ops": "Operations",
   "admin.nav.section.config": "Config",
   "admin.usage.title": "Messages this month",
