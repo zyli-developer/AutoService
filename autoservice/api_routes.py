@@ -191,6 +191,30 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Session / deployment mode (T1B.5)
+# ---------------------------------------------------------------------------
+#
+# admin-portal 双模式切换端点。M1 始终返回 master；M2 将根据部署类型
+# （Master 本仓 vs Tenant fork）返回 tenant + tenant_id。
+# See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.3
+#
+# No authentication in M1 (will be added M2 with tenant-admin RBAC).
+
+@api_router.get("/session/mode")
+async def get_session_mode() -> dict[str, Any]:
+    """Return deployment mode for admin-portal layout switching.
+
+    M1: always returns master/platform_admin.
+    M2 (tenant fork): will return {mode: "tenant", role: "tenant_admin",
+    tenant_id: "<id>"} — not implemented here.
+    """
+    return {
+        "mode": "master",
+        "role": "platform_admin",
+    }
+
+
+# ---------------------------------------------------------------------------
 # SLA
 # ---------------------------------------------------------------------------
 
