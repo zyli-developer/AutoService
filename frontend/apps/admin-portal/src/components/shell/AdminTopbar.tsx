@@ -12,7 +12,11 @@ const TITLE_KEYS: Record<string, string> = {
   billing: 'admin.nav.billing',
 };
 
-export function AdminTopbar() {
+interface AdminTopbarProps {
+  onToggleNav?: () => void;
+}
+
+export function AdminTopbar({ onToggleNav }: AdminTopbarProps = {}) {
   const { t } = useTranslation();
   const tenantId = useAdminStore((s) => s.tenantId);
   const activeTab = useAdminStore((s) => s.activeTab);
@@ -24,6 +28,17 @@ export function AdminTopbar() {
 
   return (
     <header className="cs-topbar" data-testid="admin-topbar">
+      <button
+        type="button"
+        className="cs-hamburger"
+        data-testid="cs-hamburger"
+        onClick={onToggleNav}
+        aria-label={t('admin.nav.open_menu')}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6h18M3 12h18M3 18h18" />
+        </svg>
+      </button>
       <div className="cs-topbar-left">
         <div className="cs-topbar-crumb">{`${tenant} · ${t('admin.topbar.suffix')}`}</div>
         <div className="cs-topbar-title">
