@@ -49,16 +49,22 @@ export function SandboxReady() {
   const [result, setResult] = useState<PublishResult | null>(null);
   const [blocked, setBlocked] = useState<PublishBlocked | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signerEmail, setSignerEmail] = useState('');
 
-  const handlePublish = async () => {
+  const handlePublish = async (opts: { override?: boolean; signer?: string } = {}) => {
     setPublishing(true);
     setError(null);
-    setBlocked(null);
+    if (!opts.override) setBlocked(null);   // keep blocked panel visible during override attempt
     try {
+      const body: Record<string, unknown> = { tenant_id: tenantId };
+      if (opts.override && opts.signer) {
+        body.override = true;
+        body.signer = opts.signer;
+      }
       const res = await fetch(`${API_BASE}/api/onboard/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: tenantId }),
+        body: JSON.stringify(body),
       });
 
       if (res.status === 409) {
@@ -129,7 +135,7 @@ export function SandboxReady() {
             <button
               className="cs-btn ok"
               data-testid="btn-publish"
-              onClick={handlePublish}
+              onClick={() => handlePublish()}
               disabled={publishing}
             >
               {publishing
@@ -183,7 +189,7 @@ export function SandboxReady() {
           </div>
         )}
 
-        {blocked && (
+        {blocked && !result && (
           <div
             data-testid="publish-blocked"
             style={{ marginTop: 12, padding: 10, background: 'var(--l50)' }}
@@ -206,6 +212,72 @@ export function SandboxReady() {
                 ))}
               </ul>
             )}
+
+            {/* Override form — platform admin signs off to bypass gate (M1). */}
+            <div
+              data-testid="publish-override"
+              style={{
+                marginTop: 12,
+                paddingTop: 10,
+                borderTop: '1px solid var(--oat)',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 600 }}>
+                {t('admin.wizard.sandbox.override_title')}
+              </div>
+              <div
+                style={{ fontSize: 11, color: 'var(--silver)', marginTop: 2 }}
+              >
+                {t('admin.wizard.sandbox.override_hint')}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  marginTop: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <input
+                  data-testid="override-signer-input"
+                  type="email"
+                  value={signerEmail}
+                  onChange={(e) => setSignerEmail(e.target.value)}
+                  placeholder={t(
+                    'admin.wizard.sandbox.override_email_placeholder',
+                  )}
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    border: '1px solid var(--oat)',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontFamily: 'var(--font-sans)',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  className="cs-btn"
+                  data-testid="btn-override-publish"
+                  onClick={() =>
+                    handlePublish({
+                      override: true,
+                      signer: signerEmail.trim(),
+                    })
+                  }
+                  disabled={
+                    publishing ||
+                    !signerEmail.trim() ||
+                    !signerEmail.includes('@')
+                  }
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {publishing
+                    ? t('admin.wizard.sandbox.publishing')
+                    : t('admin.wizard.sandbox.override_confirm')}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -131,6 +131,82 @@ describe('SandboxReady (T1F.7)', () => {
     expect(screen.queryByTestId('publish-result')).not.toBeInTheDocument();
   });
 
+  it('TC-T1F7-SR-D: override — blocked 409 then force-publish with signer succeeds', async () => {
+    // First call: 409 with blocking_reasons; second call: 200 override success.
+    const fetchMock = vi
+      .fn()
+      // 1st call — blocked
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: 'publish blocked by gate',
+          tenant_id: 'acme-corp',
+          status: 'blocked',
+          blocking_reasons: ['compliance.risk_level=critical'],
+        }),
+      } as Response)
+      // 2nd call — override accepted
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: 'published',
+          tenant_id: 'acme-corp',
+          artifact: '.autoservice/published/acme-corp.tar.gz',
+          runbook: '.autoservice/published/acme-corp_PUBLISH_RUNBOOK.md',
+          archived_to: '.autoservice/archived/acme-corp_1713600000',
+        }),
+      } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<SandboxReady />);
+
+    // Step 1: normal publish → blocked
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-publish'));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-blocked')).toBeInTheDocument();
+    });
+    // Override panel appears inside the blocked section.
+    expect(screen.getByTestId('publish-override')).toBeInTheDocument();
+    const overrideBtn = screen.getByTestId(
+      'btn-override-publish',
+    ) as HTMLButtonElement;
+    expect(overrideBtn.disabled).toBe(true); // empty signer → disabled
+
+    // Step 2: enter signer email → button enables
+    const input = screen.getByTestId(
+      'override-signer-input',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'alice@platform.com' } });
+    expect(overrideBtn.disabled).toBe(false);
+
+    // Step 3: click override → second fetch with override=true + signer, result appears
+    await act(async () => {
+      fireEvent.click(overrideBtn);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-result')).toBeInTheDocument();
+    });
+
+    // Verify the 2nd call carried override + signer.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondCall = fetchMock.mock.calls[1] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(secondCall[1].body as string)).toEqual({
+      tenant_id: 'acme-corp',
+      override: true,
+      signer: 'alice@platform.com',
+    });
+
+    // Blocked panel disappears once result surfaces.
+    expect(screen.queryByTestId('publish-blocked')).not.toBeInTheDocument();
+  });
+
   it('TC-T1F7-SR-C: generic error (500) — shows error message', async () => {
     const fetchMock = mockFetch({
       status: 500,
