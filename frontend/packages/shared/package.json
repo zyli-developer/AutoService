@@ -1,0 +1,30 @@
+{
+  "name": "@autoservice/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "T1F.1 共享前端 hook/工具 (useTenantId, 后续 useSessionMode 等)",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-router-dom": "^6.22.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^14.0.0",
+    "@types/react": "^18.2.79",
+    "jsdom": "^24.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  }
+}
