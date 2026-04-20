@@ -1254,6 +1254,39 @@ html, body, #root {
   .cs-kpi { padding: 12px 13px; }
   .cs-kpi-value { font-size: 22px; }
   .cs-kpi-sparkline { display: none; }
+
+  /* Tables → card list on mobile (leaderboard, any future table) */
+  .cs-table-wrap table,
+  .cs-table-wrap thead,
+  .cs-table-wrap tbody,
+  .cs-table-wrap tr,
+  .cs-table-wrap th,
+  .cs-table-wrap td {
+    display: block;
+  }
+  .cs-table-wrap thead { display: none; }
+  .cs-table-wrap tbody tr {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+  }
+  .cs-table-wrap tbody tr:last-child { border-bottom: none !important; }
+  .cs-table-wrap td {
+    padding: 3px 0 !important;
+    border: none !important;
+    font-size: 13px;
+    text-align: left !important;
+  }
+  .cs-table-wrap td::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 84px;
+    font-size: 10.5px;
+    letter-spacing: 0.22px;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    margin-right: 8px;
+  }
 }
 
 @media (max-width: 460px) {
