@@ -131,3 +131,27 @@ git merge upstream/main
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)
 - `.autoservice/config.local.yaml` — Local API keys and endpoints (gitignored)
 - `.env` — Environment variables (gitignored)
+
+## /autorun & batch execution conventions
+
+When running `/autorun`, `/batch-dispatch`, or any multi-task execution:
+
+1. **`{plans_dir}/task-status.md` is the authoritative truth** — not TodoWrite,
+   not commit messages, not chat. It must be updated at every batch boundary
+   (same commit as code, or a trailing `chore(m2):` commit in the same work
+   session). Never skip to the next batch dispatch without updating it.
+
+2. **Read `{plans_dir}/cc-prompt-templates.md` §3 Closing** at autorun start and
+   treat it as a checklist. The template prescribes: edit task-status (phase row
+   + batch row + summary + session log) → git add code + status → commit →
+   declare next candidate.
+
+3. **Subagent dispatch prompts must inline the Closing constraint**
+   (see `cc-prompt-templates.md` §6). A subagent that commits without updating
+   task-status is a breach — its code is correct but the record is stale and
+   the next dispatch acts on wrong state.
+
+4. **Yellow tasks** route through §5 — code-reviewer subagent review before
+   Closing; reviewer verdict in commit body.
+
+plans_dir is resolved from `docs/plans/project.yaml → project.plans_dir`.

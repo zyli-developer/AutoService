@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：11
-- **进行中**：1（T3B.4 后台 subagent 执行中）
+- **已完成**：12
+- **进行中**：0
 - **阻塞**：0
 - **待办**：26
-- **完成率**：29% (11/38)
+- **完成率**：32% (12/38)
 - **最后更新**：2026-04-21
 
 ### 会话日志
@@ -20,7 +20,8 @@
 | 2026-04-21 | batch-1 完成（T1B.3→T1B.5）| `dc49ff0` |
 | 2026-04-21 | batch-2 完成（T2B.1 ∥ T2B.2 ∥ T2B.3 · 3 个 subagent 并行）| `1f42aa4` |
 | 2026-04-21 | batch-3 完成（T3B.1→T3B.3 · 1 个 subagent）| `e18b183` |
-| 2026-04-21 | batch-4 T3B.4 run_dream 启动（yellow, large, 后台 subagent + self-review）| 待 |
+| 2026-04-21 | batch-4 完成（T3B.4 run_dream yellow + inline reviewer APPROVED）| `ec972cd` |
+| 2026-04-21 | 模板修复：m2/cc-prompt-templates.md + CLAUDE.md autorun 约定 | 本次 commit |
 
 ## 更新规则
 
@@ -60,7 +61,7 @@
 | T3B.1 | emit_proposal tool | green | small | ✅ done | Subagent a74376f | `e18b183` (16 tests, includes signature guard) |
 | T3B.2 | kb_search tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests, FTS JOIN bug fixed vs soul_generator) |
 | T3B.3 | list_souls tool | green | small | ✅ done | Subagent a74376f | `e18b183` (9 tests) |
-| T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | 🔄 in_progress | Subagent af82565 | 后台运行 + code-reviewer self-review |
+| T3B.4 | run_dream() agent loop (core) | 🟡 yellow | **large** | ✅ done | Subagent af82565 | `ec972cd` (10 tests, inline reviewer APPROVED, cc_pool.acquire(role=) deferred to T3B.5) |
 | T3B.5 | cc_pool role='dream' support | 🟡 yellow | medium | ⏳ pending | — | — |
 | T3B.6 | /api/dream/trigger + /api/dream/runs | green | small | ⏳ pending | — | — |
 
@@ -135,7 +136,7 @@
 | batch-1 | P1 | ✅ 完成 | master + tenant bootstrap + lifespan ok；11 tests；uvicorn 两种模式启动 OK |
 | batch-2 | P2 | ✅ 完成 | 3 张表 tenant_id 迁移完毕；27 tests + 0 regression（94 total） |
 | batch-3 | P3 | ✅ 完成 | 3 个 dream 工具落盘；34 tests + 0 regression（113 total） |
-| batch-4 | P3 | 🔄 进行中 | T3B.4 run_dream 后台 subagent（yellow + self-review）|
+| batch-4 | P3 | ✅ 完成 | T3B.4 run_dream 完成；10 tests + 99 regression；inline reviewer APPROVED |
 | batch-5 | P3 | ⏳ pending | — |
 | batch-6 | P4 | ⏳ pending | — |
 | batch-7 | P5 | ⏳ pending | — |
