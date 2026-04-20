@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { postJSON } from '../../api';
+import { useAdminStore } from '../../store/adminStore';
 
 interface ComplianceResult {
   rule_id: string;
@@ -21,18 +23,24 @@ interface ComplianceReport {
 }
 
 export function ComplianceCheckStep() {
+  const { t } = useTranslation();
+  const tenantId = useAdminStore((s) => s.tenantId);
   const [report, setReport] = useState<ComplianceReport | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    postJSON<ComplianceReport>('/api/compliance/check')
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
+    postJSON<ComplianceReport>(`/api/compliance/check?tenant_id=${encodeURIComponent(tenantId)}`)
       .then(setReport)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [tenantId]);
 
-  if (loading) return <div className="im-empty">合规预检中...</div>;
-  if (!report) return <div className="cs-pg warn">无法加载合规数据</div>;
+  if (loading) return <div className="im-empty">{t('admin.wizard.compliance.loading')}</div>;
+  if (!report) return <div className="cs-pg warn">{t('admin.wizard.compliance.error')}</div>;
 
   return (
     <div data-testid="compliance-step">

@@ -337,7 +337,7 @@ async def management_chat(message: str = "") -> dict[str, Any]:
     if text.startswith("/rules"):
         try:
             from autoservice.rules import handle_rules_command
-            args = text[len("/rules"):].strip() or "show"
+            args = text[len("/rules"):].strip().split() or ["show"]
             result = handle_rules_command(args)
             return {"role": "dream_engine", "content": f"📋 规则配置:\n{result}"}
         except Exception as exc:
