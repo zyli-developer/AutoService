@@ -61,7 +61,7 @@
   "operator.main.waiting_for_customer": "等待客户接入...",
   "operator.concurrency.at_limit": "已达并发上限 ({{limit}})，无法接入新对话",
   "operator.concurrency.approaching": "接近并发上限 ({{count}}/{{limit}})",
-  "operator.hijack.take": "抢 单",
+  "operator.hijack.take": "接 管",
   "operator.hijack.release": "释放回 AI",
   "operator.hijack.back_to_list": "返回列表",
   "operator.takeover.badge": "⚡ TAKEOVER",
