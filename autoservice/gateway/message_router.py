@@ -71,6 +71,24 @@ import time as _time
 _conv_created_at: dict[str, float] = {}
 _conv_first_reply_sent: set[str] = set()
 
+# Track the customer WebSocket per conversation so operator/agent replies can
+# be pushed back without the customer needing to subscribe explicitly.
+# Populated on customer_message, cleaned lazily on failed send.
+_customer_ws_by_conv: dict[str, Any] = {}
+
+
+def _infer_operator_from_ws(ws) -> str | None:
+    """Best-effort operator_id lookup from WS state (set in web_gateway).
+
+    Only works for operator WS connections (set in _handle_connection). Customer
+    and admin connections never have state_operator_id set, so this returns None.
+    For client_ack frames from non-operator endpoints, an explicit operator_id
+    in the payload is required — and should be rejected by upstream validation.
+    """
+    if ws is None:
+        return None
+    return getattr(ws, "state_operator_id", None)
+
 
 def _extract_hint(exc: BaseException) -> str | None:
     msg = str(exc) if exc.args else ""
@@ -125,8 +143,19 @@ async def dispatch(
     if frame_type == "ping":
         return [build_frame("pong", {"server_time": _now_iso_ms()}, ref=env.id)]
 
-    # client_ack — simple ack, no engine call
+    # client_ack — ack; if action=continue, reset the takeover timer (operator only)
     if frame_type == "client_ack":
+        payload = env.payload or {}
+        if payload.get("action") == "continue":
+            conv_id = payload.get("conversation_id")
+            # Only operators can reset takeover timers (inferred from WS state or explicit payload)
+            if viewer_role == "operator":
+                actor_id = payload.get("operator_id") or _infer_operator_from_ws(ws)
+                if conv_id and actor_id:
+                    try:
+                        await engine.reset_takeover_timer(conv_id, actor_id=actor_id)
+                    except Exception:
+                        logger.exception("client_ack continue reset failed")
         return [build_frame("ack", {}, ref=env.id)]
 
     # subscribe / unsubscribe — subscription registry (T6A.1)
@@ -144,18 +173,48 @@ async def dispatch(
 
 
 async def _dispatch_command(env: Envelope, *, engine: ConversationEngine) -> list[dict[str, Any]]:
+    from autoservice.conversation_engine.errors import UnknownParticipant
+
     payload = env.payload
     command = payload.get("command", "")
     conversation_id = payload.get("conversation_id", "")
     actor_id = payload.get("operator_id") or payload.get("actor_id") or ""
     args = payload.get("args") or {}
-    try:
+
+    async def _call() -> None:
         await engine.handle_command(
-            conversation_id,
-            actor_id=actor_id,
-            command=command,
-            args=args,
+            conversation_id, actor_id=actor_id, command=command, args=args,
         )
+
+    try:
+        try:
+            await _call()
+        except UnknownParticipant:
+            # Auto-join the operator as a participant and retry once.
+            # Mirrors the legacy REST endpoint behavior so operators can hijack
+            # without an explicit operator_join handshake.
+            logger.debug("[AUTOJOIN] actor=%r conv=%r command=%r", actor_id, conversation_id, command)
+            if not (actor_id and conversation_id):
+                raise
+            try:
+                await engine.join(
+                    conversation_id,
+                    Participant(
+                        id=actor_id,
+                        role=ParticipantRole.OPERATOR,
+                        joined_at=datetime.now(timezone.utc),
+                    ),
+                )
+                logger.debug("[AUTOJOIN] joined, retrying")
+            except Exception as _jexc:
+                logger.debug("[AUTOJOIN] join failed: %r", _jexc)
+                raise
+            try:
+                await _call()
+                logger.debug("[AUTOJOIN] retry succeeded")
+            except Exception as _rexc:
+                logger.debug("[AUTOJOIN] retry failed: %r", _rexc)
+                raise
     except NotImplementedError as exc:
         hint = _extract_hint(exc) or str(exc)
         return [
@@ -230,6 +289,7 @@ async def _handle_subscribe(
     session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Handle F6 subscribe: create subscription, return S13 subscription_added."""
+    logger.debug("[SUB] role=%s session=%s scope=%s", viewer_role, session_id, env.payload.get('scope'))
     payload = env.payload
     scope = payload.get("scope")
     if not scope or not isinstance(scope, dict):
@@ -450,6 +510,11 @@ async def _call_engine(
             conv_id, source=source, content=payload["content"],
         )
 
+        # Remember the customer's WS so operator/agent can push back without
+        # the customer needing an explicit subscribe.
+        if ws is not None:
+            _customer_ws_by_conv[conv_id] = ws
+
         # Broadcast customer message to operator connections subscribed to this squad (T6A.2)
         customer_frame = _message_frame(msg)
         customer_frame["payload"]["source_display"] = {"id": source, "role": "customer"}
@@ -481,12 +546,26 @@ async def _call_engine(
         })]
 
     if frame_type == "operator_message":
+        conv_id = payload["conversation_id"]
+        operator_id = payload.get("operator_id", "operator")
         msg = await engine.send_message(
-            payload["conversation_id"],
-            source=payload.get("operator_id", "operator"),
-            content=payload["content"],
+            conv_id, source=operator_id, content=payload["content"],
         )
-        return [_message_frame(msg)]
+        frame = _message_frame(msg)
+        frame["payload"]["source_display"] = {"id": operator_id, "role": "operator"}
+
+        # Push to the customer WS for this conversation (if registered)
+        cust_ws = _customer_ws_by_conv.get(conv_id)
+        if cust_ws is not None and cust_ws is not ws:
+            try:
+                await cust_ws.send_json(frame)
+            except Exception:
+                _customer_ws_by_conv.pop(conv_id, None)
+
+        # Broadcast to other operators subscribed to this squad (excluding the sender)
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+
+        return [frame]
 
     if frame_type == "csat_response":
         conv_id = payload["conversation_id"]
@@ -620,6 +699,10 @@ async def _broadcast_to_squad(
         pass
 
     sent = 0
+    logger.debug(
+        "[BCAST] conv=%s squad=%s reg_count=%d ws_count=%d scopes=%s",
+        conv_id, squad_id, _registry.count, len(_ws_connections), list(_registry._by_scope.keys()),
+    )
 
     if squad_id:
         # Look up sessions subscribed to this squad
@@ -632,6 +715,10 @@ async def _broadcast_to_squad(
         target_sessions = {
             e.session_id for e in (*squad_subs, *conv_subs, *global_subs)
         }
+        logger.debug(
+            "[BCAST] squad_subs=%d conv_subs=%d global_subs=%d targets=%d",
+            len(squad_subs), len(conv_subs), len(global_subs), len(target_sessions),
+        )
 
         for session_id in target_sessions:
             target_ws = _ws_connections.get(session_id)

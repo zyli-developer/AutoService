@@ -21,6 +21,13 @@ cc_pool:
   # model: claude-sonnet-4-5           # 不设置则使用 SDK 默认模型
   # cli_path: /usr/local/bin/claude    # 不设置则自动检测 PATH 中的 claude
 
+# ─── Takeover（接管/释放）配置 ─────────────────────────
+# Operator /hijack 后如何自动释放回 AI
+takeover:
+  idle_timeout_ms: 30000      # /hijack 后静默多久触发自动释放（含 warning 阶段）
+  warning_ms: 5000            # 预警阶段长度（warning → release 之间的缓冲）
+  offline_grace_ms: 30000     # operator WS 断开多久算真正离线
+
 # ─── 其他配置示例 ───────────────────────────────────────
 # api_keys:
 #   anthropic: sk-ant-xxx

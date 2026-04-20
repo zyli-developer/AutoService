@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import type { Envelope } from '@autoservice/ws-client';
 import { useOperatorStore } from '../store/operatorStore';
 
@@ -7,6 +8,7 @@ interface IMInputProps {
 }
 
 export function IMInput({ send }: IMInputProps) {
+  const { t } = useTranslation();
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const conversations = useOperatorStore((s) => s.conversations);
   const addCopilotMessage = useOperatorStore((s) => s.addCopilotMessage);
@@ -17,13 +19,13 @@ export function IMInput({ send }: IMInputProps) {
 
   const placeholder = activeCopilotConvId
     ? isTakeover
-      ? '直接输入，会发给客户 (人工 driver 模式)'
-      : '输入建议给 agent (不会发给客户)'
-    : '发送消息到 Agent分队';
+      ? t('operator.input.takeover.placeholder')
+      : t('operator.input.copilot.placeholder')
+    : t('operator.main.waiting_for_customer');
 
   const operatorId = useOperatorStore((s) => s.operatorId);
 
-  const handleSend = async () => {
+  const handleSend = () => {
     const text = inputText.trim();
     if (!text || !activeCopilotConvId) return;
     setInputText('');
@@ -33,23 +35,18 @@ export function IMInput({ send }: IMInputProps) {
 
     addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts });
 
-    // Use REST API for reliable delivery (WS connection may be flaky)
-    const API = `http://${window.location.hostname}:8000`;
-    try {
-      await fetch(
-        `${API}/api/command/send-message?conversation_id=${encodeURIComponent(activeCopilotConvId)}&operator_id=${encodeURIComponent(operatorId || 'operator')}&content=${encodeURIComponent(text)}`,
-        { method: 'POST' },
-      );
-    } catch (err) {
-      console.error('[IMInput] send failed:', err);
-      // Fallback to WS
-      send({
-        v: 1,
-        type: isTakeover ? 'operator_message' : 'operator_message',
-        id, ts,
-        payload: { conversation_id: activeCopilotConvId, content: text },
-      } as Envelope);
-    }
+    // Send via WebSocket operator_message frame (unified operator write path)
+    send({
+      v: 1,
+      type: 'operator_message',
+      id,
+      ts,
+      payload: {
+        conversation_id: activeCopilotConvId,
+        operator_id: operatorId || 'operator',
+        content: text,
+      },
+    } as Envelope);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -75,7 +72,7 @@ export function IMInput({ send }: IMInputProps) {
           onClick={handleSend}
           disabled={!inputText.trim() || !activeCopilotConvId}
         >
-          {'发送'}
+          {t('common.send')}
         </button>
       </div>
     </div>

@@ -1,20 +1,12 @@
-import { useTranslation } from '@autoservice/i18n';
+import { LanguageSwitcher, useTranslation } from '@autoservice/i18n';
 
 export function IMTitlebar() {
-  const { i18n } = useTranslation();
-
-  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    i18n.changeLanguage(e.target.value);
-  };
-
+  const { t } = useTranslation();
   return (
     <div className="im-titlebar" data-testid="im-titlebar">
       <div className="im-titlebar-dots"><span /><span /><span /></div>
-      <div className="im-workspace-name">{'商户客服工作区'}</div>
-      <select
-        data-testid="language-switch"
-        value={i18n.language}
-        onChange={handleLanguageChange}
+      <div className="im-workspace-name">{t('operator.titlebar.title')}</div>
+      <LanguageSwitcher
         style={{
           marginLeft: 'auto',
           marginRight: 12,
@@ -26,10 +18,7 @@ export function IMTitlebar() {
           color: 'inherit',
           cursor: 'pointer',
         }}
-      >
-        <option value="zh-CN">中文</option>
-        <option value="en">EN</option>
-      </select>
+      />
     </div>
   );
 }

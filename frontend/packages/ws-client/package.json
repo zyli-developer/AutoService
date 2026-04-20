@@ -10,12 +10,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
   },
   "dependencies": {
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "@vitest/runner": "^4.1.4",
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.4"
   }
 }

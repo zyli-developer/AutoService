@@ -297,72 +297,6 @@ async def canary_status() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Commands (hijack/release) via REST — fallback when WS is flaky
-# ---------------------------------------------------------------------------
-
-@api_router.post("/command/hijack")
-async def command_hijack(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
-    """Join conversation + hijack via REST API."""
-    engine = _ws_engine()
-    if engine is None:
-        return {"ok": False, "error": "no engine"}
-    try:
-        now = datetime.now(timezone.utc)
-        from autoservice.conversation_engine.types import Participant, ParticipantRole
-        participant = Participant(id=operator_id, role=ParticipantRole.OPERATOR, joined_at=now)
-        try:
-            await engine.join(conversation_id, participant)
-        except Exception:
-            pass
-        await engine.handle_command(conversation_id, actor_id=operator_id, command="/hijack")
-        conv = await engine.get_conversation(conversation_id)
-        return {"ok": True, "mode": conv.mode.value}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-@api_router.post("/command/release")
-async def command_release(conversation_id: str, operator_id: str = "operator") -> dict[str, Any]:
-    """Release hijack via REST API."""
-    engine = _ws_engine()
-    if engine is None:
-        return {"ok": False, "error": "no engine"}
-    try:
-        await engine.handle_command(conversation_id, actor_id=operator_id, command="/release")
-        conv = await engine.get_conversation(conversation_id)
-        return {"ok": True, "mode": conv.mode.value}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-@api_router.post("/command/send-message")
-async def command_send_message(
-    conversation_id: str, operator_id: str = "operator", content: str = "",
-) -> dict[str, Any]:
-    """Send a message as operator (takeover mode) and broadcast to all WS connections."""
-    engine = _ws_engine()
-    if engine is None:
-        return {"ok": False, "error": "no engine"}
-    try:
-        msg = await engine.send_message(
-            conversation_id, source=operator_id, content=content,
-        )
-        # Broadcast to all WS connections
-        from autoservice.gateway.message_router import _message_frame
-        from autoservice.web_gateway import _ws_connections
-        frame = _message_frame(msg)
-        frame["payload"]["source_display"] = {"id": operator_id, "role": "operator"}
-        for sid, ws in list(_ws_connections.items()):
-            try:
-                await ws.send_json(frame)
-            except Exception:
-                pass
-        return {"ok": True, "message_id": msg.id}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-# ---------------------------------------------------------------------------
 # Dream Engine config dialog (T6E.9)
 # ---------------------------------------------------------------------------
 _dream_config_session: Any = None
@@ -403,7 +337,7 @@ async def management_chat(message: str = "") -> dict[str, Any]:
     if text.startswith("/rules"):
         try:
             from autoservice.rules import handle_rules_command
-            args = text[len("/rules"):].strip() or "show"
+            args = text[len("/rules"):].strip().split() or ["show"]
             result = handle_rules_command(args)
             return {"role": "dream_engine", "content": f"📋 规则配置:\n{result}"}
         except Exception as exc:

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { fetchJSON } from '../api';
 
 interface TrendPoint {
@@ -11,6 +12,7 @@ interface TrendPoint {
  * Fetches data from /api/metrics/takeover-trend.
  */
 export function TakeoverTrendChart() {
+  const { t } = useTranslation();
   const [data, setData] = useState<TrendPoint[] | null>(null);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<'week' | 'month'>('week');
@@ -122,7 +124,7 @@ export function TakeoverTrendChart() {
   return (
     <div className="cs-card" style={{ marginTop: 14 }} data-testid="takeover-trend">
       <div className="cs-ct" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>接管次数趋势</span>
+        <span>{t('admin.dashboard.takeover_trend')}</span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           {(['week', 'month'] as const).map((p) => (
             <button
@@ -138,17 +140,17 @@ export function TakeoverTrendChart() {
                 cursor: 'pointer',
               }}
             >
-              {p === 'week' ? '近7天' : '近30天'}
+              {p === 'week' ? t('admin.dashboard.range.7day') : t('admin.dashboard.range.30day')}
             </button>
           ))}
         </span>
       </div>
 
       {error && <div className="cs-pg warn">{error}</div>}
-      {!data && !error && <div className="im-empty">加载中...</div>}
+      {!data && !error && <div className="im-empty">{t('common.loading')}</div>}
       {data && !hasData && (
         <div className="im-empty" style={{ padding: 24, textAlign: 'center', color: 'var(--silver, #999)' }}>
-          暂无接管数据
+          {t('admin.dashboard.takeover_empty')}
         </div>
       )}
       {data && hasData && renderChart(data)}

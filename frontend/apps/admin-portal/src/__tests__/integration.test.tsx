@@ -29,6 +29,7 @@ describe('integration', () => {
     await user.type(screen.getByTestId('input-tenant-id'), 'tenant-001');
     await user.click(screen.getByTestId('btn-login'));
     await screen.findByTestId('admin-workspace');
+    await user.click(screen.getByTestId('avatar-trigger'));
     await user.click(screen.getByTestId('btn-logout'));
     expect(await screen.findByTestId('input-tenant-id')).toBeInTheDocument();
   });

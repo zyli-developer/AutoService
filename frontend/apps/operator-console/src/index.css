@@ -67,6 +67,40 @@ html, body, #root {
   box-shadow: none;
 }
 
+/* ===== Takeover badge + countdown ===== */
+@keyframes takeover-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+.takeover-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  animation: takeover-pulse 1.6s ease-out infinite;
+}
+.takeover-pill-countdown {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.takeover-pill-countdown.warning {
+  color: #fff;
+  background: #dc2626;
+}
+
 /* ===== Login page ===== */
 .im-login {
   display: flex;

@@ -37,6 +37,9 @@ export const BE_TO_FE_TYPES = [
   'replay_complete',     // S12
   'subscription_added',  // S13
   'subscription_removed',// S14
+  'takeover_warning',    // S15
+  'takeover_warning_cancelled',// S16
+  'takeover_timer_armed',// S17
 ] as const;
 export type BeToFeType = (typeof BE_TO_FE_TYPES)[number];
 

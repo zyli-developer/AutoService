@@ -1,11 +1,16 @@
+import { useTranslation } from '@autoservice/i18n';
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
+import { TakeoverWarning } from './TakeoverWarning';
+import { HijackButton } from './HijackButton';
+import { TakeoverIndicator } from './TakeoverIndicator';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
 }
 
 export function CopilotView({ send }: CopilotViewProps) {
+  const { t } = useTranslation();
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const copilotMessages = useOperatorStore((s) => s.copilotMessages);
   const conversations = useOperatorStore((s) => s.conversations);
@@ -19,43 +24,20 @@ export function CopilotView({ send }: CopilotViewProps) {
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
-  const operatorId = useOperatorStore((s) => s.operatorId);
-  const updateConversation = useOperatorStore((s) => s.updateConversation);
-
-  const handleHijack = async () => {
-    try {
-      const API = `http://${window.location.hostname}:8000`;
-      const resp = await fetch(
-        `${API}/api/command/hijack?conversation_id=${encodeURIComponent(activeCopilotConvId!)}&operator_id=${encodeURIComponent(operatorId || 'operator')}`,
-        { method: 'POST' },
-      );
-      const result = await resp.json();
-      console.log('[Hijack] result:', result);
-      if (result.ok) {
-        updateConversation(activeCopilotConvId!, { mode: result.mode });
-      }
-    } catch (err) {
-      console.error('[Hijack] failed:', err);
-    }
-  };
-
   return (
     <>
       <div className="im-main-header" data-testid="copilot-header">
         <div className="im-main-title">
-          {'聊天窗'} {activeCopilotConvId.slice(0, 8)}
-          {isTakeover && (
-            <span data-testid="takeover-indicator" style={{ color: 'var(--p)', fontSize: 11, marginLeft: 8, fontWeight: 700 }}>
-              TAKEOVER
-            </span>
-          )}
+          {t('operator.copilot.chat_window')} {activeCopilotConvId.slice(0, 8)}
+          <TakeoverIndicator conversationId={activeCopilotConvId} />
         </div>
         <div className="im-main-subtitle">
           {isTakeover
-            ? '⚡ 人工已接管 · agent 副驾驶'
-            : '默认 copilot 模式 · agent driver'}
+            ? t('operator.takeover.title')
+            : t('operator.mode.copilot_default')}
         </div>
       </div>
+      <TakeoverWarning conversationId={activeCopilotConvId} send={send} />
       <div className="im-feed" data-testid="copilot-sidebar">
         {draftMessages.length > 0 && (
           <div data-testid="copilot-draft-section" className="im-draft-section" style={{ margin: '8px 0', padding: '8px 12px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6 }}>
@@ -71,7 +53,7 @@ export function CopilotView({ send }: CopilotViewProps) {
           if (msg.sender === 'customer') {
             return (
               <div key={msg.id} className="im-relay-line" data-testid={`copilot-message-${msg.id}`}>
-                {'客户说'}: <span className="quote">{msg.text}</span>
+                {t('operator.copilot.customer_says')}: <span className="quote">{msg.text}</span>
               </div>
             );
           }
@@ -79,13 +61,13 @@ export function CopilotView({ send }: CopilotViewProps) {
             if (isTakeover) {
               return (
                 <div key={msg.id} className="im-driver" data-testid={`copilot-message-${msg.id}`}>
-                  {'\uD83D\uDC64'} <b>{'客服'}</b>: {msg.text}
+                  {'\uD83D\uDC64'} <b>{t('operator.copilot.operator')}</b>: {msg.text}
                 </div>
               );
             }
             return (
               <div key={msg.id} className="im-suggest" data-testid={`copilot-message-${msg.id}`}>
-                {'\uD83D\uDCA1'} <b>{'客服'}</b>: {msg.text}
+                {'\uD83D\uDCA1'} <b>{t('operator.copilot.operator')}</b>: {msg.text}
               </div>
             );
           }
@@ -93,7 +75,7 @@ export function CopilotView({ send }: CopilotViewProps) {
           if (isTakeover) {
             return (
               <div key={msg.id} className="im-sidebar-msg" data-testid={`copilot-message-${msg.id}`}>
-                [{'侧栏'}] agent: {msg.text}
+                [{t('operator.copilot.sidebar_label')}] agent: {msg.text}
               </div>
             );
           }
@@ -107,41 +89,23 @@ export function CopilotView({ send }: CopilotViewProps) {
                   <span className="im-msg-time">{msg.ts}</span>
                 </div>
                 <div className="im-relay-line">
-                  {'拟回复'}: <span className="quote">{msg.text}</span>
+                  {t('operator.copilot.draft_reply')}: <span className="quote">{msg.text}</span>
                 </div>
               </div>
             </div>
           );
         })}
         {messages.length === 0 && (
-          <div className="im-empty">{'暂无消息'}</div>
+          <div className="im-empty">{t('operator.copilot.empty')}</div>
         )}
         <div className="im-system">
           {isTakeover
-            ? '↻ 人工 driver · agent 副驾驶'
-            : '↻ 实时刷新中'}
+            ? t('operator.takeover.subtitle')
+            : t('operator.stream.refreshing')}
         </div>
       </div>
       <div style={{ padding: '8px 20px', display: 'flex', gap: 8 }}>
-        {!isTakeover && (
-          <button
-            data-testid={`btn-hijack-${activeCopilotConvId}`}
-            onClick={handleHijack}
-            style={{
-              background: 'var(--p)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 9,
-              padding: '6px 14px',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            <span className="im-cmd">/hijack</span> {'抢单'}
-          </button>
-        )}
+        <HijackButton conversationId={activeCopilotConvId} send={send} />
         <button
           data-testid="copilot-close"
           onClick={closeCopilot}
@@ -156,7 +120,7 @@ export function CopilotView({ send }: CopilotViewProps) {
             fontFamily: 'var(--font-sans)',
           }}
         >
-          {'返回列表'}
+          {t('operator.hijack.back_to_list')}
         </button>
       </div>
     </>

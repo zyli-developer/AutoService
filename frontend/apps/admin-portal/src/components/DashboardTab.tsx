@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { fetchJSON } from '../api';
 import { CanaryProgress } from './CanaryProgress';
 import { TakeoverTrendChart } from './TakeoverTrendChart';
@@ -12,14 +13,14 @@ interface SLAMetric {
   max: number | null;
 }
 
-const METRIC_LABELS: Record<string, string> = {
-  first_reply_ms: 'onboard 首屏',
-  accept_ms: '接单等待',
-  csat_score: 'CSAT',
-  resolution_rate: '结案率',
-  digest_rate: '消化率',
-  complaint_rate: '投诉率',
-  ttfb_ms: '首字节时间',
+const METRIC_LABEL_KEYS: Record<string, string> = {
+  first_reply_ms: 'admin.dashboard.onboard_first_screen',
+  accept_ms: 'admin.dashboard.accept_wait',
+  csat_score: 'admin.dashboard.csat',
+  resolution_rate: 'admin.dashboard.resolution_rate',
+  digest_rate: 'admin.dashboard.digest_rate',
+  complaint_rate: 'admin.dashboard.complaint_rate',
+  ttfb_ms: 'admin.dashboard.ttfb',
 };
 
 /** Primary billing KPI keys (3 starred metrics) */
@@ -37,9 +38,10 @@ function formatValue(key: string, m: SLAMetric): string {
 }
 
 function MetricRow({ metricKey, m }: { metricKey: string; m: SLAMetric }) {
+  const { t } = useTranslation();
   return (
     <div className="cs-row" key={metricKey} data-testid={`metric-${metricKey}`}>
-      <span>{METRIC_LABELS[metricKey] || metricKey}</span>
+      <span>{METRIC_LABEL_KEYS[metricKey] ? t(METRIC_LABEL_KEYS[metricKey]) : metricKey}</span>
       <span style={{
         color: m.count > 0 ? 'var(--m600)' : 'var(--silver)',
         fontWeight: 700,
@@ -57,12 +59,13 @@ function MetricRow({ metricKey, m }: { metricKey: string; m: SLAMetric }) {
 }
 
 const PERIOD_OPTIONS = [
-  { value: '5m', label: '近5分钟' },
-  { value: '1h', label: '近1小时' },
-  { value: '24h', label: '近24小时' },
+  { value: '5m', labelKey: 'admin.dashboard.range.5min' },
+  { value: '1h', labelKey: 'admin.dashboard.range.1hour' },
+  { value: '24h', labelKey: 'admin.dashboard.range.24hour' },
 ] as const;
 
 export function DashboardTab() {
+  const { t } = useTranslation();
   const [sla, setSla] = useState<Record<string, SLAMetric> | null>(null);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<string>('5m');
@@ -83,67 +86,62 @@ export function DashboardTab() {
 
   return (
     <div data-testid="tab-dashboard">
-      {/* --- Time Slice Selector (T6D.5) --- */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+      {/* Time Slice Selector */}
+      <div className="cs-wiz" style={{ marginBottom: 14 }}>
         {PERIOD_OPTIONS.map((opt) => (
           <button
             key={opt.value}
+            type="button"
+            className={`cs-wiz-step ${period === opt.value ? 'cur' : ''}`}
             data-testid={`period-${opt.value}`}
             onClick={() => setPeriod(opt.value)}
-            style={{
-              fontSize: 11,
-              padding: '2px 8px',
-              border: '1px solid var(--silver, #ccc)',
-              borderRadius: 4,
-              background: period === opt.value ? 'var(--m600, #2563eb)' : 'transparent',
-              color: period === opt.value ? '#fff' : 'inherit',
-              cursor: 'pointer',
-            }}
           >
-            {opt.label}
+            {t(opt.labelKey)}
           </button>
         ))}
       </div>
 
-      {/* --- Top Section: Agent Status --- */}
-      <div className="cs-card">
-        <div className="cs-ct">🤖 Agent 状态</div>
-        {['customer', 'translate', 'lead', 'triage'].map((a) => (
-          <div className="cs-row" key={a} data-testid={`agent-card-${a}`}>
-            <span>{a} Agent</span>
-            <span style={{ color: 'var(--m600)', fontWeight: 700 }}>online</span>
-          </div>
-        ))}
-      </div>
-
-      {/* --- Middle Section: KPI Metrics --- */}
+      {/* Primary KPIs — big grid */}
       {error && <div className="cs-pg warn" style={{ marginTop: 14 }}>{error}</div>}
-      {!sla && !error && <div className="im-empty" style={{ marginTop: 14 }}>加载中...</div>}
+      {!sla && !error && <div className="im-empty" style={{ marginTop: 14 }}>{t('common.loading')}</div>}
 
       {sla && (
         <>
-          {/* Primary billing KPIs (starred) */}
-          <div className="cs-card" style={{ marginTop: 14 }}>
-            <div className="cs-ct">⭐ 核心计费指标</div>
+          <div className="cs-kpi-grid">
             {primaryEntries.map(([key, m]) => (
-              <MetricRow key={key} metricKey={key} m={m} />
+              <div className="cs-kpi" key={key} data-testid={`metric-${key}`}>
+                <div className="cs-kpi-label">{METRIC_LABEL_KEYS[key] ? t(METRIC_LABEL_KEYS[key]) : key}</div>
+                <div className={`cs-kpi-value ${m.count > 0 ? '' : 'muted'}`}>
+                  {formatValue(key, m)}
+                </div>
+                <div className="cs-kpi-sparkline" />
+              </div>
             ))}
           </div>
 
-          {/* Auxiliary KPIs */}
-          <div className="cs-card" style={{ marginTop: 14 }}>
-            <div className="cs-ct">◉ 辅助运营指标</div>
-            {auxiliaryEntries.map(([key, m]) => (
-              <MetricRow key={key} metricKey={key} m={m} />
-            ))}
+          {/* Aux 2-column */}
+          <div className="cs-aux-grid">
+            <div className="cs-card">
+              <div className="cs-ct">{t('admin.dashboard.agent_status')}</div>
+              {['customer', 'translate', 'lead', 'triage'].map((a) => (
+                <div className="cs-row" key={a} data-testid={`agent-card-${a}`}>
+                  <span>{a} Agent</span>
+                  <span style={{ color: 'var(--m600)', fontWeight: 700 }}>online</span>
+                </div>
+              ))}
+            </div>
+            <div className="cs-card">
+              <div className="cs-ct">{t('admin.dashboard.aux_metrics')}</div>
+              {auxiliaryEntries.map(([key, m]) => (
+                <MetricRow key={key} metricKey={key} m={m} />
+              ))}
+            </div>
           </div>
         </>
       )}
 
-      {/* Canary Progress */}
+      {/* Full-width sections */}
       <CanaryProgress />
-
-      {/* --- Bottom Section: Trend Charts & Leaderboard (T6D.3 + T6D.4) --- */}
       <TakeoverTrendChart />
       <LeaderboardTable />
     </div>

@@ -6,51 +6,6 @@ html, body, #root {
   background: var(--cream);
 }
 
-/* ===== Admin portal tab navigation ===== */
-.cs-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--glass-border);
-  padding-bottom: 0;
-  position: relative;
-  z-index: 1;
-}
-
-.cs-tab {
-  padding: 10px 18px;
-  border: none;
-  background: transparent;
-  border-radius: 10px 10px 0 0;
-  font-size: 13px;
-  color: var(--silver);
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-weight: 500;
-  position: relative;
-  transition: color .2s;
-}
-
-.cs-tab:hover {
-  color: var(--charcoal);
-}
-
-.cs-tab.active {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.cs-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -1px;
-  height: 2px;
-  background: var(--aurora-3);
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 8px rgba(167,139,250,.5);
-}
 
 /* ===== Login page ===== */
 .cs-login {
@@ -181,67 +136,14 @@ html, body, #root {
   box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
 }
 
-/* ===== Admin workspace layout ===== */
-.cs-w {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--cream);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--charcoal);
-}
 
-.cs-tb {
-  background: rgba(255,255,255,.6);
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  border-bottom: 1px solid var(--glass-border);
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  flex-shrink: 0;
-}
+/* ===== Wizard: editorial dashboard (NOT a form) =====
+   All rules scoped to [data-testid="tab-wizard"] so Dashboard/Proposals/Billing
+   get the plain design-system defaults for .cs-card, .cs-btn, .cs-row, etc.
+*/
 
-.cs-tb-dots {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.cs-tb-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--oat);
-  display: inline-block;
-}
-
-.cs-tb-dots span:first-child {
-  background: var(--aurora-3);
-  box-shadow: 0 0 0 3px rgba(167,139,250,.2);
-}
-
-.cs-app {
-  font-weight: 600;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 14px;
-  letter-spacing: -0.2px;
-}
-
-.cs-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 28px;
-}
-
-/* ===== Wizard: editorial dashboard (NOT a form) ===== */
-
-/* Main canvas: wide, breathy, no container box */
-.cs-w .cs-main {
-  padding: 40px 56px 56px !important;
+/* Wizard canvas: constrain reading width; other views are full-width */
+.cs-canvas[data-view="wizard"] > [data-testid="tab-wizard"] {
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -257,7 +159,7 @@ html, body, #root {
 }
 
 /* Dissolve the card — no border, no background, no shadow. Let content float. */
-.cs-card {
+[data-testid="tab-wizard"] .cs-card {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -265,16 +167,16 @@ html, body, #root {
   border-radius: 0 !important;
 }
 
-.cs-card:hover { box-shadow: none !important; }
+[data-testid="tab-wizard"] .cs-card:hover { box-shadow: none !important; }
 
-.cs-card.hl {
+[data-testid="tab-wizard"] .cs-card.hl {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 
 /* Section heading → editorial hero */
-.cs-ct {
+[data-testid="tab-wizard"] .cs-ct {
   font-family: var(--font-display) !important;
   font-size: 28px !important;
   font-weight: 600 !important;
@@ -283,9 +185,10 @@ html, body, #root {
   margin-bottom: 6px !important;
   align-items: baseline !important;
   gap: 14px !important;
+  padding-bottom: 20px;
 }
 
-.cs-ct .num {
+[data-testid="tab-wizard"] .cs-ct .num {
   width: 32px !important;
   height: 32px !important;
   background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(103,232,249,.12)) !important;
@@ -301,10 +204,8 @@ html, body, #root {
   align-self: center;
 }
 
-.cs-ct { padding-bottom: 20px; }
-
 /* ===== Field grid: break vertical stack into 2-column editorial layout ===== */
-.cs-card > div[style*="flex-direction: column"] {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
   gap: 28px 32px !important;
@@ -313,7 +214,7 @@ html, body, #root {
 }
 
 /* File upload field (last child) spans both columns — it's the hero action */
-.cs-card > div[style*="flex-direction: column"] > div:last-child {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] > div:last-child {
   grid-column: 1 / -1;
   padding: 24px;
   background: linear-gradient(135deg, rgba(167,139,250,.05), rgba(103,232,249,.04));
@@ -322,15 +223,15 @@ html, body, #root {
   transition: border-color .25s, background .25s;
 }
 
-.cs-card > div[style*="flex-direction: column"] > div:last-child:hover {
+[data-testid="tab-wizard"] .cs-card > div[style*="flex-direction: column"] > div:last-child:hover {
   border-color: rgba(167,139,250,.5);
   background: linear-gradient(135deg, rgba(167,139,250,.08), rgba(103,232,249,.06));
 }
 
 /* ===== Inputs — minimal underline style, not boxed ===== */
-.cs-card input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
-.cs-card select,
-.cs-card textarea {
+[data-testid="tab-wizard"] .cs-card input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+[data-testid="tab-wizard"] .cs-card select,
+[data-testid="tab-wizard"] .cs-card textarea {
   width: 100%;
   padding: 8px 0 !important;
   border: none !important;
@@ -346,22 +247,22 @@ html, body, #root {
   font-weight: 500;
 }
 
-.cs-card input:focus,
-.cs-card select:focus,
-.cs-card textarea:focus {
+[data-testid="tab-wizard"] .cs-card input:focus,
+[data-testid="tab-wizard"] .cs-card select:focus,
+[data-testid="tab-wizard"] .cs-card textarea:focus {
   border-bottom-color: var(--aurora-3) !important;
   background: transparent !important;
   box-shadow: 0 1px 0 0 var(--aurora-3);
 }
 
-.cs-card input::placeholder,
-.cs-card textarea::placeholder {
+[data-testid="tab-wizard"] .cs-card input::placeholder,
+[data-testid="tab-wizard"] .cs-card textarea::placeholder {
   color: rgba(24,24,27,.3);
   font-weight: 400;
 }
 
 /* Custom select chevron */
-.cs-card select {
+[data-testid="tab-wizard"] .cs-card select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -373,7 +274,7 @@ html, body, #root {
 }
 
 /* Labels → small caps kicker above input */
-.cs-card label {
+[data-testid="tab-wizard"] .cs-card label {
   font-size: 10px !important;
   color: var(--silver);
   margin-bottom: 4px !important;
@@ -384,7 +285,7 @@ html, body, #root {
 }
 
 /* File input — native button styled */
-.cs-card input[type="file"] {
+[data-testid="tab-wizard"] .cs-card input[type="file"] {
   display: block;
   width: 100%;
   font-size: 13px !important;
@@ -397,8 +298,8 @@ html, body, #root {
   background: transparent !important;
 }
 
-.cs-card input[type="file"]::-webkit-file-upload-button,
-.cs-card input[type="file"]::file-selector-button {
+[data-testid="tab-wizard"] .cs-card input[type="file"]::-webkit-file-upload-button,
+[data-testid="tab-wizard"] .cs-card input[type="file"]::file-selector-button {
   padding: 10px 20px;
   margin-right: 14px;
   border: 1px solid var(--glass-border);
@@ -414,15 +315,15 @@ html, body, #root {
   box-shadow: var(--shd-btn);
 }
 
-.cs-card input[type="file"]:hover::-webkit-file-upload-button,
-.cs-card input[type="file"]:hover::file-selector-button {
+[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::-webkit-file-upload-button,
+[data-testid="tab-wizard"] .cs-card input[type="file"]:hover::file-selector-button {
   border-color: var(--aurora-3);
   background: rgba(167,139,250,.06);
   transform: translateY(-1px);
 }
 
-/* ===== Buttons ===== */
-.cs-btn {
+/* ===== Buttons (wizard-specific overrides) ===== */
+[data-testid="tab-wizard"] .cs-btn {
   flex: none !important;
   padding: 11px 24px !important;
   border: 1px solid var(--glass-border) !important;
@@ -438,26 +339,26 @@ html, body, #root {
   min-width: 100px;
 }
 
-.cs-btn:hover {
+[data-testid="tab-wizard"] .cs-btn:hover {
   border-color: var(--ink) !important;
   color: var(--ink);
 }
 
-.cs-btn.ok {
+[data-testid="tab-wizard"] .cs-btn.ok {
   background: var(--ink) !important;
   color: #fff;
   border-color: var(--ink) !important;
   box-shadow: var(--shd-btn);
 }
 
-.cs-btn.ok:hover {
+[data-testid="tab-wizard"] .cs-btn.ok:hover {
   transform: translateY(-1px);
   box-shadow: var(--shd-btn-hover), 0 0 0 3px rgba(167,139,250,.25);
   color: #fff;
 }
 
 /* "生成 Agent" button: override inline width:100%, make it a prominent CTA */
-.cs-card .cs-btn.ok[data-testid="btn-generate"] {
+[data-testid="tab-wizard"] .cs-card .cs-btn.ok[data-testid="btn-generate"] {
   width: auto !important;
   min-width: 180px;
   padding: 13px 32px !important;
@@ -472,19 +373,19 @@ html, body, #root {
 }
 
 /* ===== Wizard stepper — flatter, editorial ===== */
-.cs-wiz {
+[data-testid="tab-wizard"] .cs-wiz {
   gap: 4px !important;
   padding: 0 !important;
   margin-bottom: 8px;
 }
 
-.cs-wiz-step {
+[data-testid="tab-wizard"] .cs-wiz-step {
   padding: 8px 18px !important;
   font-size: 12px !important;
   letter-spacing: 0.3px;
 }
 
-.cs-arr {
+[data-testid="tab-wizard"] .cs-arr {
   color: var(--oat) !important;
   padding: 0 2px;
 }
@@ -501,13 +402,13 @@ html, body, #root {
   padding-bottom: 16px;
 }
 
-.cs-row {
+[data-testid="tab-wizard"] .cs-row {
   padding: 14px 0 !important;
   border-bottom: 1px solid var(--glass-border);
   font-size: 14px;
 }
 
-.cs-row:last-of-type { border-bottom: none; }
+[data-testid="tab-wizard"] .cs-row:last-of-type { border-bottom: none; }
 
 /* ===== Event stream styles ===== */
 .ev {
@@ -529,4 +430,463 @@ html, body, #root {
 
 .ev.warn {
   color: var(--l700);
+}
+
+/* ===== NEW web-layout shell (Task 1) ===== */
+.cs-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 40px 1fr;
+  grid-template-columns: 56px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "rail canvas";
+  background: var(--cream);
+  position: relative;
+}
+
+.cs-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 50% at 80% 0%, rgba(167,139,250,.22) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 0% 20%, rgba(110,231,183,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 50% at 50% 100%, rgba(103,232,249,.08) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cs-topbar {
+  grid-area: topbar;
+  position: relative;
+  z-index: 2;
+  background: rgba(255,255,255,.6);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.cs-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-topbar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--aurora-3);
+  box-shadow: 0 0 0 3px rgba(167,139,250,.2);
+}
+
+.cs-topbar-tenant {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: -0.2px;
+}
+
+.cs-topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-cmdk-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--oat-l);
+  color: var(--silver);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.cs-cmdk-btn:hover {
+  background: var(--paper);
+  color: var(--charcoal);
+}
+
+.cs-avatar-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow .2s;
+}
+
+.cs-avatar-btn:hover {
+  box-shadow: 0 0 0 3px rgba(167,139,250,.25);
+}
+
+.cs-avatar-menu {
+  position: absolute;
+  top: 44px;
+  right: 12px;
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(24,24,27,.12), 0 4px 10px rgba(24,24,27,.04);
+  min-width: 200px;
+  padding: 6px;
+  z-index: 10;
+}
+
+.cs-avatar-menu-row {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--silver);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.cs-avatar-menu-row.label {
+  color: var(--silver);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 6px 10px 4px;
+}
+
+.cs-avatar-menu-row.value {
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
+.cs-avatar-menu-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--charcoal);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.cs-avatar-menu-btn:hover {
+  background: var(--oat-l);
+  color: var(--ink);
+}
+
+.cs-rail {
+  grid-area: rail;
+  position: relative;
+  z-index: 2;
+  background: rgba(255,255,255,.5);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-right: 1px solid var(--glass-border);
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.cs-rail-spacer { flex: 1; }
+
+.cs-rail-item {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--silver);
+  font-size: 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, color .15s;
+}
+
+.cs-rail-item:hover {
+  background: var(--oat-l);
+  color: var(--ink);
+}
+
+.cs-rail-item.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.cs-rail-item.active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--aurora-3);
+  box-shadow: 0 0 6px rgba(167,139,250,.5);
+}
+
+.cs-rail-tooltip {
+  position: absolute;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shd-md);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 20;
+}
+
+.cs-rail-item:hover .cs-rail-tooltip {
+  opacity: 1;
+}
+
+.cs-canvas {
+  grid-area: canvas;
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Default canvas padding; overridden per view via data attribute */
+.cs-canvas[data-view="notifications"] {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cs-canvas[data-view="dashboard"] { padding: 24px 32px; }
+.cs-canvas[data-view="wizard"] { padding: 40px 56px; }
+.cs-canvas[data-view="proposals"] { padding: 20px 28px; }
+.cs-canvas[data-view="billing"] { padding: 20px 28px; }
+
+/* Command palette placeholder */
+.cs-cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(24,24,27,.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+  z-index: 100;
+}
+
+.cs-cmdk-panel {
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(24,24,27,.18);
+  width: 520px;
+  max-width: 90vw;
+  padding: 20px 22px;
+  font-family: var(--font-sans);
+  color: var(--silver);
+  font-size: 13px;
+}
+
+.cs-cmdk-panel-title {
+  font-family: var(--font-display);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* ===== Dashboard KPI big cards (Task 13) ===== */
+.cs-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.cs-kpi {
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: var(--shd);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow .25s;
+}
+
+.cs-kpi:hover { box-shadow: var(--shd-md); }
+
+.cs-kpi-label {
+  font-size: 10px;
+  color: var(--silver);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+}
+
+.cs-kpi-value {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.cs-kpi-value.muted { color: var(--silver); }
+
+.cs-kpi-sparkline {
+  height: 36px;
+  background: var(--oat-l);
+  border-radius: 8px;
+}
+
+.cs-aux-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* ===== Proposals / Billing list-detail split (Tasks 14, 15) ===== */
+.cs-split {
+  display: grid;
+  grid-template-columns: var(--split-left, 360px) 1fr;
+  gap: 20px;
+}
+
+.cs-split-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cs-split-detail {
+  min-width: 0;
+}
+
+.cs-list-row {
+  background: var(--paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  font-size: 13px;
+}
+
+.cs-list-row:hover { background: var(--oat-l); }
+
+.cs-list-row.active {
+  background: rgba(167,139,250,.08);
+  border-color: rgba(167,139,250,.35);
+}
+
+/* ===== InlineWidget variants (Task 12) ===== */
+.adm-chat-widget-metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--cream);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  margin: 6px 0;
+}
+
+.adm-chat-widget-metric .label { font-size: 12px; color: var(--silver); }
+.adm-chat-widget-metric .value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--m600);
+  font-size: 14px;
+}
+
+.adm-chat-widget-proposal .im-block { margin-top: 0; }
+
+.adm-chat-widget-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.adm-chat-widget-launch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(167,139,250,.08);
+  border: 1px solid rgba(167,139,250,.25);
+  border-radius: 10px;
+  margin: 6px 0;
+  color: #6d28d9;
+  font-size: 13px;
+}
+
+.adm-chat-widget-alert {
+  padding: 10px 14px;
+  border-left: 3px solid var(--p);
+  background: rgba(252,121,129,.10);
+  border-radius: 0 10px 10px 0;
+  font-size: 13px;
+  color: #7f1d1d;
+  margin: 6px 0;
+}
+
+/* ===== Responsive (Task 18) ===== */
+@media (max-width: 1023px) {
+  .cs-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .cs-aux-grid { grid-template-columns: 1fr; }
+  .cs-split { grid-template-columns: 1fr; }
+  .cs-split-list { max-height: 40vh; }
+}
+
+@media (max-width: 767px) {
+  .cs-shell {
+    grid-template-rows: 44px 1fr;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "canvas";
+  }
+  .cs-rail { display: none; }
+  .cs-canvas[data-view="dashboard"],
+  .cs-canvas[data-view="proposals"],
+  .cs-canvas[data-view="billing"] { padding: 16px; }
+  .cs-canvas[data-view="wizard"] { padding: 20px; }
+  .cs-kpi-grid { grid-template-columns: 1fr; }
 }

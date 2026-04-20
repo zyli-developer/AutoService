@@ -49,7 +49,7 @@ describe('Takeover Mode UI', () => {
     expect(screen.getByTestId('takeover-indicator')).toHaveTextContent('TAKEOVER');
   });
 
-  it('TC-03: sends send_message frame in takeover mode', async () => {
+  it('TC-03: sends operator_message frame in takeover mode', async () => {
     useOperatorStore.setState({
       activeCopilotConvId: 'conv-001',
       conversations: { 'conv-001': makeConv({ mode: 'takeover' }) },
@@ -68,9 +68,9 @@ describe('Takeover Mode UI', () => {
 
     const calls = send.mock.calls;
     const frame = calls[calls.length - 1][0];
-    expect(frame.type).toBe('send_message');
-    expect(frame.payload.visible_to_customer).toBe(true);
-    expect(frame.payload.text).toBe('您好客户');
+    expect(frame.type).toBe('operator_message');
+    expect(frame.payload.conversation_id).toBe('conv-001');
+    expect(frame.payload.content).toBe('您好客户');
   });
 
   it('TC-04: sends operator_message frame in copilot mode', async () => {
@@ -93,7 +93,8 @@ describe('Takeover Mode UI', () => {
     const calls = send.mock.calls;
     const frame = calls[calls.length - 1][0];
     expect(frame.type).toBe('operator_message');
-    expect(frame.payload.visible_to_customer).toBeUndefined();
+    expect(frame.payload.conversation_id).toBe('conv-001');
+    expect(frame.payload.content).toBe('建议回复');
   });
 
   it('TC-05: placeholder changes with mode', () => {

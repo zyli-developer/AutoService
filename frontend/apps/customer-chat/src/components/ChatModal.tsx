@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
 import { MessageBubble } from './MessageBubble';
@@ -29,6 +30,7 @@ export function ChatModal({
   isReplaying = false,
   replayCount = 0,
 }: ChatModalProps) {
+  const { t } = useTranslation();
   const isAgentTyping = useChatStore((s) => s.isAgentTyping);
   const csatRequest = useChatStore((s) => s.csatRequest);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -44,14 +46,14 @@ export function ChatModal({
     <div className="web-modal" data-testid="chat-modal">
       <div className="web-modal-header">
         <div className="web-modal-title" data-testid="modal-title">
-          {'智能客服 · 在线'}
+          {t('customer.chat.title')}
         </div>
         <div
           className="web-modal-close"
           onClick={onClose}
           data-testid="modal-close"
           role="button"
-          aria-label="Close chat"
+          aria-label={t('customer.chat.close')}
         >
           {'×'}
         </div>

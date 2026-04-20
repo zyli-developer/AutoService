@@ -144,7 +144,7 @@ const initialWizardFormData: WizardFormData = {
 export const initialState = {
   tenantId: null,
   isLoggedIn: false,
-  activeTab: 'wizard' as const,
+  activeTab: 'notifications' as const,
   notifications: [] as Notification[],
   wizardStep: 0,
   wizardFormData: initialWizardFormData,

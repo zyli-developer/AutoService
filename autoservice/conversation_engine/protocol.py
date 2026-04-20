@@ -44,6 +44,8 @@ class ConversationEngine(Protocol):
         squad_id: str | None = None,
     ) -> list[Conversation]: ...
 
+    async def list_conversations_in_takeover_by(self, operator_id: str) -> list[Conversation]: ...
+
     async def close_conversation(
         self,
         conversation_id: str,

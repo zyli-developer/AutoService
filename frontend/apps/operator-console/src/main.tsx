@@ -4,7 +4,7 @@ import { I18nextProvider, createI18n } from '@autoservice/i18n';
 import { App } from './App';
 import './index.css';
 
-const i18n = createI18n('zh-CN');
+const i18n = createI18n();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

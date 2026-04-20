@@ -30,8 +30,13 @@ export class FakeWSClient {
     // no-op: test calls triggerOpen manually
   }
 
-  send(frame: Envelope) {
-    this.sendCalls.push(frame);
+  send(typeOrFrame: string | Envelope, payload?: unknown): Promise<void> {
+    if (typeof typeOrFrame === 'string') {
+      this.sendCalls.push({ v: 1, type: typeOrFrame, id: 'fake-send', ts: new Date().toISOString(), payload } as Envelope);
+    } else {
+      this.sendCalls.push(typeOrFrame);
+    }
+    return Promise.resolve();
   }
 
   close() {
