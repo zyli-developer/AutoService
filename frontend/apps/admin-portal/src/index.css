@@ -1119,26 +1119,176 @@ html, body, #root {
   letter-spacing: 0.1px;
 }
 
+/* ===== Hamburger + drawer backdrop (hidden above mobile breakpoint) ===== */
+.cs-hamburger { display: none; }
+.cs-side-backdrop { display: none; }
+
 /* ===== Responsive ===== */
-@media (max-width: 1023px) {
+@media (max-width: 1180px) {
   .cs-kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .cs-aux-grid { grid-template-columns: 1fr; }
   .cs-split    { grid-template-columns: 1fr; }
   .cs-split-list { max-height: 40vh; }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 760px) {
+  /* Shell collapses to single column; topbar + canvas only */
   .cs-shell {
-    grid-template-rows: 44px 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-columns: 1fr;
     grid-template-areas:
       "topbar"
       "canvas";
   }
-  .cs-rail { display: none; }
+
+  /* Sidebar becomes a fixed drawer (slide-in from left) */
+  .cs-rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 276px;
+    z-index: 60;
+    transform: translateX(-105%);
+    transition: transform 340ms var(--ease-ink-bloom);
+    box-shadow: 18px 0 48px rgba(26, 26, 26, 0.18), 2px 0 0 rgba(26, 26, 26, 0.04);
+    will-change: transform;
+  }
+  .cs-rail.open {
+    transform: translateX(0);
+  }
+
+  /* Backdrop */
+  .cs-side-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.38);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 55;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms var(--ease-daily);
+  }
+  .cs-side-backdrop.on {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Staggered cascade of nav items when drawer opens */
+  .cs-rail .cs-nav-item,
+  .cs-rail .cs-workspace,
+  .cs-rail .cs-nav-sec,
+  .cs-rail .cs-usage-card,
+  .cs-rail .cs-brand {
+    opacity: 0;
+    transform: translateX(-14px);
+    transition: opacity 260ms var(--ease-daily), transform 360ms var(--ease-ink-bloom);
+  }
+  .cs-rail.open .cs-brand         { opacity: 1; transform: none; transition-delay: 60ms; }
+  .cs-rail.open .cs-workspace     { opacity: 1; transform: none; transition-delay: 90ms; }
+  .cs-rail.open .cs-nav-sec       { opacity: 1; transform: none; transition-delay: 110ms; }
+  .cs-rail.open .cs-nav-item      { opacity: 1; transform: none; }
+  .cs-rail.open .cs-nav-item:nth-child(1) { transition-delay: 130ms; }
+  .cs-rail.open .cs-nav-item:nth-child(2) { transition-delay: 150ms; }
+  .cs-rail.open .cs-nav-item:nth-child(3) { transition-delay: 170ms; }
+  .cs-rail.open .cs-nav-item:nth-child(4) { transition-delay: 190ms; }
+  .cs-rail.open .cs-nav-item:nth-child(5) { transition-delay: 210ms; }
+  .cs-rail.open .cs-nav-item:nth-child(6) { transition-delay: 230ms; }
+  .cs-rail.open .cs-nav-item:nth-child(7) { transition-delay: 250ms; }
+  .cs-rail.open .cs-usage-card    { opacity: 1; transform: none; transition-delay: 290ms; }
+
+  /* Hamburger button in topbar */
+  .cs-hamburger {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    margin-right: 10px;
+    transition: background 140ms var(--ease-daily), border-color 140ms var(--ease-daily), transform 140ms var(--ease-daily);
+    flex-shrink: 0;
+  }
+  .cs-hamburger:active {
+    background: var(--ink-50);
+    transform: scale(0.96);
+  }
+  .cs-hamburger svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Compact topbar */
+  .cs-topbar {
+    padding: 12px 14px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .cs-topbar-left {
+    flex: 1;
+    min-width: 0;
+  }
+  .cs-topbar-crumb { display: none; }
+  .cs-topbar-title { font-size: 15px; }
+  .cs-topbar-tenant, .cs-topbar-page {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cs-topbar-right { gap: 6px; flex-shrink: 0; }
+  .cs-cmdk-btn { display: none; }
+
+  /* Canvas padding shrink */
   .cs-canvas[data-view="dashboard"],
   .cs-canvas[data-view="proposals"],
-  .cs-canvas[data-view="billing"] { padding: 16px; }
-  .cs-canvas[data-view="wizard"] { padding: 20px; }
+  .cs-canvas[data-view="billing"] { padding: 16px 14px 80px; }
+  .cs-canvas[data-view="wizard"] { padding: 20px 14px 40px; }
+  .cs-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .cs-kpi { padding: 12px 13px; }
+  .cs-kpi-value { font-size: 22px; }
+  .cs-kpi-sparkline { display: none; }
+
+  /* Tables → card list on mobile (leaderboard, any future table) */
+  .cs-table-wrap table,
+  .cs-table-wrap thead,
+  .cs-table-wrap tbody,
+  .cs-table-wrap tr,
+  .cs-table-wrap th,
+  .cs-table-wrap td {
+    display: block;
+  }
+  .cs-table-wrap thead { display: none; }
+  .cs-table-wrap tbody tr {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+  }
+  .cs-table-wrap tbody tr:last-child { border-bottom: none !important; }
+  .cs-table-wrap td {
+    padding: 3px 0 !important;
+    border: none !important;
+    font-size: 13px;
+    text-align: left !important;
+  }
+  .cs-table-wrap td::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 84px;
+    font-size: 10.5px;
+    letter-spacing: 0.22px;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    margin-right: 8px;
+  }
+}
+
+@media (max-width: 460px) {
   .cs-kpi-grid { grid-template-columns: 1fr; }
 }

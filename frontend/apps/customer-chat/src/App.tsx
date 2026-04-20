@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useTenantId } from '@autoservice/shared';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
@@ -38,6 +38,18 @@ function resolveWsBase(): string {
   // if a caller renders <App/> outside jsdom — we return an obviously-fake
   // origin so any accidental connect fails loudly.
   return 'ws://invalid.local';
+}
+
+type SheetState = 'peek' | 'full';
+
+function getInitialSheet(): SheetState {
+  try {
+    const s = localStorage.getItem('as-cust-sheet');
+    if (s === 'full' || s === 'peek') return s;
+  } catch {
+    // localStorage may be unavailable
+  }
+  return 'peek';
 }
 
 /**
@@ -92,9 +104,44 @@ function ChatApp({ tenantId }: { tenantId: string }) {
   );
   const { send } = useWebSocket(wsUrl, 'customer-chat');
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => {
+    // Auto-open on mobile viewports so the bottom sheet is always visible
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(max-width: 640px)').matches;
+    }
+    return false;
+  });
+  const [sheet, setSheet] = useState<SheetState>(getInitialSheet);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customerId = useMemo(getCustomerId, []);
+
+  // Auto-open/close when viewport crosses the mobile breakpoint
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia('(max-width: 640px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setIsOpen(true);
+    };
+    mql.addEventListener?.('change', onChange);
+    return () => mql.removeEventListener?.('change', onChange);
+  }, []);
+
+  // Persist sheet state + mirror to body class so CSS can target before modal mounts
+  useEffect(() => {
+    try { localStorage.setItem('as-cust-sheet', sheet); } catch { /* noop */ }
+    const b = document.body;
+    b.classList.remove('sheet-peek', 'sheet-full');
+    b.classList.add('sheet-' + sheet);
+  }, [sheet]);
+
+  // Mirror modal open/closed to body.sheet-open so CSS can dim merchant only
+  // when the sheet is actually visible (and show FAB again when it's not)
+  useEffect(() => {
+    document.body.classList.toggle('sheet-open', isOpen);
+    return () => document.body.classList.remove('sheet-open');
+  }, [isOpen]);
+
+  const toggleSheet = () => setSheet((s) => (s === 'peek' ? 'full' : 'peek'));
 
   const handleSend = async (content: string) => {
     const clientMsgId = crypto.randomUUID();
@@ -165,6 +212,8 @@ function ChatApp({ tenantId }: { tenantId: string }) {
           connectionStatus={connectionStatus}
           isReplaying={isReplaying}
           replayCount={replayCount}
+          sheet={sheet}
+          onToggleSheet={toggleSheet}
         />
       ) : null}
       <ChatFAB onClick={() => setIsOpen(true)} highlight={!isOpen} />

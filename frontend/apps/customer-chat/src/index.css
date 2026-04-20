@@ -874,3 +874,204 @@ html, body, #root {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
 }
+
+/* ===== Drag handle — mobile only, hidden by default ===== */
+.w-handle { display: none; }
+
+/* ===== Tablet (≤1100px) — narrow hero + tiles but keep merchant visible ===== */
+@media (max-width: 1100px) {
+  .m-hero { padding: 48px 40px 28px; }
+  .m-h1 { font-size: 34px; }
+  .m-tiles { padding: 0 40px; }
+}
+
+/* ===== Mobile (≤640px) — bottom-sheet "peek" behaviour ===== */
+@media (max-width: 640px) {
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Merchant page as backdrop behind the sheet */
+  .m-page {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    transition: transform 360ms var(--ease-ink-bloom), filter 360ms var(--ease-daily);
+    z-index: 0;
+  }
+
+  .m-nav { padding: 12px 16px; gap: 14px; }
+  .m-nav .m-link { display: none; }
+  .m-brand { font-size: 17px; }
+  .m-cart { display: none; }
+  .m-nav-right .m-login { display: inline; font-weight: 500; font-size: 13px; }
+  .m-hero { padding: 28px 20px 16px; max-width: 100%; }
+  .m-kicker { font-size: 10.5px; margin-bottom: 10px; }
+  .m-h1 { font-size: 26px; line-height: 1.18; margin-bottom: 10px; }
+  .m-lead {
+    font-size: 13.5px;
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .m-tiles { padding: 0 20px; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .m-tile { padding: 12px; }
+  .m-tile-ph { height: 44px; margin-bottom: 6px; }
+  .m-tile-name { font-size: 12px; }
+  .m-tile-price { font-size: 11.5px; }
+  .m-note { display: none; }
+
+  /* Dim merchant only when the sheet is actually open (body.sheet-open is set
+     by App.tsx whenever isOpen && the modal is rendered). */
+  body.sheet-open.sheet-full .m-page {
+    transform: scale(0.94);
+    filter: brightness(0.5) saturate(0.7);
+  }
+  body.sheet-open.sheet-peek .m-page {
+    filter: brightness(0.88);
+  }
+
+  .web-fab-call { display: none; }
+
+  /* Sheet host — the modal becomes a bottom sheet */
+  .web-modal {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    background: transparent;
+    z-index: 20;
+    transition: top 420ms var(--ease-ink-bloom);
+    will-change: top;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .web-modal.sheet-peek { top: 46vh; }
+  .web-modal.sheet-full { top: 8vh; }
+
+  /* Inner surface: body + input get the sheet's white background. The
+     header keeps its indigo gradient (from default styles) so the
+     brand avatar, title, subtitle, and close button stay legible. */
+  .web-modal .web-modal-body,
+  .web-modal .web-modal-input {
+    background: var(--color-bg-surface);
+  }
+  .web-modal {
+    box-shadow:
+      0 -16px 48px rgba(26, 26, 26, 0.24),
+      0 -2px 0 rgba(26, 26, 26, 0.04);
+  }
+
+  /* Drag handle tray: bean in the middle toggles peek/full, X on the right
+     fully dismisses the sheet. Both actions have clear affordances. */
+  .w-handle {
+    display: grid;
+    grid-template-columns: 36px 1fr 36px;
+    align-items: center;
+    padding: 8px 8px 6px;
+    background: #F7F4EE;
+    border-radius: 18px 18px 0 0;
+    position: relative;
+    z-index: 2;
+    border-bottom: 1px solid var(--color-border-subtle);
+    flex-shrink: 0;
+  }
+
+  .w-handle-bar {
+    grid-column: 2;
+    justify-self: center;
+    width: 44px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .w-handle-bar::before {
+    content: '';
+    width: 44px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--ink-400);
+    opacity: 0.42;
+    transition:
+      opacity 180ms var(--ease-daily),
+      width 220ms var(--ease-ink-bloom),
+      background 180ms var(--ease-daily);
+  }
+  .w-handle-bar:active::before {
+    opacity: 0.7;
+    width: 56px;
+  }
+  .web-modal.sheet-full .w-handle-bar::before {
+    background: var(--ink-700);
+    opacity: 0.5;
+  }
+
+  .w-handle-close {
+    grid-column: 3;
+    justify-self: end;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: rgba(26, 26, 26, 0.06);
+    border-radius: 50%;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-700);
+    transition: background 160ms var(--ease-daily), transform 140ms var(--ease-daily);
+  }
+  .w-handle-close:hover { background: rgba(26, 26, 26, 0.12); }
+  .w-handle-close:active { transform: scale(0.94); }
+  .w-handle-close svg { width: 16px; height: 16px; }
+
+  /* Widget internal scale for touch comfort */
+  .web-modal-header { padding: 11px 14px; gap: 10px; }
+  .w-hd-av { width: 32px; height: 32px; font-size: 14px; border-radius: var(--radius-sm); }
+  .web-modal-title { font-size: 15px; }
+  .w-hd-sub {
+    font-size: 10.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+  .w-hd-btn { width: 28px; height: 28px; }
+  .w-hd-btn svg { width: 14px; height: 14px; }
+  .web-modal-body { padding: 14px 12px 10px; gap: 10px; }
+  .w-msg { max-width: 92%; }
+  .web-msg { font-size: 14.5px; padding: 10px 14px; line-height: 1.5; }
+  .web-modal-input { padding: 10px 12px 14px; }
+  .w-comp-box textarea { font-size: 16px; } /* prevent iOS auto-zoom */
+  .w-send { width: 36px; height: 36px; }
+  .w-tool-btn { width: 36px; height: 36px; }
+  .w-tool-btn svg { width: 18px; height: 18px; }
+  .csat-star {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+  }
+
+  /* FAB on mobile: hidden only while the sheet is showing. When user
+     closes the sheet, body.sheet-open is removed, FAB reappears so they
+     can re-open the chat. */
+  body.sheet-open .web-fab {
+    display: none;
+  }
+}
