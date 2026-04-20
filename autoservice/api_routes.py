@@ -381,13 +381,85 @@ def _get_dream_session():
     return _dream_config_session
 
 
+def _dream_sandbox_config_path(tenant_id: str) -> Path:
+    """Resolve the on-disk sandbox config.json path for a tenant (T1B.6)."""
+    return Path(f".autoservice/sandbox/{tenant_id}/config.json")
+
+
+def _persist_dream_config(tenant_id: str, params: dict[str, Any]) -> bool:
+    """Sync confirmed Dream Engine params to sandbox ``config.json`` (T1B.6).
+
+    One-way write — in-memory ``DreamConfigSession`` remains the runtime source
+    of truth.  Only the 4 confirmed keys (``trigger``, ``coverage``,
+    ``risk_threshold``, ``canary``) are persisted under the ``"dream"`` key.
+
+    Gracefully skips (returns ``False``) when the tenant sandbox directory
+    does not yet exist — matches how other sandbox-dependent endpoints treat
+    missing tenants.  Returns ``True`` on successful write.
+
+    Fixes bug #9 (see docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §3.5).
+    """
+    path = _dream_sandbox_config_path(tenant_id)
+    if not path.parent.exists():
+        logger.info(
+            "dream config sync skipped — sandbox dir missing: tenant=%s", tenant_id
+        )
+        return False
+
+    try:
+        if path.exists():
+            cfg = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            cfg = {"tenant_id": tenant_id}
+    except Exception as exc:
+        logger.warning(
+            "dream config sync failed to read existing config: tenant=%s err=%s",
+            tenant_id,
+            exc,
+        )
+        return False
+
+    if not isinstance(cfg, dict):
+        logger.warning(
+            "dream config sync aborted — config.json is not a dict: tenant=%s",
+            tenant_id,
+        )
+        return False
+
+    cfg.setdefault("dream", {})
+    cfg["dream"] = {
+        "trigger": params.get("trigger"),
+        "coverage": params.get("coverage"),
+        "risk_threshold": params.get("risk_threshold"),
+        "canary": params.get("canary"),
+    }
+    try:
+        path.write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning(
+            "dream config sync failed to write config: tenant=%s err=%s",
+            tenant_id,
+            exc,
+        )
+        return False
+    logger.info("dream config synced: tenant=%s", tenant_id)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Management Chat (Dream Engine conversational interface)
 # ---------------------------------------------------------------------------
 
 @api_router.post("/management/chat")
-async def management_chat(message: str = "") -> dict[str, Any]:
-    """Process a management chat message. Routes slash commands to backend functions."""
+async def management_chat(message: str = "", tenant_id: str = "default") -> dict[str, Any]:
+    """Process a management chat message. Routes slash commands to backend functions.
+
+    ``tenant_id`` identifies which sandbox receives the Dream Engine config
+    sync on dialog completion (T1B.6).  Defaults to ``"default"``.
+    """
     text = message.strip()
     if not text:
         return {"role": "system", "content": "请输入命令或消息。支持: /rules, /status, /approve, /reject, /rollback, @Dream Engine"}
@@ -396,6 +468,13 @@ async def management_chat(message: str = "") -> dict[str, Any]:
     dream_session = _get_dream_session()
     if dream_session.is_active():
         response, done = dream_session.process_input(text)
+        # T1B.6 — on final confirmation (transition to DONE), sync the 4
+        # confirmed params to sandbox config.json.  Cancel path also returns
+        # done=True but _reset()s to IDLE, so checking DONE filters out cancel.
+        if done:
+            from autoservice.dream_config_dialog import DreamConfigStep
+            if dream_session.step == DreamConfigStep.DONE:
+                _persist_dream_config(tenant_id, dream_session.get_config())
         return {"role": "dream_engine", "content": response}
 
     # @Dream Engine or /dream-config — start config dialog (T6E.9)
