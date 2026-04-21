@@ -22,6 +22,15 @@ except ImportError:  # pragma: no cover
 LOCAL_CONFIG_PATH = Path(".autoservice/config.local.yaml")
 VALID_MODES = ("master", "tenant")
 
+# Module-level anchor so callers (and tests via monkeypatch.setattr) can
+# resolve on-disk paths independent of the current working directory.
+# Mirrors the CON-07 convention used by master_tenant/cc_pool/etc.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Internal/system tenant identifiers — mode-agnostic (spec §2.7 + §2.8).
+MASTER_TENANT_ID = "_master"
+LOCAL_ADMIN_TENANT_ID = "_local_admin"
+
 
 def _load_local_config() -> dict[str, Any]:
     """Load .autoservice/config.local.yaml from the current working directory.
@@ -82,3 +91,76 @@ def get_tenant_id() -> str | None:
     if mode != "tenant":
         return None
     return cfg.get("tenant_id")
+
+
+def tenant_root(tenant_id: str | None = None) -> Path:
+    """Return the on-disk root for a tenant's sandbox/fork data (spec §3.3).
+
+    Resolution rules:
+
+    1. Internal/system tenants (``_master`` / ``_local_admin``) are
+       mode-agnostic — they always live at the same relative path:
+
+       * ``_master`` → ``PROJECT_ROOT / ".autoservice/sandbox/_master/"``
+       * ``_local_admin`` → ``PROJECT_ROOT / "plugins/_local_admin/"``
+
+       Any other ``_``-prefixed identifier raises :class:`ValueError`
+       (defensive: only two internal tenants exist today).
+
+    2. Regular tenants follow the deployment-mode convention:
+
+       * master mode → ``PROJECT_ROOT / ".autoservice/sandbox/<tid>/"``
+       * tenant mode → ``PROJECT_ROOT / "plugins/<tid>/"``
+
+    3. ``tenant_id=None`` resolves the request-less default:
+
+       * tenant mode → uses :func:`get_tenant_id` (the self tenant)
+       * master mode → falls back to ``_master`` (platform-ops default,
+         see eval-doc-015 for rationale)
+
+    Args:
+        tenant_id: Target tenant identifier. When ``None``, resolves per
+            deployment mode (see rule 3).
+
+    Returns:
+        Absolute path to the tenant's root directory. The directory is
+        NOT guaranteed to exist — callers that need the directory
+        materialised should create it (e.g. via ``master_tenant.ensure_*``).
+
+    Raises:
+        ValueError: for unknown internal identifiers (``_``-prefixed but
+            not ``_master`` / ``_local_admin``) or an empty string.
+    """
+    # Rule 3: fallback to mode-appropriate default.
+    if tenant_id is None:
+        mode = get_deployment_mode()
+        if mode == "tenant":
+            self_tid = get_tenant_id()
+            # get_tenant_id() returns None only in master mode, so if we hit
+            # this in tenant mode the config is malformed.
+            assert self_tid is not None, (
+                "tenant mode requires tenant_id in config.local.yaml"
+            )
+            return tenant_root(self_tid)
+        # master mode → platform-ops default
+        return tenant_root(MASTER_TENANT_ID)
+
+    if not tenant_id:
+        raise ValueError("tenant_id must be a non-empty string")
+
+    # Rule 1: internal tenants are mode-agnostic.
+    if tenant_id.startswith("_"):
+        if tenant_id == MASTER_TENANT_ID:
+            return PROJECT_ROOT / ".autoservice" / "sandbox" / MASTER_TENANT_ID
+        if tenant_id == LOCAL_ADMIN_TENANT_ID:
+            return PROJECT_ROOT / "plugins" / LOCAL_ADMIN_TENANT_ID
+        raise ValueError(
+            f"unknown internal tenant identifier: {tenant_id!r} "
+            f"(valid: {MASTER_TENANT_ID!r}, {LOCAL_ADMIN_TENANT_ID!r})"
+        )
+
+    # Rule 2: regular tenants branch on deployment mode.
+    mode = get_deployment_mode()
+    if mode == "tenant":
+        return PROJECT_ROOT / "plugins" / tenant_id
+    return PROJECT_ROOT / ".autoservice" / "sandbox" / tenant_id

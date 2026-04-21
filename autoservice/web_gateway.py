@@ -18,8 +18,9 @@ from typing import Any
 
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from autoservice.conversation_engine import ConversationEngine, LocalEngine
 from autoservice.gateway.connection import (
@@ -209,6 +210,56 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # T7B.1 — TenantContext middleware (spec §3.2).
+    #
+    # Populates request.state.deployment_mode + request.state.tenant_id and
+    # — in tenant mode — rewrites /t/<self>/* to /* (URL-flat fork routing)
+    # while refusing cross-tenant paths /t/<other>/* with 403.
+    #
+    # Placement: registered AFTER the CORSMiddleware add_middleware call so
+    # Starlette wraps it INSIDE CORS (Starlette chains in reverse registration
+    # order). That is the desired order — CORS headers attach to our 403
+    # responses, and CORS-only preflight OPTIONS requests still reach us
+    # unchanged.
+    @app.middleware("http")
+    async def tenant_context_middleware(request: Request, call_next):
+        from autoservice import bootstrap
+
+        try:
+            mode = bootstrap.get_deployment_mode()
+        except (FileNotFoundError, ImportError):
+            # Missing config.local.yaml in dev/test → act as master mode.
+            mode = "master"
+
+        request.state.deployment_mode = mode
+        request.state.tenant_id = (
+            bootstrap.get_tenant_id() if mode == "tenant" else None
+        )
+
+        if mode == "tenant":
+            self_tid = request.state.tenant_id
+            path = request.url.path
+            if self_tid and path.startswith(f"/t/{self_tid}/"):
+                # Strip the /t/<self> prefix so the fork's URL-flat routes
+                # receive the request (spec §3.2 "fork 模式 URL-flat").
+                request.scope["path"] = path[len(f"/t/{self_tid}"):] or "/"
+            elif self_tid and path == f"/t/{self_tid}":
+                # Trailing-slash-less variant.
+                request.scope["path"] = "/"
+            elif path.startswith("/t/"):
+                # Cross-tenant attempt in single-tenant fork → refuse.
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": (
+                            "cross-tenant access denied "
+                            "(tenant-mode single-tenant fork)"
+                        ),
+                    },
+                )
+
+        return await call_next(request)
 
     # Register squad plugin
     from autoservice.plugins.squad_plugin import SquadPlugin

@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：29
+- **已完成**：31
 - **进行中**：0
 - **阻塞**：0
-- **待办**：9
-- **完成率**：76% (29/38)
+- **待办**：7
+- **完成率**：82% (31/38)
 - **最后更新**：2026-04-20
 
 ### 会话日志
@@ -31,6 +31,7 @@
 | 2026-04-20 | batch-9 P6 frontend shell hooks — T6F.1 + T6F.2 (eval-doc-011, test-diff-013, e2e-report-006) | `ed4ec38` |
 | 2026-04-21 | batch-10 P6 shell components — T6F.3 + T6F.4 (eval-doc-012, eval-doc-013, test-diff-014, e2e-report-007; subagents timed out, main orchestrator finished) | pending commit |
 | 2026-04-20 | batch-11 P6 TenantLayout 4-tab + ChatTab → /api/admin/chat (eval-doc-014, test-diff-015, e2e-report-008; focused-scope vitest 4.2s — timeout mitigation effective) | pending commit |
+| 2026-04-20 | batch-12 P7 TenantContext middleware + tenant_root helper (eval-doc-015, test-diff-016, e2e-report-009; 17 new tests, 0 new regression) | pending commit |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -147,8 +148,8 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T7B.1 | TenantContext middleware mode branching | green | medium | ⏳ pending | — | — |
-| T7B.2 | tenant_root() path helper | green | small | ⏳ pending | — | — |
+| T7B.1 | TenantContext middleware mode branching | green | medium | ✅ done | batch-12 | pending commit (7 tests, eval-doc-015, test-diff-016, e2e-report-009) |
+| T7B.2 | tenant_root() path helper | green | small | ✅ done | batch-12 | pending commit (10 tests, eval-doc-015, test-diff-016, e2e-report-009) |
 | T7F.3 | customer-chat + operator-console mode routing | green | small | ⏳ pending | — | — |
 | T7S.4 | scripts/setup.sh mode-aware | green | medium | ⏳ pending | — | — |
 | T7S.5 | Fork-mode boot smoke test | green | small | ⏳ pending | — | — |
@@ -184,7 +185,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-9 | P6 | ✅ 完成 | T6F.1 + T6F.2 · 22 new frontend tests + 0 regression; artifact-compliant (eval-doc-011 / test-diff-013 / e2e-report-006) |
 | batch-10 | P6 | ✅ 完成 | T6F.3 + T6F.4 shell components；subagents timed out mid-task, main orchestrator finished tests + artifacts；27 tests batch-scope (+17 net new) + 0 new regression |
 | batch-11 | P6 | ✅ 完成 | T6F.5 + T6F.6 · 14 new frontend tests + backend stub /api/admin/chat; artifact-compliant (eval-doc-014 / test-diff-015 / e2e-report-008); focused-scope vitest 4.2s (timeout mitigation effective) |
-| batch-12 | P7 | ⏳ pending | — |
+| batch-12 | P7 | ✅ 完成 | T7B.1 + T7B.2 · 17 new backend tests + 0 new regression; artifact-compliant (eval-doc-015 / test-diff-016 / e2e-report-009); 102 pass on fork_runtime+bootstrap+api+auth scope |
 | batch-13 | P7 | ⏳ pending | — |
 | batch-14 | P7 | ⏳ pending | — |
 | batch-15 | P8 | ⏳ pending | — |
