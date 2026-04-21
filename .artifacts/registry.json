@@ -534,7 +534,9 @@
       "path": ".artifacts/eval-docs/eval-m2-phase3.md",
       "created_at": "2026-04-21T00:23:04Z",
       "updated_at": "2026-04-21T00:23:04Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-007"
+      ]
     },
     {
       "id": "eval-doc-008",
@@ -600,7 +602,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-3.md",
       "created_at": "2026-04-21T00:23:22Z",
       "updated_at": "2026-04-21T00:23:22Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-007"
+      ]
     },
     {
       "id": "test-diff-008",
