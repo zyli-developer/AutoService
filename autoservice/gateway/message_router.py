@@ -1092,25 +1092,33 @@ async def _generate_agent_reply(
 
         # Build prompt
         suggestions = await _collect_operator_suggestions(engine, conv_id)
-        prompt_parts = []
-        if suggestions:
-            prompt_parts.append(suggestions)
-            prompt_parts.append(
-                f"Customer message: {customer_text_for_prompt}\n\n"
-                "You are a customer service AI. The operator has given you instructions above — "
-                "follow them when replying to the customer. Reply in the same language as the customer."
+        tenant_id = getattr(tenant_config, "tenant_id", None)
+
+        if target_role == "customer":
+            from autoservice.triage_dispatch import _build_customer_prompt
+            prompt = await _build_customer_prompt(
+                tenant_id=tenant_id,
+                customer_text=customer_text_for_prompt,
+                operator_suggestions=suggestions,
             )
         else:
-            prompt_parts.append(
-                f"Customer message: {customer_text_for_prompt}\n\nReply briefly in the same language as the customer."
-            )
-        prompt = "\n".join(prompt_parts)
+            prompt_parts: list[str] = []
+            if suggestions:
+                prompt_parts.append(suggestions)
+                prompt_parts.append(
+                    f"Customer message: {customer_text_for_prompt}\n\n"
+                    "You are a customer service AI. The operator has given you instructions above — "
+                    "follow them when replying to the customer. Reply in the same language as the customer."
+                )
+            else:
+                prompt_parts.append(
+                    f"Customer message: {customer_text_for_prompt}\n\nReply briefly in the same language as the customer."
+                )
+            prompt = "\n".join(prompt_parts)
 
         # Collect response
         reply_text = ""
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
-
-        tenant_id = getattr(tenant_config, "tenant_id", None)
 
         async def _role_stream():
             """Yield Messages from a (role, tenant) sub-pool instance.
@@ -1156,7 +1164,7 @@ async def _generate_agent_reply(
                     yield m
 
         iterator = (
-            pool.session_query(conv_id, prompt)
+            pool.session_query(conv_id, prompt, tenant_id=tenant_id)
             if target_role == "customer"
             else _role_stream()
         )

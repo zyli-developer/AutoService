@@ -10,6 +10,7 @@ Flow (one customer message):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -164,3 +165,68 @@ async def _build_reseeded_prompt(
         f"You are now the {new_role} agent. "
         "Continue based on the conversation history above."
     )
+
+
+async def _build_customer_prompt(
+    *,
+    tenant_id: str | None,
+    customer_text: str,
+    operator_suggestions: str,
+) -> str:
+    """Compose the customer-role prompt with KB pre-fetch injected.
+
+    Shape (sections joined by blank lines):
+      <operator_suggestions>...</operator_suggestions>   (iff non-empty)
+      <kb_context>...</kb_context>                       (iff hits non-empty)
+      Customer message: <text>
+      <instruction tail>
+
+    KB errors are logged and swallowed; prompt falls back to no-KB shape.
+    """
+    kb_hits: list[dict] = []
+    if tenant_id:
+        try:
+            from autoservice.dream_agent import kb_search
+            kb_hits = await asyncio.to_thread(
+                kb_search, tenant_id=tenant_id, query=customer_text, top_k=5,
+            )
+        except Exception:
+            log.exception("KB pre-fetch failed for tenant=%s", tenant_id)
+            kb_hits = []
+
+    parts: list[str] = []
+    if operator_suggestions:
+        parts.append(operator_suggestions)
+
+    if kb_hits:
+        block = ["<kb_context>"]
+        for i, hit in enumerate(kb_hits, 1):
+            header = f"[{i}]"
+            src = hit.get("source_name")
+            sec = hit.get("section")
+            if src:
+                header += f" {src}"
+            if sec:
+                header += f" · {sec}"
+            block.append(header)
+            block.append((hit.get("content") or "")[:500])
+            block.append("")
+        block.append("</kb_context>")
+        parts.append("\n".join(block))
+
+    if kb_hits:
+        tail = (
+            f"Customer message: {customer_text}\n\n"
+            "基于 <kb_context> 回答。若 KB 未覆盖，可调用 kb_search 工具补查；"
+            "补查仍无匹配，按 soul 的升级条件处理（说明需要核实并升级）。"
+            "语言跟随客户。"
+        )
+    else:
+        tail = (
+            f"Customer message: {customer_text}\n\n"
+            "若需查找产品/政策信息，可调用 kb_search 工具；若仍无匹配，"
+            "按 soul 的升级条件处理（说明需要核实并升级）。语言跟随客户。"
+        )
+    parts.append(tail)
+
+    return "\n\n".join(parts)
