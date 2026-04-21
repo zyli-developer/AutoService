@@ -1,5 +1,16 @@
 @import '@autoservice/design-system';
 
+/* Honor reduced-motion preference (WCAG 2.3.3 AAA) — chat sheet rise +
+   typing dot bob loop are the most likely to bother sensitive users. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -941,27 +952,33 @@ html, body, #root {
 
   .web-fab-call { display: none; }
 
-  /* Sheet host — the modal becomes a bottom sheet */
+  /* Sheet host — the modal becomes a bottom sheet.
+     Use top:0 + transform:translateY for the peek/full transition so the
+     animation runs on the compositor (transform) instead of triggering a
+     layout/paint pass per frame (was: transition: top, which forces relayout
+     on every frame on mobile). */
   .web-modal {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
+    top: 0;
     width: 100%;
     height: auto;
     padding: 0;
     background: transparent;
     z-index: 20;
-    transition: top 420ms var(--ease-ink-bloom);
-    will-change: top;
+    transition: transform 420ms var(--ease-ink-bloom);
+    will-change: transform;
     border: none;
     border-radius: 0;
     box-shadow: none;
     display: flex;
     flex-direction: column;
   }
-  .web-modal.sheet-peek { top: 46vh; }
-  .web-modal.sheet-full { top: 8vh; }
+  /* peek shows ~54vh of sheet starting from 46vh down; full shows ~92vh from 8vh down */
+  .web-modal.sheet-peek { transform: translateY(46vh); }
+  .web-modal.sheet-full { transform: translateY(8vh); }
 
   /* Inner surface: body + input get the sheet's white background. The
      header keeps its indigo gradient (from default styles) so the
@@ -1025,7 +1042,15 @@ html, body, #root {
     text-overflow: ellipsis;
     max-width: 200px;
   }
-  .w-hd-btn { width: 28px; height: 28px; }
+  /* Visual button is 28×28 but the hit area pads out to 44×44 (WCAG 2.5.5).
+     The icon SVG remains 14×14 centered. */
+  .w-hd-btn {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   .w-hd-btn svg { width: 14px; height: 14px; }
   .web-modal-body { padding: 14px 12px 10px; gap: 10px; }
   .w-msg { max-width: 92%; }

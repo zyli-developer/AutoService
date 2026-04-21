@@ -1,5 +1,18 @@
 @import '@autoservice/design-system';
 
+/* Honor users who've requested reduced motion at the OS level (vestibular
+   disorders, motion sensitivity). Drawer slides, sheet rises, push-stack
+   transitions all collapse to ~instant so the UI doesn't trigger discomfort.
+   WCAG 2.3.3 (AAA). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -374,6 +387,13 @@ html, body, #root {
 .im-main:not(.with-chat) .op-chat-wrap,
 .im-main:not(.with-chat) .op-chat-empty {
   display: none;
+}
+
+/* Tablet (900-1280px): shrink cards-col so the chat-pane has a usable
+   width once you account for the 232px sidebar. Without this, on a 1024px
+   laptop the chat-pane collapses to ~312px and reads as broken. */
+@media (max-width: 1280px) and (min-width: 901px) {
+  .im-w { --op-cards-col-w: 360px; }
 }
 
 .op-cards-col {

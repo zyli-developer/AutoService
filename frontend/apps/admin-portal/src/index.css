@@ -1,5 +1,16 @@
 @import '@autoservice/design-system';
 
+/* Honor reduced-motion preference (WCAG 2.3.3 AAA) — drawer + cascade nav
+   animation in particular can trigger vestibular discomfort. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -937,17 +948,28 @@ html, body, #root {
 
 /* ===== Command palette ===== */
 .cs-cmdk-overlay {
+  /* Click-outside dismiss surface; rendered as a real <button>. Reset native
+     button chrome so it reads as a transparent backdrop. The cmdk panel is a
+     sibling positioned above it via z-index. */
   position: fixed;
   inset: 0;
   background: rgba(46, 53, 69, .35);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 120px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
   z-index: 100;
 }
 
 .cs-cmdk-panel {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);

@@ -212,6 +212,7 @@
   "admin.nav.open_menu": "Open navigation",
   "admin.nav.close_menu": "Close navigation",
   "admin.command_palette.open": "Open command palette",
+  "admin.command_palette.close": "Close command palette",
   "admin.command_palette.title": "Command Palette",
   "admin.command_palette.placeholder": "⌘K search is coming soon. Esc to close.",
   "admin.user_menu.open": "User menu",
@@ -394,6 +395,9 @@
   "admin.chat.widget.details": "Details",
   "admin.tenant.chat.placeholder": "Ask _local_admin anything…",
   "admin.tenant.chat.title": "Chat",
+  "admin.tenant.chat.history_aria": "Chat history",
+  "admin.tenant.chat.form_aria": "Send chat message",
+  "admin.tenant.chat.input_aria": "Chat message",
   "admin.nav.aria_label": "Admin navigation",
   "admin.wizard.upload.brand_placeholder": "e.g. mystore",
   "customer.csat.prompt": "How would you rate this conversation?",
@@ -412,5 +416,6 @@
   "operator.feed.time.now": "just now",
   "operator.feed.time.minutes_ago": "{{count}} min ago",
   "operator.feed.time.hours_ago": "{{count}} h ago",
-  "operator.feed.time.days_ago": "{{count}} d ago"
+  "operator.feed.time.days_ago": "{{count}} d ago",
+  "customer.chat.image_attachment": "image attachment"
 }

@@ -212,6 +212,7 @@
   "admin.nav.open_menu": "打开导航",
   "admin.nav.close_menu": "关闭导航",
   "admin.command_palette.open": "打开命令面板",
+  "admin.command_palette.close": "关闭命令面板",
   "admin.command_palette.title": "命令面板",
   "admin.command_palette.placeholder": "⌘K search is coming soon. Esc to close.",
   "admin.user_menu.open": "用户菜单",
@@ -394,6 +395,9 @@
   "admin.chat.widget.details": "详情",
   "admin.tenant.chat.placeholder": "向 _local_admin 提问…",
   "admin.tenant.chat.title": "对话",
+  "admin.tenant.chat.history_aria": "聊天历史",
+  "admin.tenant.chat.form_aria": "发送聊天消息",
+  "admin.tenant.chat.input_aria": "聊天输入框",
   "admin.nav.aria_label": "管理后台导航",
   "admin.wizard.upload.brand_placeholder": "示例：mystore",
   "customer.csat.prompt": "请为本次对话打分",
@@ -412,5 +416,6 @@
   "operator.feed.time.now": "刚刚",
   "operator.feed.time.minutes_ago": "{{count}} 分钟前",
   "operator.feed.time.hours_ago": "{{count}} 小时前",
-  "operator.feed.time.days_ago": "{{count}} 天前"
+  "operator.feed.time.days_ago": "{{count}} 天前",
+  "customer.chat.image_attachment": "图片附件"
 }
