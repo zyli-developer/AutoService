@@ -554,6 +554,18 @@
       "created_at": "2026-04-21T00:23:12Z",
       "updated_at": "2026-04-21T00:23:12Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-005",
+      "name": "M2 batch-1 test-diff (T1B.3 + T1B.4 + T1B.5)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-1.md",
+      "created_at": "2026-04-21T00:23:15Z",
+      "updated_at": "2026-04-21T00:23:15Z",
+      "related_ids": []
     }
   ]
 }
