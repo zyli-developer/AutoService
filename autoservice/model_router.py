@@ -8,12 +8,15 @@ based on intent classification and confidence scoring.
 """
 
 import asyncio
+import logging
 import re
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional, Protocol
+
+log = logging.getLogger("triage.router")
 
 
 _TRIAGE_OUTPUT_RE = re.compile(
@@ -107,7 +110,7 @@ class TriageDecision:
 
 class _TenantConfigLike(Protocol):
     supported_languages: list[str]
-    tenant_id: str
+    tenant_id: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +316,7 @@ class ModelRouter:
         threshold = self._thresholds["medium"]
         can_fastpath = (
             fast.confidence >= threshold
-            and (previous_role is None or drift_count < 2 or fast.confidence < threshold)
+            and (previous_role is None or drift_count < 2)
         )
         if can_fastpath:
             return TriageDecision(
@@ -363,6 +366,25 @@ class ModelRouter:
             f"客户消息: {message}"
         )
 
+    def _triage_fallback(
+        self,
+        message: str,
+        fast_result: "ClassificationResult",
+        detected_language: str | None,
+        previous_role: str | None,
+    ) -> TriageDecision:
+        """Construct a fallback TriageDecision from the fast classifier result."""
+        return TriageDecision(
+            role=fast_result.route_to.value,
+            confidence=fast_result.confidence,
+            source="fallback",
+            intent=fast_result.intent.value,
+            detected_language=detected_language,
+            summary=(fast_result.summary or message[:100]),
+            needs_operator_notice=True,
+            previous_role=previous_role,
+        )
+
     async def _invoke_triage_agent(
         self,
         message: str,
@@ -378,28 +400,20 @@ class ModelRouter:
                 self._triage_agent_one_shot(message, tenant_id),
                 timeout=self._TRIAGE_AGENT_TIMEOUT,
             )
-        except (asyncio.TimeoutError, Exception):
-            return TriageDecision(
-                role=fast_result.route_to.value,
-                confidence=fast_result.confidence,
-                source="fallback",
-                intent=fast_result.intent.value,
-                detected_language=detected_language,
-                summary=(fast_result.summary or message[:100]),
-                needs_operator_notice=True,
-                previous_role=previous_role,
+        except asyncio.TimeoutError:
+            log.warning("triage agent timed out for tenant=%s", tenant_id)
+            return self._triage_fallback(
+                message, fast_result, detected_language, previous_role,
+            )
+        except Exception as exc:
+            log.warning("triage agent call failed: %s", exc, exc_info=True)
+            return self._triage_fallback(
+                message, fast_result, detected_language, previous_role,
             )
         parsed = _parse_triage_output(raw)
         if parsed is None:
-            return TriageDecision(
-                role=fast_result.route_to.value,
-                confidence=fast_result.confidence,
-                source="fallback",
-                intent=fast_result.intent.value,
-                detected_language=detected_language,
-                summary=(fast_result.summary or message[:100]),
-                needs_operator_notice=True,
-                previous_role=previous_role,
+            return self._triage_fallback(
+                message, fast_result, detected_language, previous_role,
             )
         return TriageDecision(
             role=parsed["route_to"],
