@@ -11,9 +11,6 @@
  * Additionally (2026-04-21-dev-auto-login):
  *  5. Dev-mode probe disabled → no dev panel rendered.
  *  6. Dev-mode probe enabled → dev panel rendered with personas + tenants.
- *
- * Note: filename `AuthLoginPage.test.tsx` distinguishes from the legacy
- * `LoginPage.test.tsx` which covers the tenant-id zustand flow.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
