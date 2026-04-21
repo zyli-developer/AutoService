@@ -4,7 +4,7 @@
  * Route: `/master/tenants/:id/preview`
  *
  * Reads `tenantId` from the route, renders a slim top bar with the tenant id
- * and a back link, and embeds `/t/<tenant_id>/chat` (the customer-chat SPA's
+ * and a back link, and embeds `/tenant/<tenant_id>/chat` (the customer-chat SPA's
  * tenant-scoped entry — see T1F.3 / operator-console/main.tsx for the pattern)
  * in an iframe that fills the remaining viewport height.
  *
@@ -25,7 +25,7 @@ type PreviewView = 'chat' | 'operator' | 'admin';
 
 // Per-view default dev ports (see each app's vite.config.ts). Used only
 // when admin-portal itself is served from its dev port (5175) — in prod
-// the reverse proxy routes `/t/<tid>/{chat,operator,admin}` on a single
+// the reverse proxy routes `/tenant/<tid>/{chat,operator,admin}` on a single
 // origin and we keep the relative path.
 const DEV_PORTS: Record<PreviewView, string> = {
   chat: '5173',     // customer-chat
@@ -36,9 +36,9 @@ const DEV_PORTS: Record<PreviewView, string> = {
 /**
  * Resolve the iframe source URL for an embedded tenant view.
  *
- * In production the reverse proxy routes `/t/<tid>/<view>` to the
+ * In production the reverse proxy routes `/tenant/<tid>/<view>` to the
  * matching SPA bundle on one origin, so the relative path works. In dev,
- * admin-portal (default :5175) has no proxy for `/t/*` and would
+ * admin-portal (default :5175) has no proxy for `/tenant/*` and would
  * SPA-fallback to its own index.html — causing the iframe to load
  * admin-portal recursively (the "infinite nesting" bug). We detect this
  * and point chat/operator iframes at their respective dev servers.
@@ -49,7 +49,7 @@ const DEV_PORTS: Record<PreviewView, string> = {
  *   VITE_ADMIN_PORTAL_URL
  */
 function resolveViewSrc(tenantId: string, view: PreviewView): string {
-  const path = `/t/${encodeURIComponent(tenantId)}/${view}`;
+  const path = `/tenant/${encodeURIComponent(tenantId)}/${view}`;
   const overrideKey = (
     {
       chat: 'VITE_CUSTOMER_CHAT_URL',

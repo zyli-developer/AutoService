@@ -2,7 +2,7 @@
  * T1F.6 · TenantPreviewTab tests.
  *
  * Covers:
- *   - iframe src uses `/t/<id>/chat`
+ *   - iframe src uses `/tenant/<id>/chat`
  *   - top bar shows tenant id and back-to-list link
  *   - URL-unsafe tenant ids are percent-encoded
  */
@@ -29,11 +29,11 @@ describe('TenantPreviewTab', () => {
     expect(screen.getByTestId('tenant-preview-back')).toHaveAttribute('href', '/master/tenants');
   });
 
-  it('TC-002: embeds /t/<id>/chat in an iframe', () => {
+  it('TC-002: embeds /tenant/<id>/chat in an iframe', () => {
     renderWithTenant('globex');
     const iframe = screen.getByTestId('tenant-preview-iframe') as HTMLIFrameElement;
     expect(iframe.tagName).toBe('IFRAME');
-    expect(iframe.getAttribute('src')).toBe('/t/globex/chat');
+    expect(iframe.getAttribute('src')).toBe('/tenant/globex/chat');
   });
 
   it('TC-003: iframe has a title referencing the tenant', () => {
@@ -46,13 +46,13 @@ describe('TenantPreviewTab', () => {
     renderWithTenant('a%2Fb'); // "a/b" once decoded by the router
     // useParams returns the decoded id ("a/b"); encodeURIComponent re-encodes for the href.
     const iframe = screen.getByTestId('tenant-preview-iframe') as HTMLIFrameElement;
-    expect(iframe.getAttribute('src')).toBe('/t/a%2Fb/chat');
+    expect(iframe.getAttribute('src')).toBe('/tenant/a%2Fb/chat');
   });
 
   it('TC-005: "open in new tab" link points at the same chat path', () => {
     renderWithTenant('acme');
     const link = screen.getByTestId('tenant-preview-open-new');
-    expect(link.getAttribute('href')).toBe('/t/acme/chat');
+    expect(link.getAttribute('href')).toBe('/tenant/acme/chat');
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toContain('noopener');
   });

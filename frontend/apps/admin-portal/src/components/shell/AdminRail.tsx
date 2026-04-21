@@ -108,7 +108,7 @@ interface AdminRailProps {
   hideMasterSection?: boolean;
   /**
    * Override the store's `tenantId` for branding. Set when the rail is
-   * rendered inside a tenant-scoped iframe (/t/<tid>/admin) so the brand
+   * rendered inside a tenant-scoped iframe (/tenant/<tid>/admin) so the brand
    * strip reflects the previewed tenant instead of the host session.
    */
   tenantIdOverride?: string;
