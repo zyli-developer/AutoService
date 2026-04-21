@@ -32,17 +32,17 @@ vi.mock('@autoservice/ws-client', async (importActual) => {
 const { App } = await import('../App');
 
 /**
- * Renders <App/> inside a MemoryRouter scoped to `/t/test-tenant/chat` so the
+ * Renders <App/> inside a MemoryRouter scoped to `/tenant/test-tenant/chat` so the
  * tenant-aware routing introduced in T1F.3 resolves to the active chat UI.
  * Individual tests can still pass options (e.g. MemoryRouter initialEntries)
  * by calling renderApp({ path: '/chat' }).
  */
 function renderApp(opts: { path?: string } = {}) {
-  const path = opts.path ?? '/t/test-tenant/chat';
+  const path = opts.path ?? '/tenant/test-tenant/chat';
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/t/:tenantId/chat" element={<App />} />
+        <Route path="/tenant/:tenantId/chat" element={<App />} />
         <Route path="/chat" element={<App />} />
         <Route path="*" element={<App />} />
       </Routes>

@@ -31,8 +31,8 @@ beforeEach(() => {
 });
 
 describe('deriveBasename', () => {
-  it('master mode + tenant id → /t/<tid>', () => {
-    expect(deriveBasename('master', 'acme')).toBe('/t/acme');
+  it('master mode + tenant id → /tenant/<tid>', () => {
+    expect(deriveBasename('master', 'acme')).toBe('/tenant/acme');
   });
 
   it('master mode + null tenant id → empty (URL-flat fall-back)', () => {
