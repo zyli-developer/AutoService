@@ -2,9 +2,9 @@
  * T6F.1 · useTenantId — tenant-id extraction hook (M2 real impl)
  *
  * Resolution order (spec §3.6):
- *  1. The `:tenantId` route path param (matches `/t/:tenantId/*`) — URL wins
+ *  1. The `:tenantId` route path param (matches `/tenant/:tenantId/*`) — URL wins
  *     in ALL modes because deep links are authoritative. A fork admin
- *     browsing `/t/other/admin` sees `other` (backend middleware will 403
+ *     browsing `/tenant/other/admin` sees `other` (backend middleware will 403
  *     the cross-tenant access, which is the desired UX — not a silent
  *     substitution).
  *  2. The `?tenant=` query-string parameter — legacy fallback.
