@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：34
+- **已完成**：35
 - **进行中**：0
 - **阻塞**：0
-- **待办**：4
-- **完成率**：89% (34/38)
+- **待办**：3
+- **完成率**：92% (35/38)
 - **最后更新**：2026-04-20
 
 ### 会话日志
@@ -36,6 +36,7 @@
 | 2026-04-20 | batch-13 T7F.3 customer-chat + operator-console mode routing (eval-doc-017, test-diff-018; 10 frontend tests across both apps, 0 new regression) | `90cfd69` |
 | 2026-04-21 | batch-13 combined e2e-report-010 + canonical T7S.4 audit commit `8bbe728`（修复 race 下的 commit subject） | e2e-report-010 registered |
 | 2026-04-20 | batch-14 T7S.5 fork-mode boot smoke test (eval-doc-018, test-diff-019; 5 new tests, 0 regression on fork_runtime+bootstrap+setup scope) | pending commit |
+| 2026-04-20 | batch-14 T7B.6 /api/management/chat → _master routing (eval-doc-019, test-diff-020; 7 new tests, 0 regression across api+auth+cc_pool+dream_agent+bootstrap scope; admin tool set deferred to M3) | pending commit |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -157,7 +158,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | T7F.3 | customer-chat + operator-console mode routing | green | small | ✅ done | batch-13 | pending commit (10 tests across both apps, eval-doc-017, test-diff-018) |
 | T7S.4 | scripts/setup.sh mode-aware | green | medium | ✅ done | batch-13 | pending commit (8 tests, eval-doc-016, test-diff-017) |
 | T7S.5 | Fork-mode boot smoke test | green | small | ✅ done | batch-14 | pending commit (5 tests, eval-doc-018, test-diff-019; 49 pass on fork_runtime+bootstrap+setup scope) |
-| T7B.6 | /api/management/chat → _master routing | green | small | ⏳ pending | — | — |
+| T7B.6 | /api/management/chat → _master routing | green | small | ✅ done | batch-14 | pending commit (7 tests, eval-doc-019, test-diff-020; admin tool set deferred to M3 per eval-doc-019) |
 
 **Gate**：全新 tenant fork 启动；前端路由正确；/api/management/chat → _master 通。
 

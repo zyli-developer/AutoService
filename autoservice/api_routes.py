@@ -887,15 +887,103 @@ def _persist_dream_config(tenant_id: str, params: dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Management Chat (Dream Engine conversational interface)
+# Management Chat — master-side admin conversational interface (T7B.6)
 # ---------------------------------------------------------------------------
+#
+# Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §2.7
+# ("A 的 ManagementChat 接入 ``_master``").
+#
+# Wire contract:
+#   POST /api/management/chat  {message: str}  -> {reply: str}
+#   errors: 422 (bad body), 503 (pool unavailable)
+#
+# The M1 slash-command / Dream-Engine-config dispatcher is preserved as
+# ``/api/management/chat-legacy`` (below) for one milestone; it will be
+# removed once the _master admin tool set lands (M3+).
+#
+# Design-note refs (eval-doc-019):
+#   * Uses ``cc_pool.acquire(role="customer", tenant_id="_master")`` as the
+#     spec mandates. The ``tenant_id`` is cosmetic today on the customer
+#     path (see cc_pool.py:440-444 — customer role ignores tenant_id and
+#     goes through ``super().acquire()``); passing it here pins the contract
+#     for the forthcoming soul-injection PR.
+#   * Uses ``async with pool.acquire(...) as instance`` + ``instance.client
+#     .query / .receive_response`` (cc_pool.py:359-366 pattern) rather than
+#     ``pool.query()`` so the tenant_id kwarg stays visible at the call
+#     site for the mock-based test assertion (test #4).
+#   * NO stub-LLM fallback; the regression guard test #6 greps for this.
+
 
 @api_router.post("/management/chat")
-async def management_chat(message: str = "", tenant_id: str = "default") -> dict[str, Any]:
-    """Process a management chat message. Routes slash commands to backend functions.
+async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
+    """M2 — route management chat to ``_master`` customer agent via cc_pool.
 
-    ``tenant_id`` identifies which sandbox receives the Dream Engine config
-    sync on dialog completion (T1B.6).  Defaults to ``"default"``.
+    Spec §2.7: the platform admin A talks to the ``_master`` tenant's
+    customer agent. Admin tool set (``list_tenants``, ``read_proposals``,
+    ``approve_proposal`` …) is deferred to M3 per eval-doc-019; M2 just
+    routes text through on plain customer soul.
+
+    Request body::
+
+        {"message": "<str>"}
+
+    Responses:
+        * 200  ``{"reply": "<text>"}``
+        * 422  ``{"error": "message required"}`` for missing/empty/non-str
+        * 503  ``{"error": "cc_pool unavailable (POOL_MODE disabled?)"}``
+    """
+    message = body.get("message") if isinstance(body, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        return JSONResponse(
+            status_code=422,
+            content={"error": "message required"},
+        )
+
+    from autoservice.cc_pool import get_pool
+
+    pool = await get_pool()
+    if pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "cc_pool unavailable (POOL_MODE disabled?)"},
+        )
+
+    # Spec §2.7 — ManagementChat routes to _master.
+    # tenant_id is passed verbatim even though the current customer path in
+    # cc_pool.acquire ignores it (see cc_pool.py:440-444); the kwarg pins
+    # the spec contract at the call site for the soul-injection PR.
+    reply_parts: list[str] = []
+    async with pool.acquire(role="customer", tenant_id="_master") as instance:
+        await instance.client.query(message)
+        async for msg in instance.client.receive_response():
+            # Extract text blocks from the SDK Message envelope. The SDK
+            # returns a Message with a ``.content`` list of blocks that
+            # have a ``.text`` attribute for text blocks; we join them.
+            content = getattr(msg, "content", None)
+            if isinstance(content, str):
+                reply_parts.append(content)
+            elif isinstance(content, list):
+                for block in content:
+                    text = getattr(block, "text", None)
+                    if isinstance(text, str):
+                        reply_parts.append(text)
+
+    return {"reply": "".join(reply_parts)}
+
+
+@api_router.post("/management/chat-legacy")
+async def management_chat_legacy(
+    message: str = "", tenant_id: str = "default",
+) -> dict[str, Any]:
+    """M1 slash-command / Dream-Engine-config dispatcher — kept one milestone.
+
+    The M2 ``/api/management/chat`` endpoint replaces this handler with real
+    ``_master`` routing (spec §2.7).  The M1 behaviour (``/rules``,
+    ``/status``, ``/approve``, ``/reject``, ``/rollback``, ``@Dream
+    Engine``, Dream-Engine config dialog) is preserved here verbatim under
+    the ``-legacy`` URL so any pre-M2 integration that depends on the
+    slash-command UX has a one-milestone migration window. Will be
+    deleted at M3 once the ``_master`` admin tool set lands.
     """
     text = message.strip()
     if not text:
