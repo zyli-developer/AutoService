@@ -88,10 +88,30 @@ class FastClassifier:
     augmented by the triage agent (haiku) for semantic understanding.
     """
 
+    _tenant_cache: dict[str | None, "FastClassifier"] = {}
+
     def __init__(self):
         config = _load_config()
         self._intents = config["intents"]
         self._thresholds = config["confidence"]
+
+    @classmethod
+    def for_tenant(cls, tenant_id: str | None) -> "FastClassifier":
+        """Return a tenant-scoped classifier (cached per tenant_id)."""
+        if tenant_id in cls._tenant_cache:
+            return cls._tenant_cache[tenant_id]
+        from autoservice.tenant_triage_config import load_classify_intent_config
+        cfg = load_classify_intent_config(tenant_id)
+        inst = cls.__new__(cls)
+        inst._intents = cfg["intents"]
+        inst._thresholds = cfg["confidence"]
+        cls._tenant_cache[tenant_id] = inst
+        return inst
+
+    @classmethod
+    def clear_tenant_cache(cls) -> None:
+        """Test hook — drop cached per-tenant classifiers."""
+        cls._tenant_cache.clear()
 
     def classify(self, message: str, detected_language: Optional[str] = None) -> ClassificationResult:
         """Classify a message into an intent with confidence score."""
