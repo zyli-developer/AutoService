@@ -536,7 +536,8 @@
       "updated_at": "2026-04-21T00:23:04Z",
       "related_ids": [
         "test-diff-007",
-        "test-diff-008"
+        "test-diff-008",
+        "test-diff-009"
       ]
     },
     {
@@ -631,7 +632,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-5.md",
       "created_at": "2026-04-21T00:23:30Z",
       "updated_at": "2026-04-21T00:23:30Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-007"
+      ]
     },
     {
       "id": "test-diff-010",
