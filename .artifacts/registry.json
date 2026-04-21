@@ -980,7 +980,8 @@
       "updated_at": "2026-04-21T01:59:28Z",
       "related_ids": [
         "eval-doc-011",
-        "eval-doc-015"
+        "eval-doc-015",
+        "test-diff-017"
       ]
     },
     {
@@ -995,6 +996,20 @@
       "updated_at": "2026-04-21T02:02:23Z",
       "related_ids": [
         "eval-doc-016"
+      ]
+    },
+    {
+      "id": "test-diff-017",
+      "name": "T7F.3 customer-chat + operator-console mode-routing tests",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "phase-7-main",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7f-3.md",
+      "created_at": "2026-04-21T02:03:16Z",
+      "updated_at": "2026-04-21T02:03:16Z",
+      "related_ids": [
+        "eval-doc-017"
       ]
     }
   ]
