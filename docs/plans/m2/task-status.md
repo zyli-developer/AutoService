@@ -25,19 +25,21 @@
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
 
-## 待办 · Artifact 回填（M2 闸门前）
+## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
-**决策 2026-04-21 · 选项 C**：M2 /autorun 全程用内联 TDD，不走 dev-loop pipeline 的 artifact 流程。
-到 batch-16 E2E 验收前**一次性回填** `.artifacts/`：
+**现状**：Phase 1–3（14 任务，commits `178919c`..`21ed7bb`）已用内联 TDD 完成，未产任何 `.artifacts/` artifact。
 
-- [ ] Phase 1–7 各产 1 个汇总 eval-doc（简要"预期 vs 实际"；不是每任务一份）→ `.artifacts/eval-docs/`
-- [ ] 从 `git log --all --grep="m2"` 抽 test-diff（每 batch 一份）→ `.artifacts/test-diffs/`
-- [ ] 跑 `dev-loop-skills:skill-4-test-runner` 对 M2 全量 pytest 套件产正式 e2e-report → `.artifacts/e2e-reports/`
-- [ ] `bash scripts/register.sh` 批量注册所有回填 artifact → `registry.json`
-- [ ] （可选）产 coverage-matrix 覆盖 M2 新增代码
+**B 决策**：
+1. **立即回填 Phase 1–3**：3 个汇总 eval-doc + 6 个 test-diff（每 batch 一份）+ 1 个正式 e2e-report
+2. **从 batch-7 起**（batch-6 in-flight 不动，跑完后按新规）subagent dispatch prompt 强制产 artifact：
+   - 任务开始前：eval-doc（simulate 模式）→ `.artifacts/eval-docs/`
+   - 实现前：test-plan → `.artifacts/test-plans/`
+   - 测试绿后：test-diff → `.artifacts/test-diffs/`
+   - 每 batch 结束：跑 skill-4-test-runner 生成 e2e-report → `.artifacts/e2e-reports/`
+   - 每个 artifact 产出必调 `bash scripts/register.sh` 注册到 `registry.json`
+3. 更新 [cc-prompt-templates.md §6](cc-prompt-templates.md#6-) 把 artifact 要求 inline 到 subagent dispatch 模板
 
-**触发点**：batch-15 完成后、batch-16 dispatch 前。
-**违反规则说明**：dev-loop-skills 规定"产出后立即注册"；C 方案明确接受此违反换取 autorun 吞吐率；M2 闸门前补齐。
+**触发点**：batch-6 subagent 完成通知 → 立即启动 Phase 1-3 回填 + 改模板 → 再 dispatch batch-7
 
 ## 更新规则
 
