@@ -602,6 +602,18 @@
       "created_at": "2026-04-21T00:23:26Z",
       "updated_at": "2026-04-21T00:23:26Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-009",
+      "name": "M2 batch-5 test-diff (T3B.5 cc_pool + T3B.6 /api/dream)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-5.md",
+      "created_at": "2026-04-21T00:23:30Z",
+      "updated_at": "2026-04-21T00:23:30Z",
+      "related_ids": []
     }
   ]
 }
