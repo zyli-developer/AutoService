@@ -286,7 +286,7 @@ async def test_release_routes_to_correct_pool():
 
 
 async def test_unknown_role_raises():
-    """``role='translate'`` (or any other unknown role) must raise."""
+    """``role='no-such-role'`` (or any other unknown role) must raise."""
     pool = _build_customer_pool()
     await pool.start()
     try:
@@ -294,13 +294,13 @@ async def test_unknown_role_raises():
             # Note: ``acquire`` for unknown roles raises synchronously
             # from the role dispatch — before returning any context
             # manager. That's the intended contract (fail fast).
-            pool.acquire(role="translate")
+            pool.acquire(role="no-such-role")
 
         msg = str(excinfo.value)
-        # Message is actionable: names the rejected role AND points
-        # at the extension path.
-        assert "translate" in msg
-        assert "_KNOWN_ROLES" in msg or "Known roles" in msg
+        # Message is actionable: names the rejected role AND lists the
+        # currently-known roles so the extension path is obvious.
+        assert "no-such-role" in msg
+        assert "Known roles" in msg
     finally:
         await pool.shutdown()
         await cc_pool_mod.shutdown_pool()
