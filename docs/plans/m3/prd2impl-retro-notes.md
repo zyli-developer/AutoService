@@ -207,6 +207,55 @@ Thin layer on top of T1S.2 infrastructure. `create_invite` (admin side) + `accep
 
 **Honest caveat**: these are solo-orchestrator-driven tasks. Team with different people would coordinate + discuss more, closer to 19h.
 
+### M3-2 Execution (batch-4 + batch-5 + batch-6) 🎯
+
+**Completed**: 8/8 P2 tasks (T2S.1–T2S.8). 17/39 overall (44%).
+
+**Metrics**:
+- Actual: ~240 min (4h across 3 batches)
+- Estimated: 17h (8 tasks × avg 2h)
+- Speed: **4× faster** than estimate
+- New tests: 102 across 5 test dirs (auth, gateway, pool, compliance, sla, dream_agent)
+- Reviewer rounds: 3 (T2S.1, T2S.8, T2S.5) — 8 Critical findings total; 1 APPROVED first try (T2S.8)
+- Scoped regression: 190 → 311 (+121) — M2 never broken
+
+#### 🟢 Reviewer C-findings surface real structural issues
+T2S.5 reviewer found **C1 (Critical correctness, not security)**: AlertEngine constructed FiredAlert without tenant_id → T2S.5 push filter always short-circuits → feature dead in production despite all tests passing. **Would have shipped broken without reviewer.**
+
+Root cause: T2S.5 was scoped as "push path", T2S.4 was scoped as "threshold table"; neither task explicitly owned "AlertEngine evaluates per-tenant". The decomposition left a seam. **R14**: task-gen should detect "connector" seams between tasks and schedule an explicit integration task OR consolidate into one.
+
+#### 🟢 Contract-test bypass caught by reviewer before production
+Tests for T2S.5 constructed `FiredAlert(tenant_id="acme")` directly, bypassing AlertEngine. This made them pass even though the real code path never set tenant_id. Reviewer's E2E-suggestion check would have exposed this without the review. **R15**: task-gen templates for components with a pipeline (producer → consumer) should require at least ONE test hitting the full pipeline, not just unit tests on each arm.
+
+#### 🟡 Rule schema fixture mismatch (testing hygiene)
+T2S.7 test fixtures used `condition: {"op": "exists"}` (dict) but real rules use `condition: "must_exist"` (string). Tests failed cryptically (AttributeError: 'dict' object has no attribute 'startswith'). Lost ~5min debugging. **R16**: test fixtures mirroring real data should grep an actual example file before composing; or a shared `_make_test_rule()` factory that uses the canonical schema.
+
+#### 🟢 `autosave OQ defaults` paid off repeatedly in M3-2
+Every task that hit an M3-scope decision (per-tenant metrics subset, empty-countries fail-closed, M4 removal timeline, etc.) deferred to `tasks.yaml meta.default_oq_values` without needing user interruption. **14 OQ values applied 32× across M3-2 tasks.**
+
+#### 💡 Subagent parallelization for reviewer rounds is high-leverage
+Both T2S.1 + T2S.8 reviewers dispatched in parallel via Agent(run_in_background=True). Total wait ~60s instead of 120s. **R17**: autorun should always parallelize Yellow-task reviewers within a batch when available.
+
+#### Reviewer catch rate (running total M3)
+| Task | Round | Critical found | Severity |
+|---|---|---|---|
+| T0S.4 E5 contract 🔒 | 1 | 4 | frame inspect, UPDATE race, naming, audit write |
+| T1S.3 WS cookie 🟡 | 1 | 3 | idle-touch, thread safety, lenient leak |
+| T2S.1 RBAC 🟡 | 1 | 3 | schema invariant doc, cookie collision, cache |
+| T2S.8 master dream 🟡 | 1 | 0 (APPROVED) | — |
+| T2S.5 alert push 🟡 | 1 | 4 | tenant_id propagation, sequential await, TOCTOU, broad except |
+| **Total** | **5 rounds** | **14 Critical** | **100% fixed** |
+
+**All 14 findings were pre-shipping bugs**. Reviewer ROI across M3: absurd.
+
+#### Time (updated)
+| | Est | Actual |
+|---|---|---|
+| M3-0 Contract Freeze | 4h | ~1.5h |
+| M3-1 Foundation | 19h | ~3h |
+| M3-2 Parallel Greens | 17h | ~4h |
+| **Running total** | **40h** | **~8.5h** — 4.7× faster |
+
 ---
 
 ## Cross-Cutting Recommendations for prd2impl v0.3

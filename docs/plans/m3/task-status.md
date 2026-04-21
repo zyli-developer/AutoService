@@ -13,13 +13,13 @@
 | Metric | Value |
 |---|---|
 | Total tasks | 39 |
-| ✅ Completed | 9 |
+| ✅ Completed | 17 |
 | 🏃 In progress | 0 |
 | ⏸️ Blocked | 0 |
-| ⏳ Pending | 30 |
-| Progress | 23% |
-| Current milestone | **M3-1 ✅ gated 2026-04-21** (auth foundation live) — next M3-2 |
-| Current batch | M3-1 done; batch-4 (P2 parallel starters) ready |
+| ⏳ Pending | 22 |
+| Progress | 44% |
+| Current milestone | **M3-2 ✅ gated 2026-04-21** (RBAC + SLA + compliance + master dream) — next M3-3 |
+| Current batch | M3-2 done; batch-7 (P3/P4 preps: handoff parser + classify DB + compressor) ready |
 
 ---
 
@@ -29,7 +29,7 @@
 |---|---|---|---|---|
 | P0 | Contract Freeze | 4 | 4 | 100% ✅ |
 | P1 | E1 P0 Foundation | 5 | 5 | 100% ✅ M3-1 gate |
-| P2 | E1 P1 + Parallel Greens | 8 | 0 | 0% |
+| P2 | E1 P1 + Parallel Greens | 8 | 8 | 100% ✅ M3-2 gate |
 | P3 | E3 Tail + E1 Close | 6 | 0 | 0% |
 | P4 | E5/E6/E4/E3 Remainders | 8 | 0 | 0% |
 | P5 | Playwright (deferrable M3.5) | 5 | 0 | 0% |
@@ -45,9 +45,9 @@
 | batch-1 | M3-1 | T1S.1 | ✅ done 2026-04-21 (14 tests green; full auth regression 65/65) |
 | batch-2 | M3-1 | T1S.2, T1S.4 | ✅ done 2026-04-21 (43 new tests green; 108/108 auth regression) |
 | batch-3 | M3-1 | T1S.3, T1S.5 | ✅ done 2026-04-21 (T1S.3 reviewer 3 Critical → revised to strict-mode + idle-touch + thread-safe singleton → APPROVED; 190/190 gateway+auth regression) |
-| batch-4 | M3-2 | T2S.1, T2S.3, T2S.6, T2S.8 | ⏳ pending |
-| batch-5 | M3-2 | T2S.2, T2S.4, T2S.7 | ⏳ pending |
-| batch-6 | M3-2 | T2S.5 | ⏳ pending |
+| batch-4 | M3-2 | T2S.1🟡, T2S.3, T2S.6, T2S.8🟡 | ✅ done 2026-04-21 (55 new tests; both Yellow reviewed; 261/261 scoped regression) |
+| batch-5 | M3-2 | T2S.2, T2S.4, T2S.7 | ✅ done 2026-04-21 (35 new tests; 299/299) |
+| batch-6 | M3-2 | T2S.5🟡 | ✅ done 2026-04-21 (12 new; reviewer APPROVED v2 after C1 propagation + C2 parallel dispatch + C4 exception narrow; 311/311 scoped regression) |
 | batch-7 | M3-3 | T3S.1, T3S.3, T4S.7 | ⏳ pending |
 | batch-8 | M3-3 | T3S.2, T3S.4, T4S.1🔒, T4S.2 | ⏳ pending |
 | batch-9 | M3-3 | T3S.5, T3S.6, T4S.3, T4S.8🔒 | ⏳ pending |
@@ -71,6 +71,9 @@ _Append at each batch closure. Format: date · batch · summary · next._
 | 2026-04-21 | batch-1 | T1S.1 done: autoservice/operators.py schema (operators + operator_sessions tables) + migrate_login_tokens_add_role. 14/14 new tests green; 65/65 full auth regression green (M2 51 + M3 T1S.1 14). Contract deviation: created autoservice/operators.py as sibling module rather than autoservice/auth/operators_schema.py (avoid auth.py package refactor). | batch-2: T1S.2 operator login + T1S.4 CRUD (parallel) |
 | 2026-04-21 | batch-2 | T1S.2 + T1S.4 done. operators.py extended with 14 helpers (CRUD + sessions + magic-link role-gated consume). operator_routes.py new (9 endpoints: request-login/verify/logout/me/list/get/create/patch/delete) mounted via api_routes.py bottom. 43 new tests (21 helper + 22 route) all green; 108/108 auth regression. Magic-link role gate proven: admin token rejected for operator-verify. Anti-enumeration: unknown operator returns same shape. T1S.4 disable-operator path also revokes all sessions (defense-in-depth beyond FK cascade). | batch-3: T1S.3 WS cookie 🟡 + T1S.5 invite |
 | 2026-04-21 | batch-3 | T1S.3 + T1S.5 done. WS handshake closes M2 spoof gap (web_gateway.py:480-485 → validated cookie lookup). Reviewer caught 3 Critical (C1 idle-touch missing in frame loop / C2 sqlite thread-safety risk / C3 lenient-mode leaked broadcast visibility via subscribe). Revised to STRICT mode + lock-guarded singleton with check_same_thread=False + frame-loop touch. 2 new endpoints (POST /admin/{tid}/invites + GET /auth/operator/accept-invite) — admin creates invite, invitee consumes + creates operator on first use (default role='viewer'). 24 new tests (10 ws-auth + 14 invite) green. 190/190 full gateway+auth regression. 3 failing proposal_pipeline tests verified pre-existing via git stash (Python 3.14 event loop deprecation, unrelated). M3-1 milestone gate ✅ | Next milestone M3-2 (P2 parallel greens): RBAC + SLA + country + master dream |
+| 2026-04-21 | batch-4 | T2S.1 RBAC (🟡 reviewer APPROVED v2: C1 schema invariant doc / C2 cookie-collision warning log + operator-wins + fall-through tests / C3 deferred) + T2S.3 pool metrics + T2S.6 country registry + T2S.8 master dream skeleton (🟡 reviewer APPROVED 0 Critical, 2 T4S.4 preps). 4 parallel P2 starters done; 55 new tests green. Scheduler routes _master → master_dream_agent path. CON-04 red line maintained (5-layer defense intact). | batch-5: T2S.2/4/7 dependent layer |
+| 2026-04-21 | batch-5 | T2S.2 multi-admin CRUD (last-admin guard 409; PRD §2 E1.5 "≥2 admins identical perms" test green) + T2S.4 per-tenant SLA (MetricType.POOL_WAIT_MS + tenant-keyed thresholds scoped to OQ-E3-1 whitelist) + T2S.7 multi-region compliance scan (scan(countries=) preferred; region_filter deprecated w/ warning, M4 removal). 35 new tests; 299/299 scoped regression. | batch-6: T2S.5 operator-WS alert push 🟡 |
+| 2026-04-21 | batch-6 | T2S.5 operator-WS alert push (🟡 reviewer APPROVED v2 after 3 findings: C1 AlertRule.tenant_id→FiredAlert.tenant_id propagation / C2 asyncio.gather parallel dispatch vs sequential / C4 narrow exception logging). Cross-tenant leak filter verified via dedicated test; operator bound to tenant via ws.state_operator_tenant_id (DB-sourced at T1S.3 handshake, not client-claimable). 12 new tests; 311/311 scoped regression. **M3-2 milestone gate ✅** | Next: M3-3 (P3+P4 combined — handoff + apply_proposal 🔒 + platform signals + compressor + GC + JP/SG/AU) |
 
 ---
 
@@ -99,14 +102,14 @@ _Append at each batch closure. Format: date · batch · summary · next._
 
 | ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
 |---|---|---|---|---|---|---|---|
-| T2S.1 | RBAC matrix + decorator | 🟡 | M | T1S.2 | ⏳ | — | — |
-| T2S.2 | multi-admin CRUD | 🟢 | S | T2S.1 | ⏳ | — | — |
-| T2S.3 | pool metrics | 🟢 | S | T0S.2 | ⏳ | — | — |
-| T2S.4 | per-tenant SLA threshold | 🟢 | M | T2S.3 | ⏳ | — | — |
-| T2S.5 | operator-WS alert push | 🟡 | S | T2S.4, T1S.3 | ⏳ | — | — |
-| T2S.6 | country registry | 🟢 | S | T0S.3 | ⏳ | — | — |
-| T2S.7 | scan(countries=list) | 🟢 | S | T2S.6 | ⏳ | — | — |
-| T2S.8 | master dream skeleton | 🟡 | M | T0S.4 | ⏳ | — | — |
+| T2S.1 | RBAC matrix + decorator | 🟡 | M | T1S.2 | ✅ | Dev1 + reviewer (APPROVED v2) | [rbac.py](../../../autoservice/rbac.py) · [test_rbac_matrix.py](../../../tests/auth/test_rbac_matrix.py) 23 tests incl NFR-02 P95<5ms benchmark |
+| T2S.2 | multi-admin CRUD | 🟢 | S | T2S.1 | ✅ | Dev1 | [operator_routes.py §multi-admin](../../../autoservice/operator_routes.py) · [test_multi_admin.py](../../../tests/auth/test_multi_admin.py) 13 tests |
+| T2S.3 | pool metrics | 🟢 | S | T0S.2 | ✅ | Dev1 | [socialware/pool.py](../../../socialware/pool.py) · [test_metrics.py](../../../tests/pool/test_metrics.py) 9 tests |
+| T2S.4 | per-tenant SLA threshold | 🟢 | M | T2S.3 | ✅ | Dev1 | [sla_aggregator.py](../../../autoservice/sla_aggregator.py) · [test_per_tenant_threshold.py](../../../tests/sla/test_per_tenant_threshold.py) 13 tests |
+| T2S.5 | operator-WS alert push | 🟡 | S | T2S.4, T1S.3 | ✅ | Dev1 + reviewer (APPROVED v2 after 3 Critical) | [web_gateway.py §push](../../../autoservice/web_gateway.py) · [alert_engine.py](../../../autoservice/alert_engine.py) · [test_alert_push_operator.py](../../../tests/gateway/test_alert_push_operator.py) 12 tests |
+| T2S.6 | country registry | 🟢 | S | T0S.3 | ✅ | Dev1 | [country_registry.py](../../../autoservice/country_registry.py) · [test_country_registry.py](../../../tests/compliance/test_country_registry.py) 20 tests |
+| T2S.7 | scan(countries=list) | 🟢 | S | T2S.6 | ✅ | Dev1 | [compliance/compliance.py](../../../autoservice/compliance/compliance.py) · [test_multi_region_filter.py](../../../tests/compliance/test_multi_region_filter.py) 9 tests |
+| T2S.8 | master dream skeleton | 🟡 | M | T0S.4 | ✅ | Dev1 + reviewer (APPROVED 0 Critical) | [master_dream_agent.py](../../../autoservice/master_dream_agent.py) · [dream_scheduler.py §routing](../../../autoservice/dream_scheduler.py) · [test_master_dream_routing.py](../../../tests/dream_agent/test_master_dream_routing.py) 6 tests |
 
 ### P3 · E3 Tail + E1 Close (6 tasks)
 

@@ -131,6 +131,76 @@ async def _push_alert_to_admins(alert) -> None:
         _admin_connections.pop(sid, None)
 
 
+async def _push_alert_to_operators(alert) -> None:
+    """T2S.5: Push a FiredAlert to operator WS scoped to alert.tenant_id.
+
+    Contract docs/contracts/m3/e3-triage.md §1.4.  Reviewer finding
+    (corrected) in original gap-analysis: AlertEngine was already wired
+    to _admin_connections; T2S.5 adds a PARALLEL path for operators.
+
+    Tenant-scope filter (CRITICAL — no cross-tenant leak):
+      * alert.tenant_id is None  → platform-wide alert, skip operators
+      * alert.tenant_id == X     → push to operators whose
+                                    ws.state_operator_tenant_id == X
+    Operator's tenant is set at T1S.3 WS handshake from a validated
+    operator_session cookie — it's the DB-sourced ground truth, not
+    client-claimable.
+    """
+    from autoservice.gateway.connection import build_frame
+    from dataclasses import asdict
+
+    alert_tenant = getattr(alert, "tenant_id", None)
+    if alert_tenant is None:
+        # Platform-wide alert — operators don't see platform-level events.
+        return
+
+    frame = build_frame("sla_alert", asdict(alert))
+    stale_ops: list[tuple[str, str]] = []
+
+    # _operator_sessions: dict[operator_id, set[session_id]]
+    # _ws_connections:    dict[session_id, WebSocket]
+    for op_id, session_ids in list(_operator_sessions.items()):
+        for sid in list(session_ids):
+            ws = _ws_connections.get(sid)
+            if ws is None:
+                stale_ops.append((op_id, sid))
+                continue
+            # Tenant-scope enforcement: only push to operators bound to alert's tenant
+            op_tenant = getattr(ws, "state_operator_tenant_id", None)
+            if op_tenant != alert_tenant:
+                continue
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                logger.debug("operator ws %s unreachable, removing", sid)
+                stale_ops.append((op_id, sid))
+
+    for op_id, sid in stale_ops:
+        session_set = _operator_sessions.get(op_id)
+        if session_set is not None:
+            session_set.discard(sid)
+            if not session_set:
+                _operator_sessions.pop(op_id, None)
+
+
+async def _push_alert_to_all_subscribers(alert) -> None:
+    """Combined notify chain: admin path (existing) + operator path (T2S.5).
+
+    Reviewer fix C2 (2026-04-21): dispatch both paths CONCURRENTLY via
+    asyncio.gather — a single slow admin WS must NOT block operator push
+    (prior sequential-await implementation would head-of-line-block the
+    AlertEngine notify loop under admin connectivity issues).
+    """
+    results = await asyncio.gather(
+        _push_alert_to_admins(alert),
+        _push_alert_to_operators(alert),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning("alert dispatch arm failed", exc_info=r)
+
+
 def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     """Build the FastAPI app with 3 WS endpoints + CORS."""
     app = FastAPI(title="autoservice-gateway", version="0.6.0")
@@ -294,7 +364,7 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             aggregator = SLAAggregator()
             app.state.sla_aggregator = aggregator
         alert_engine = AlertEngine(aggregator)
-        alert_engine.set_notify(_push_alert_to_admins)
+        alert_engine.set_notify(_push_alert_to_all_subscribers)  # T2S.5: admin + operator
         app.state.alert_engine = alert_engine
 
         # Per-record breach → immediate sla_alert frame to admins (Issue 5).
