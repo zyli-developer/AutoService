@@ -19,6 +19,30 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 
+const DEV_RECENT_KEY = 'autoservice.dev.recentPersonas';
+
+function readRecentPersonas(): string[] {
+  try {
+    const raw = localStorage.getItem(DEV_RECENT_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentPersona(email: string): void {
+  const prev = readRecentPersonas().filter((e) => e !== email);
+  const next = [email, ...prev].slice(0, 5);
+  try {
+    localStorage.setItem(DEV_RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // ignore quota / disabled storage
+  }
+}
+
 interface LoginPageProps {
   /**
    * Optional tenant id; when present, the request-login payload carries it
@@ -119,6 +143,55 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
   };
 
   const busy = status === 'submitting';
+
+  const onDevSubmit = async () => {
+    const trimmedEmail = devEmail.trim();
+    if (!trimmedEmail) {
+      setDevError('Persona email is required.');
+      setDevStatus('error');
+      return;
+    }
+    let tid: string | null;
+    if (devTenantChoice === '') {
+      tid = null;
+    } else if (devTenantChoice === '__custom__') {
+      const custom = devTenantCustom.trim();
+      tid = custom ? custom : null;
+    } else {
+      tid = devTenantChoice;
+    }
+    setDevStatus('submitting');
+    setDevError(null);
+    try {
+      const resp = await fetch('/api/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: trimmedEmail, tenant_id: tid }),
+      });
+      if (resp.status === 404) {
+        setDevError(
+          'Dev mode is off on the server. Set AUTH_DEV_MODE=1 and restart.'
+        );
+        setDevStatus('error');
+        return;
+      }
+      if (!resp.ok) {
+        setDevError(`Dev login failed (${resp.status})`);
+        setDevStatus('error');
+        return;
+      }
+      const data = await resp.json();
+      pushRecentPersona(trimmedEmail);
+      if (typeof window !== 'undefined' && data && typeof data.redirect === 'string') {
+        window.location.assign(data.redirect);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDevError(msg);
+      setDevStatus('error');
+    }
+  };
 
   return (
     <div
@@ -293,9 +366,14 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
               }}
             />
             <datalist id="dev-login-personas">
-              {devMode.personas.map((p) => (
-                <option key={p} value={p} />
-              ))}
+              {(() => {
+                const recent = readRecentPersonas();
+                const merged: string[] = [];
+                for (const p of [...recent, ...devMode.personas]) {
+                  if (!merged.includes(p)) merged.push(p);
+                }
+                return merged.map((p) => <option key={p} value={p} />);
+              })()}
             </datalist>
 
             <label
@@ -361,9 +439,7 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
               type="button"
               data-testid="dev-login-submit"
               disabled={devStatus === 'submitting'}
-              onClick={() => {
-                // Submit logic arrives in Task 7.
-              }}
+              onClick={onDevSubmit}
               style={{
                 marginTop: 12,
                 width: '100%',

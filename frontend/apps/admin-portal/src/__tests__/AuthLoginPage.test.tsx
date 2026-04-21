@@ -231,4 +231,152 @@ describe('components/auth/LoginPage — dev panel', () => {
     const optionValues = Array.from(select.options).map((o) => o.value);
     expect(optionValues).toEqual(['', '_master', 'acme', '__custom__']);
   });
+
+  it('POSTs to /auth/dev-login with tier-0 body and navigates on success', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, assign: assignSpy, origin: 'http://localhost:5175' },
+    });
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/api/auth/dev-mode')) {
+        return Promise.resolve(
+          devModeOn(['admin@dev.local'], ['_master', 'acme'])
+        );
+      }
+      if (typeof url === 'string' && url.includes('/api/auth/dev-login')) {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        expect(body).toEqual({ email: 'admin@dev.local', tenant_id: null });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, redirect: '/admin' }),
+        } as unknown as Response);
+      }
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('dev-login-panel')).toBeInTheDocument()
+    );
+    await user.type(screen.getByTestId('dev-login-email'), 'admin@dev.local');
+    await user.click(screen.getByTestId('dev-login-submit'));
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/admin'));
+  });
+
+  it('sends custom tenant_id when "Custom…" is picked', async () => {
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, assign: assignSpy, origin: 'http://localhost:5175' },
+    });
+
+    let capturedBody: Record<string, unknown> | null = null;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/api/auth/dev-mode')) {
+        return Promise.resolve(devModeOn(['admin@dev.local'], ['_master']));
+      }
+      if (typeof url === 'string' && url.includes('/api/auth/dev-login')) {
+        capturedBody = JSON.parse(String(init?.body ?? '{}'));
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, redirect: '/t/ghost/admin' }),
+        } as unknown as Response);
+      }
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId('dev-login-panel')).toBeInTheDocument()
+    );
+    await user.type(screen.getByTestId('dev-login-email'), 'admin@dev.local');
+    await user.selectOptions(
+      screen.getByTestId('dev-login-tenant-select'),
+      '__custom__'
+    );
+    await user.type(screen.getByTestId('dev-login-tenant-custom'), 'ghost');
+    await user.click(screen.getByTestId('dev-login-submit'));
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/t/ghost/admin'));
+    expect(capturedBody).toEqual({ email: 'admin@dev.local', tenant_id: 'ghost' });
+  });
+
+  it('shows an env-off hint when the backend returns 404', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/auth/dev-mode')) {
+        return Promise.resolve(devModeOn());
+      }
+      if (typeof url === 'string' && url.includes('/api/auth/dev-login')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({ error: 'not found' }),
+        } as unknown as Response);
+      }
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId('dev-login-panel')).toBeInTheDocument()
+    );
+    await user.type(screen.getByTestId('dev-login-email'), 'admin@dev.local');
+    await user.click(screen.getByTestId('dev-login-submit'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('dev-login-error')).toBeInTheDocument()
+    );
+    expect(screen.getByTestId('dev-login-error').textContent).toMatch(
+      /AUTH_DEV_MODE/i
+    );
+  });
+
+  it('pushes successful email to localStorage.recentPersonas (dedup, cap 5)', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, assign: vi.fn(), origin: 'http://localhost:5175' },
+    });
+    // Seed prior history with 5 entries — oldest should be evicted.
+    localStorage.setItem(
+      'autoservice.dev.recentPersonas',
+      JSON.stringify(['a@x', 'b@x', 'c@x', 'd@x', 'e@x'])
+    );
+    fetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/auth/dev-mode')) {
+        return Promise.resolve(devModeOn());
+      }
+      if (typeof url === 'string' && url.includes('/api/auth/dev-login')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, redirect: '/admin' }),
+        } as unknown as Response);
+      }
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const user = userEvent.setup();
+    render(<LoginPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId('dev-login-panel')).toBeInTheDocument()
+    );
+    await user.type(screen.getByTestId('dev-login-email'), 'new@x');
+    await user.click(screen.getByTestId('dev-login-submit'));
+
+    await waitFor(() => {
+      const stored = JSON.parse(
+        localStorage.getItem('autoservice.dev.recentPersonas') ?? '[]'
+      );
+      expect(stored).toEqual(['new@x', 'a@x', 'b@x', 'c@x', 'd@x']);
+    });
+  });
 });
