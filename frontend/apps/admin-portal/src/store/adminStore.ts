@@ -115,6 +115,7 @@ export interface AdminState {
   canaryState: CanaryStateUI | null;
 
   login: (tenantId: string) => void;
+  setTenantId: (tenantId: string | null) => void;
   logout: () => void;
   setActiveTab: (tab: AdminState['activeTab']) => void;
   addNotification: (n: Notification) => void;
@@ -167,6 +168,7 @@ export const useAdminStore = create<AdminState>()(
       ...initialState,
 
       login: (tenantId) => set({ tenantId, isLoggedIn: true }),
+      setTenantId: (tenantId) => set({ tenantId }),
 
       logout: () => set({ ...initialState }),
 

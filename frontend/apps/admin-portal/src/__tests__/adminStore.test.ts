@@ -29,4 +29,15 @@ describe('adminStore', () => {
   it('TC-04: default activeTab is notifications', () => {
     expect(useAdminStore.getState().activeTab).toBe('notifications');
   });
+
+  it('TC-05: setTenantId updates tenantId', () => {
+    useAdminStore.getState().setTenantId('acme');
+    expect(useAdminStore.getState().tenantId).toBe('acme');
+  });
+
+  it('TC-06: setTenantId(null) clears tenantId', () => {
+    useAdminStore.setState({ ...initialState, tenantId: 'acme' });
+    useAdminStore.getState().setTenantId(null);
+    expect(useAdminStore.getState().tenantId).toBeNull();
+  });
 });
