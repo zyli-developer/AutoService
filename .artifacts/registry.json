@@ -917,7 +917,9 @@
       "path": ".artifacts/eval-docs/eval-batch-12-p7-middleware.md",
       "created_at": "2026-04-21T01:49:38Z",
       "updated_at": "2026-04-21T01:49:38Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-016"
+      ]
     },
     {
       "id": "test-diff-016",
@@ -929,7 +931,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-12.md",
       "created_at": "2026-04-21T01:53:58Z",
       "updated_at": "2026-04-21T01:53:58Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-015"
+      ]
     },
     {
       "id": "e2e-report-009",
