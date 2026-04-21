@@ -238,6 +238,27 @@ When reactivated, the acceptance criteria are:
 
 ## 10. Deferred to writing-plans
 
-- Exact LLM model (sonnet-4.6 vs haiku-4.5 — quality/cost bench)
-- Flag name: `--synthesize-user-stories` assumed in this spec; confirm it doesn't clash with existing skill-0 flags during implementation
+- Exact LLM model (sonnet-4.6 vs haiku-4.5 — quality/cost bench) — resolved during implementation: `claude-sonnet-4-6` (see [prd2impl PR #4](https://github.com/ezagent42/prd2impl/pull/4) prd-extractor.md §user_stories LLM synthesis)
+- Flag name: `--synthesize-user-stories` confirmed non-clashing with existing skill-0 flags (`--tag`, `--plans-dir`)
 - E2E timing — reactivate Task 11 after AutoService M3 quiescence
+
+---
+
+## 11. Implementation status (2026-04-21)
+
+- **Work branch**: `D:/Work/h2os.cloud/prd2impl` @ `feat/design-spec-ingest` (8 commits ahead of origin pre-PR, all pushed)
+- **Internal PR**: https://github.com/ezagent42/prd2impl/pull/4
+- **Plan**: [docs/superpowers/plans/2026-04-21-prd2impl-bridge-enhancement.md](../plans/2026-04-21-prd2impl-bridge-enhancement.md)
+- **Landed commits** (in PR branch, oldest first):
+  - `42b27db` test(skill-3): B2 task-hints-only fixture
+  - `dee3fbc` feat(skill-3): B2 degradation — task-hints-only mode
+  - `a7d861b` fix(skill-3): explicit Step 1 → Step 1.5 bridge on missing inputs
+  - `b78f3d0` test(skill-0): external_deps fixtures (table + bullet)
+  - `9b6e537` feat(skill-0): extract external_deps for role=design-spec
+  - `a917c37` test(skill-0): sparse-opt-in fixture for `--synthesize-user-stories`
+  - `83c9427` feat(skill-0): opt-in `--synthesize-user-stories` for design-spec
+  - `032a8de` feat(skill-0): emit `extraction.{regex_fields, llm_fields}` metadata
+- **Task status**:
+  - Tasks 0-4, 6-10, 12 — DONE
+  - Task 5 (B2 real-run validation) + Task 11 (chat-markdown E2E) — DEFERRED, batched for post-M3 execution
+- **Static validation**: fixture pairs under `prd2impl/skills/skill-{0,3}-*/tests/` verified by inspection (extraction metadata present in all design-spec expected files; DEP counts match; b2-degraded shape correct)
