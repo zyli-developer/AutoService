@@ -1023,122 +1023,37 @@ def _persist_dream_config(tenant_id: str, params: dict[str, Any]) -> bool:
 
 
 @api_router.post("/management/chat")
-async def management_chat(
-    request: Request,
-    message: str | None = None,
-    tenant_id: str | None = None,
-) -> Any:
-    """M2 — route management chat to ``_master`` customer agent OR dialog handler.
+async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
+    """M2 — route management chat to ``_master`` customer agent via cc_pool.
 
-    T3S.7-hotfix (2026-04-21 · dream-ui-augmentation §4 P2 backend carve-out):
-    * Accept input via BOTH JSON body ``{message, tenant_id}`` AND query params
-      (backward-compat with legacy tests).
-    * Route dialog commands (``/dream-config``, ``/rules``, ``/status``,
-      ``/approve``, ``/reject``, ``/rollback``, ``@Dream Engine``) to the
-      legacy dialog handler; this preserves the stateful DreamConfigSession
-      that the dream-ui P2 im-block renderer consumes.
-    * Non-command messages continue to route to ``_master`` customer agent
-      via cc_pool (M2 behaviour, spec §2.7).
-    * Response schema unified: ``{role, content, reply?, blocks?}`` — dialog
-      commands return role+content; cc_pool path returns reply; optional
-      ``blocks[]`` populates ManagementChat im-block renderer (M3.5 D3 UI).
+    Spec §2.7: the platform admin A talks to the ``_master`` tenant's
+    customer agent. Admin tool set (``list_tenants``, ``read_proposals``,
+    ``approve_proposal`` …) is deferred to M3 per eval-doc-019; M2 just
+    routes text through on plain customer soul.
 
-    Fixes ``tests/dream_scheduler/test_refresh.py`` 2 failing tests
-    (``/dream-config`` confirm → scheduler.refresh) that were stuck on
-    422 because dialog commands hit the cc_pool-only endpoint.
+    Request body::
+
+        {"message": "<str>"}
 
     Responses:
-        * 200 ``{role, content, reply?, blocks?}``
-        * 422 ``{"error": "message required"}``
-        * 503 ``{"error": "cc_pool unavailable ..."}``
-    """
-    # Accept from body OR query params
-    body_json = None
-    if message is None:
-        try:
-            body_json = await request.json()
-        except Exception:  # noqa: BLE001
-            body_json = None
-        if isinstance(body_json, dict):
-            message = body_json.get("message")
-            tenant_id = tenant_id or body_json.get("tenant_id")
+        * 200  ``{"reply": "<text>"}``
+        * 422  ``{"error": "message required"}`` for missing/empty/non-str
+        * 503  ``{"error": "cc_pool unavailable (POOL_MODE disabled?)"}``
 
+    M2 design invariant guarded by tests/api/test_management_chat.py::
+    test_management_chat_regression_no_stub_llm — this handler must not
+    contain legacy dialog logic.  Slash-command and dream-config dialog
+    are handled by the companion ``/api/management/chat-legacy`` endpoint
+    until the unified dialog migration lands in M3.5 (see
+    docs/plans/m3.5-mini-sprint.md D3 · im-block renderer work).
+    """
+    message = body.get("message") if isinstance(body, dict) else None
     if not isinstance(message, str) or not message.strip():
         return JSONResponse(
             status_code=422,
             content={"error": "message required"},
         )
 
-    text = message.strip()
-    tid = tenant_id if isinstance(tenant_id, str) else "default"
-
-    # ── Dialog routing: dream-config session + slash commands ──
-    # (preserves M1 legacy behaviour for active dialogs; dream-ui P2 expands
-    # this layer to return im-block structured responses)
-    dream_session = _get_dream_session()
-    if dream_session.is_active():
-        response, done = dream_session.process_input(text)
-        if done:
-            from autoservice.dream_config_dialog import (
-                DreamConfigStep,
-                on_config_confirmed,
-            )
-            if dream_session.step == DreamConfigStep.DONE:
-                _persist_dream_config(tid, dream_session.get_config())
-                on_config_confirmed(tid)
-        return {"role": "dream_engine", "content": response}
-
-    from autoservice.dream_config_dialog import is_dream_config_trigger
-    if is_dream_config_trigger(text):
-        prompt = dream_session.start()
-        return {"role": "dream_engine", "content": prompt}
-
-    # Slash commands — delegate to legacy dispatcher for now;
-    # M3.5 P2 UI will extend individual handlers to return blocks[].
-    if text.startswith("/rules"):
-        try:
-            from autoservice.rules import handle_rules_command
-            args = text[len("/rules"):].strip().split() or ["show"]
-            result = handle_rules_command(args)
-            return {"role": "dream_engine", "content": f"📋 规则配置:\n{result}"}
-        except Exception as exc:  # noqa: BLE001
-            return {"role": "dream_engine", "content": f"规则查询失败: {exc}"}
-
-    if text.startswith("/status"):
-        try:
-            from autoservice.sla_aggregator import MetricType, WindowSize
-            agg = _get_sla()
-            lines = ["📊 系统状态:"]
-            for metric in MetricType:
-                p = agg.get_percentiles(metric, WindowSize.FIVE_MIN)
-                val = f"P50={p.p50:.1f}" if p.p50 is not None else "无数据"
-                lines.append(f"  · {metric.value}: {val} (n={p.count})")
-            router, monitor = _get_canary()
-            status = router.status()
-            lines.append(f"  · 灰度: {status['percentage']}%")
-            check = monitor.check()
-            lines.append(f"  · 监控: {check['status']}")
-            return {"role": "dream_engine", "content": "\n".join(lines)}
-        except Exception as exc:  # noqa: BLE001
-            return {"role": "dream_engine", "content": f"状态查询失败: {exc}"}
-
-    if text.startswith("/approve"):
-        return _handle_approve_command(text)
-    if text.startswith("/reject"):
-        return _handle_reject_command(text)
-
-    if text.startswith("/rollback"):
-        try:
-            router, _ = _get_canary()
-            router.rollback()
-            return {
-                "role": "dream_engine",
-                "content": f"⏪ 已回滚灰度发布，当前阶段: {router.status()['percentage']}%",
-            }
-        except Exception as exc:  # noqa: BLE001
-            return {"role": "dream_engine", "content": f"回滚失败: {exc}"}
-
-    # ── Non-command message: cc_pool _master customer routing (M2 §2.7) ──
     from autoservice.cc_pool import get_pool
 
     pool = await get_pool()
@@ -1148,27 +1063,21 @@ async def management_chat(
             content={"error": "cc_pool unavailable (POOL_MODE disabled?)"},
         )
 
+    # Spec §2.7 — ManagementChat routes to _master.
     reply_parts: list[str] = []
     async with pool.acquire(role="customer", tenant_id="_master") as instance:
-        await instance.client.query(text)
+        await instance.client.query(message)
         async for msg in instance.client.receive_response():
             content = getattr(msg, "content", None)
             if isinstance(content, str):
                 reply_parts.append(content)
             elif isinstance(content, list):
                 for block in content:
-                    bt = getattr(block, "text", None)
-                    if isinstance(bt, str):
-                        reply_parts.append(bt)
+                    text = getattr(block, "text", None)
+                    if isinstance(text, str):
+                        reply_parts.append(text)
 
-    # Unified response shape: reply (default) + optional blocks.
-    # M3.5 D3 UI will consume blocks when non-empty.
-    return {
-        "role": "dream_engine",
-        "content": "".join(reply_parts),  # default content (same as reply)
-        "reply": "".join(reply_parts),
-        "blocks": [],  # empty in M3; extended per handler in M3.5
-    }
+    return {"reply": "".join(reply_parts)}
 
 
 @api_router.post("/management/chat-legacy")

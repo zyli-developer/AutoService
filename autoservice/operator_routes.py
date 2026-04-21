@@ -15,8 +15,12 @@ Design choices (applying default OQ values):
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -32,6 +36,14 @@ from autoservice import auth, operators
 logger = logging.getLogger("autoservice.operator_routes")
 
 operator_router = APIRouter(tags=["operator"])
+
+# Dev-only bypass toggle — read ONCE at import; flipping the env at runtime
+# requires a process restart.  Mirrors api_routes.DEV_MODE_ENABLED.
+DEV_MODE_ENABLED = os.environ.get("AUTH_DEV_MODE") == "1"
+
+# Shared with admin /api/auth/dev-login.  Each entry is a single JSON line.
+# Path is resolved at call time so tests can monkeypatch.chdir(tmp_path).
+_DEV_MAIL_LOG = Path(".autoservice") / "logs" / "auth-devmail.jsonl"
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -254,6 +266,119 @@ def _client_ip(request: Request) -> str | None:
     if request.client is None:
         return None
     return request.client.host
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Dev-only bypass (parallel to admin /api/auth/dev-login)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Gated by AUTH_DEV_MODE=1.  Disabled → 404 (no endpoint surface advertised).
+# When enabled:
+#   * upserts an ``operators`` row if (tenant_id, email) is unknown — default
+#     role=responder so the minted session matches an active operator
+#   * mints an ``operator_session`` row + Set-Cookie (same attrs as /verify)
+#   * appends an audit entry to ``.autoservice/logs/auth-devmail.jsonl``
+#
+# This closes the local-dev gap where T1S.3 (WS strict cookie validation)
+# requires an operator_session cookie, but no in-repo flow could mint one
+# without email delivery.  Production (AUTH_DEV_MODE unset) uses the
+# magic-link flow (/request-login → /verify).
+
+
+@operator_router.post("/auth/operator/dev-login")
+async def operator_dev_login(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> Any:
+    """Dev-only: mint an ``operator_session`` cookie without magic-link.
+
+    Request body::
+
+        {"email": "<op@dev.local>", "tenant_id": "<tid>"}
+
+    Response (200)::
+
+        {"ok": true, "redirect": "/operator",
+         "operator_id": "...", "tenant_id": "...", "email": "..."}
+
+    Errors:
+      * 404 when ``AUTH_DEV_MODE`` is not set (endpoint existence hidden).
+      * 400 when email or tenant_id is missing / blank.
+      * 401 when an existing operator has ``status != 'active'``.
+    """
+    if not DEV_MODE_ENABLED:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+
+    email_raw = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(email_raw, str) or not email_raw.strip():
+        return JSONResponse(
+            status_code=400, content={"error": "email is required"}
+        )
+    tenant_raw = payload.get("tenant_id") if isinstance(payload, dict) else None
+    if not isinstance(tenant_raw, str) or not tenant_raw.strip():
+        return JSONResponse(
+            status_code=400, content={"error": "tenant_id is required"}
+        )
+
+    email = email_raw.strip().lower()
+    tenant_id = tenant_raw.strip()
+
+    conn = _get_op_db()
+    op = operators.get_operator_by_email(conn, tenant_id, email)
+    if op is None:
+        op = operators.create_operator(
+            conn, tenant_id=tenant_id, email=email, role="responder"
+        )
+    elif op.status != "active":
+        return JSONResponse(
+            status_code=401, content={"error": "operator disabled"}
+        )
+
+    token = operators.issue_operator_session(
+        conn,
+        operator_id=op.id,
+        tenant_id=tenant_id,
+        ip_created=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    tok_prefix = token[:8]
+    logger.warning(
+        "[operator-dev-login] minted session for %s (tenant=%s, op=%s, tok=%s…)",
+        email, tenant_id, op.id, tok_prefix,
+    )
+    _DEV_MAIL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    audit = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "kind": "operator_dev_login",
+        "email": email,
+        "tenant_id": tenant_id,
+        "operator_id": op.id,
+        "session_token_prefix": tok_prefix,
+    }
+    with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(audit, ensure_ascii=False) + "\n")
+
+    response = JSONResponse(
+        content={
+            "ok": True,
+            "redirect": "/operator",
+            "operator_id": op.id,
+            "tenant_id": tenant_id,
+            "email": email,
+        }
+    )
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=operators.OPERATOR_SESSION_COOKIE_NAME,
+        value=token,
+        max_age=operators.DEFAULT_OPERATOR_SESSION_TTL_HOURS * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response
 
 
 # ──────────────────────────────────────────────────────────────────────────

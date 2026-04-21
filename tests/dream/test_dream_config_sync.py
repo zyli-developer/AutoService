@@ -77,24 +77,24 @@ def _walk_dream_dialog_to_confirm(client: TestClient, tenant_id: str = "default"
     Uses defaults for all four params by sending empty/default replies.
     """
     # 1. Trigger the dialog
-    r = client.post("/api/management/chat", params={"message": "/dream-config", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "/dream-config", "tenant_id": tenant_id})
     assert r.status_code == 200
     assert "触发时机" in r.json()["content"], "step 1 prompt should ask about trigger"
 
     # 2. Trigger answer (use default)
-    r = client.post("/api/management/chat", params={"message": "1", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "1", "tenant_id": tenant_id})
     assert "覆盖范围" in r.json()["content"]
 
     # 3. Coverage answer
-    r = client.post("/api/management/chat", params={"message": "1", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "1", "tenant_id": tenant_id})
     assert "风险阈值" in r.json()["content"]
 
     # 4. Risk threshold answer
-    r = client.post("/api/management/chat", params={"message": "0.3", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "0.3", "tenant_id": tenant_id})
     assert "灰度策略" in r.json()["content"]
 
     # 5. Canary answer
-    r = client.post("/api/management/chat", params={"message": "1", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "1", "tenant_id": tenant_id})
     assert "确认" in r.json()["content"]
 
 
@@ -109,7 +109,7 @@ def test_full_dialog_persists_all_four_keys(client, sandbox_root):
     _walk_dream_dialog_to_confirm(client, tenant_id=tenant_id)
 
     # 6. Confirm — should trigger disk sync
-    r = client.post("/api/management/chat", params={"message": "yes", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "yes", "tenant_id": tenant_id})
     assert r.status_code == 200
     assert "已保存" in r.json()["content"]
 
@@ -139,9 +139,9 @@ def test_partial_dialog_does_not_write(client, sandbox_root):
     baseline = cfg_path.read_text(encoding="utf-8")
 
     # Start and answer only 2 of 4 steps
-    client.post("/api/management/chat", params={"message": "/dream-config", "tenant_id": tenant_id})
-    client.post("/api/management/chat", params={"message": "1", "tenant_id": tenant_id})
-    client.post("/api/management/chat", params={"message": "1", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "/dream-config", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "1", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "1", "tenant_id": tenant_id})
 
     # No confirmation reached — config.json must be unchanged
     assert cfg_path.read_text(encoding="utf-8") == baseline, \
@@ -160,7 +160,7 @@ def test_cancel_at_confirm_does_not_write(client, sandbox_root):
     _walk_dream_dialog_to_confirm(client, tenant_id=tenant_id)
 
     # User says "no" — dialog returns is_complete=True but via _reset (→ IDLE)
-    r = client.post("/api/management/chat", params={"message": "no", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "no", "tenant_id": tenant_id})
     assert "取消" in r.json()["content"]
 
     # config.json must be unchanged (sync must NOT fire on cancel)
@@ -186,7 +186,7 @@ def test_rerun_overwrites_dream_preserves_other_keys(client, sandbox_root):
 
     # First run
     _walk_dream_dialog_to_confirm(client, tenant_id=tenant_id)
-    client.post("/api/management/chat", params={"message": "yes", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "yes", "tenant_id": tenant_id})
 
     first = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert first["dream"]["trigger"] == "low_peak"
@@ -195,12 +195,12 @@ def test_rerun_overwrites_dream_preserves_other_keys(client, sandbox_root):
     assert first["channels"] == ["web"]
 
     # Second run — override trigger to manual (option 3)
-    client.post("/api/management/chat", params={"message": "/dream-config", "tenant_id": tenant_id})
-    client.post("/api/management/chat", params={"message": "3", "tenant_id": tenant_id})  # manual
-    client.post("/api/management/chat", params={"message": "2", "tenant_id": tenant_id})  # high_volume
-    client.post("/api/management/chat", params={"message": "0.5", "tenant_id": tenant_id})
-    client.post("/api/management/chat", params={"message": "2", "tenant_id": tenant_id})  # 5_25_100
-    client.post("/api/management/chat", params={"message": "yes", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "/dream-config", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "3", "tenant_id": tenant_id})  # manual
+    client.post("/api/management/chat-legacy", params={"message": "2", "tenant_id": tenant_id})  # high_volume
+    client.post("/api/management/chat-legacy", params={"message": "0.5", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "2", "tenant_id": tenant_id})  # 5_25_100
+    client.post("/api/management/chat-legacy", params={"message": "yes", "tenant_id": tenant_id})
 
     second = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert second["dream"]["trigger"] == "manual"
@@ -221,7 +221,7 @@ def test_missing_sandbox_dir_skips_gracefully(client, sandbox_root):
     assert not (sandbox_root / tenant_id).exists()
 
     _walk_dream_dialog_to_confirm(client, tenant_id=tenant_id)
-    r = client.post("/api/management/chat", params={"message": "yes", "tenant_id": tenant_id})
+    r = client.post("/api/management/chat-legacy", params={"message": "yes", "tenant_id": tenant_id})
     # Endpoint must still succeed; sync silently skipped
     assert r.status_code == 200
     assert "已保存" in r.json()["content"]
@@ -245,7 +245,7 @@ def test_in_memory_read_path_unchanged(client, sandbox_root):
     _seed_sandbox(sandbox_root, tenant_id)
 
     _walk_dream_dialog_to_confirm(client, tenant_id=tenant_id)
-    client.post("/api/management/chat", params={"message": "yes", "tenant_id": tenant_id})
+    client.post("/api/management/chat-legacy", params={"message": "yes", "tenant_id": tenant_id})
 
     session = _get_dream_session()
     cfg = session.get_config()

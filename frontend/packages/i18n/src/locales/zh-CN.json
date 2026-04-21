@@ -81,6 +81,10 @@
   "chat.input.powered_by_brand": "OneSyn · autoservice",
 
   "operator.login.title": "AutoService · 工作台登录",
+  "operator.login.email": "邮箱",
+  "operator.login.tenant_id": "租户 ID（例如 acme）",
+  "operator.login.error_dev_disabled": "本环境未开启 AUTH_DEV_MODE；生产环境请走邮件登录链路。",
+  "operator.login.error_generic": "登录失败：{{error}}",
   "operator.login.operator_id": "Operator ID",
   "operator.login.token": "Token（可选）",
   "operator.titlebar.title": "商户客服工作区",

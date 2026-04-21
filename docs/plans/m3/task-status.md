@@ -12,12 +12,12 @@
 
 | Metric | Value |
 |---|---|
-| Total tasks | 39 |
-| ✅ Completed | 31 |
+| Total tasks | 41 |
+| ✅ Completed | 32 |
 | 🏃 In progress | 0 |
 | ⏸️ Blocked | 0 |
-| ⏳ Pending | 8 |
-| Progress | 79% |
+| ⏳ Pending | 9 |
+| Progress | 78% |
 | Current milestone | **M3-3 ✅ gated 2026-04-21** (Triage + Dream apply 🔒 + Ops + Compliance) — next M3-4 Playwright (deferrable per CON-13) |
 | Current batch | M3-3 done; batch-11 (Playwright scaffold) + batch-12 suites OR defer to M3.5 |
 
@@ -28,7 +28,7 @@
 | Phase | Name | Tasks | Done | Progress |
 |---|---|---|---|---|
 | P0 | Contract Freeze | 4 | 4 | 100% ✅ |
-| P1 | E1 P0 Foundation | 5 | 5 | 100% ✅ M3-1 gate |
+| P1 | E1 P0 Foundation | 7 | 6 | 86% (M3-1 gate ✅ on T1S.1-5; T1S.6 carry-over done, T1S.7 pending) |
 | P2 | E1 P1 + Parallel Greens | 8 | 8 | 100% ✅ M3-2 gate |
 | P3 | E3 Tail + E1 Close | 6 | 6 | 100% ✅ |
 | P4 | E5/E6/E4/E3 Remainders | 8 | 8 | 100% ✅ (M3-3 gate) |
@@ -48,6 +48,7 @@
 | batch-4 | M3-2 | T2S.1🟡, T2S.3, T2S.6, T2S.8🟡 | ✅ done 2026-04-21 (55 new tests; both Yellow reviewed; 261/261 scoped regression) |
 | batch-5 | M3-2 | T2S.2, T2S.4, T2S.7 | ✅ done 2026-04-21 (35 new tests; 299/299) |
 | batch-6 | M3-2 | T2S.5🟡 | ✅ done 2026-04-21 (12 new; reviewer APPROVED v2 after C1 propagation + C2 parallel dispatch + C4 exception narrow; 311/311 scoped regression) |
+| batch-carry-M3-1 | M3-1 carry | T1S.6, T1S.7 | 🟡 T1S.6 ✅ 2026-04-21 (operator dev-login + LoginPage rewire; 12 new tests; 263/263 auth+gateway regression; 5/5 LoginPage vitest); T1S.7 ⏳ pending |
 | batch-7 | M3-3 | T3S.1, T3S.3, T4S.7 | ⏳ pending |
 | batch-8 | M3-3 | T3S.2, T3S.4, T4S.1🔒, T4S.2 | ⏳ pending |
 | batch-9 | M3-3 | T3S.5, T3S.6, T4S.3, T4S.8🔒 | ⏳ pending |
@@ -74,6 +75,7 @@ _Append at each batch closure. Format: date · batch · summary · next._
 | 2026-04-21 | batch-4 | T2S.1 RBAC (🟡 reviewer APPROVED v2: C1 schema invariant doc / C2 cookie-collision warning log + operator-wins + fall-through tests / C3 deferred) + T2S.3 pool metrics + T2S.6 country registry + T2S.8 master dream skeleton (🟡 reviewer APPROVED 0 Critical, 2 T4S.4 preps). 4 parallel P2 starters done; 55 new tests green. Scheduler routes _master → master_dream_agent path. CON-04 red line maintained (5-layer defense intact). | batch-5: T2S.2/4/7 dependent layer |
 | 2026-04-21 | batch-5 | T2S.2 multi-admin CRUD (last-admin guard 409; PRD §2 E1.5 "≥2 admins identical perms" test green) + T2S.4 per-tenant SLA (MetricType.POOL_WAIT_MS + tenant-keyed thresholds scoped to OQ-E3-1 whitelist) + T2S.7 multi-region compliance scan (scan(countries=) preferred; region_filter deprecated w/ warning, M4 removal). 35 new tests; 299/299 scoped regression. | batch-6: T2S.5 operator-WS alert push 🟡 |
 | 2026-04-21 | batch-6 | T2S.5 operator-WS alert push (🟡 reviewer APPROVED v2 after 3 findings: C1 AlertRule.tenant_id→FiredAlert.tenant_id propagation / C2 asyncio.gather parallel dispatch vs sequential / C4 narrow exception logging). Cross-tenant leak filter verified via dedicated test; operator bound to tenant via ws.state_operator_tenant_id (DB-sourced at T1S.3 handshake, not client-claimable). 12 new tests; 311/311 scoped regression. **M3-2 milestone gate ✅** | Next: M3-3 (P3+P4 combined — handoff + apply_proposal 🔒 + platform signals + compressor + GC + JP/SG/AU) |
+| 2026-04-21 | batch-carry-M3-1 | **Gap discovered post-restart**: T1S.3 strict `operator_session` WS cookie validation landed but operator-console LoginPage was still the M2 Zustand-only stub — no cookie was ever minted, so /ws/operator looped [accepted → open → closed] ~90× with frame `{code:"4011_AUTH"}`. DB evidence: `operators`/`operator_sessions` tables never created on the affected install. Eval-doc [eval-T1S.6-T1S.7-operator-login-wire.md](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) captured gap + split. **T1S.6 done** — added `POST /api/auth/operator/dev-login` (AUTH_DEV_MODE-gated, parallel to admin's; upserts operator; audit JSONL as `kind="operator_dev_login"`), rewired `LoginPage.tsx` from Zustand stub to `fetch(credentials:"include")` against the new endpoint, i18n keys for email/tenant_id/error states. 12 new backend tests + 5 new vitest + integration testids updated; 263/263 auth+gateway regression green; LoginPage vitest 5/5. Pre-existing `input-squad-id` rot in integration.test.tsx (M2 UI removed) confirmed via `git stash` — not in T1S.6 scope. | **T1S.7** (formal magic-link LoginPage UX — probe dev-mode, email-only form, "check your email" screen) + requires backend restart to pick up new endpoint before manual browser verification |
 
 ---
 
@@ -97,6 +99,8 @@ _Append at each batch closure. Format: date · batch · summary · next._
 | T1S.3 | WS handshake cookie validation | 🟡 | M | T1S.2 | ✅ | Dev1 + superpowers:code-reviewer (APPROVED v2 after 3 Critical: C1 idle-touch in frame loop / C2 thread-safe DB singleton / C3 strict-mode default) | [autoservice/web_gateway.py](../../../autoservice/web_gateway.py) · [tests/gateway/test_ws_operator_auth.py](../../../tests/gateway/test_ws_operator_auth.py) |
 | T1S.4 | operator CRUD API | 🟢 | S | T1S.1 | ✅ | Dev1 | routes in [operator_routes.py](../../../autoservice/operator_routes.py) · tests in [test_operator_routes.py](../../../tests/auth/test_operator_routes.py) §CRUD |
 | T1S.5 | operator invite (magic-link role ext) | 🟢 | M | T1S.2 | ✅ | Dev1 | [operator_routes.py §invite](../../../autoservice/operator_routes.py) · [tests/auth/test_operator_invite.py](../../../tests/auth/test_operator_invite.py) (14 tests) |
+| T1S.6 | operator dev-login + LoginPage rewire (carry-over) | 🟢 | S | T1S.2, T1S.3 | ✅ | Dev1 | [operator_routes.py §dev-login](../../../autoservice/operator_routes.py) · [tests/auth/test_operator_dev_login.py](../../../tests/auth/test_operator_dev_login.py) (12 tests) · [frontend LoginPage.tsx](../../../frontend/apps/operator-console/src/components/LoginPage.tsx) · [LoginPage.test.tsx](../../../frontend/apps/operator-console/src/__tests__/LoginPage.test.tsx) (5 tests) · [eval-T1S.6-T1S.7](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) |
+| T1S.7 | operator magic-link LoginPage UX (carry-over) | 🟢 | M | T1S.2, T1S.6 | ⏳ | — | Spec: [eval-T1S.6-T1S.7 §2.2](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) |
 
 ### P2 · E1 P1 + Parallel Greens (8 tasks)
 

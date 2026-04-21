@@ -186,6 +186,108 @@ async def test_scheduler_routes_master_to_master_dream_agent(
     )
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# T4S.4 cross-tenant signals
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_gather_platform_signals_empty_db(proposals_conn):
+    signals = master_dream_agent.gather_platform_signals(proposals_conn)
+    assert signals.tenant_count == 0
+    assert signals.active_tenants == []
+    assert signals.total_proposal_count == 0
+    assert signals.per_tenant_proposal_counts == {}
+    assert signals.pool_metrics is None
+    assert signals.emitted_at_ms > 0
+
+
+def test_gather_platform_signals_counts_proposals_per_tenant(proposals_conn):
+    import json as _json
+
+    # Seed 3 tenants with different counts
+    for i in range(2):
+        proposals_conn.execute(
+            "INSERT INTO proposals (id, created_at, data, status, category, tenant_id) "
+            "VALUES (?, ?, ?, 'draft', 'workflow', 'acme')",
+            (f"p-acme-{i}", "2026-04-21T00:00:00", _json.dumps({"id": f"p-acme-{i}"})),
+        )
+    for i in range(3):
+        proposals_conn.execute(
+            "INSERT INTO proposals (id, created_at, data, status, category, tenant_id) "
+            "VALUES (?, ?, ?, 'draft', 'workflow', 'beta-corp')",
+            (f"p-beta-{i}", "2026-04-21T00:00:00", _json.dumps({"id": f"p-beta-{i}"})),
+        )
+    proposals_conn.commit()
+
+    signals = master_dream_agent.gather_platform_signals(proposals_conn)
+    assert signals.tenant_count == 2
+    assert set(signals.active_tenants) == {"acme", "beta-corp"}
+    assert signals.total_proposal_count == 5
+    assert signals.per_tenant_proposal_counts == {"acme": 2, "beta-corp": 3}
+
+
+def test_gather_platform_signals_includes_pool_metrics_when_available(proposals_conn):
+    class _FakePool:
+        def metrics(self):
+            from dataclasses import dataclass
+
+            @dataclass(frozen=True)
+            class _M:
+                available_count: int = 3
+                busy_count: int = 1
+                queue_length: int = 0
+                wait_time_histogram_ms: dict = None  # type: ignore[assignment]
+                total_checkouts: int = 10
+                total_timeouts: int = 0
+                emitted_at_ms: int = 0
+            return _M(wait_time_histogram_ms={"0-100": 10})
+
+    signals = master_dream_agent.gather_platform_signals(
+        proposals_conn, cc_pool=_FakePool(),
+    )
+    assert signals.pool_metrics is not None
+    assert signals.pool_metrics["available_count"] == 3
+    assert signals.pool_metrics["busy_count"] == 1
+
+
+def test_gather_platform_signals_tolerates_broken_pool(proposals_conn):
+    class _BadPool:
+        def metrics(self):
+            raise RuntimeError("pool down")
+
+    signals = master_dream_agent.gather_platform_signals(
+        proposals_conn, cc_pool=_BadPool()
+    )
+    # Soft dependency — broken pool doesn't crash the collection
+    assert signals.pool_metrics is None
+
+
+@pytest.mark.asyncio
+async def test_run_platform_dream_uses_signals_in_evidence(proposals_conn, runs_conn):
+    import json as _json
+
+    # Seed a tenant
+    proposals_conn.execute(
+        "INSERT INTO proposals (id, created_at, data, status, category, tenant_id) "
+        "VALUES (?, ?, ?, 'draft', 'workflow', 'acme')",
+        ("p-1", "2026-04-21T00:00:00", _json.dumps({"id": "p-1"})),
+    )
+    proposals_conn.commit()
+
+    ids = await master_dream_agent.run_platform_dream(
+        tenant_id=bootstrap.MASTER_TENANT_ID,
+        cc_pool=None, mempool=None,
+        proposals_conn=proposals_conn, runs_conn=runs_conn,
+    )
+    # Fetch emitted proposal and check evidence carries signal snapshot
+    row = proposals_conn.execute(
+        "SELECT data FROM proposals WHERE id = ?", (ids[0],)
+    ).fetchone()
+    data = _json.loads(row["data"])
+    assert "tenant_count" in data["evidence"]
+    assert "total_proposals" in data["evidence"]
+
+
 @pytest.mark.asyncio
 async def test_scheduler_routes_regular_tenant_to_per_tenant_path(
     proposals_conn, runs_conn, monkeypatch

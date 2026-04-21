@@ -20,6 +20,7 @@ PROTOCOL_METHODS = {
     "create_conversation": (set(), {"channel", "external_id", "metadata"}),
     "get_conversation": ({"conversation_id"}, set()),
     "list_active_conversations": (set(), {"operator_id", "squad_id"}),
+    "list_conversations_in_takeover_by": ({"operator_id"}, set()),  # 2478553 — takeover field
     "close_conversation": ({"conversation_id"}, {"outcome", "resolved_by", "reason"}),
     "set_csat": ({"conversation_id", "score"}, set()),
     "join": ({"conversation_id", "participant"}, set()),
