@@ -1,5 +1,5 @@
-"""Tests for _recycle_instance_for_tenant — used by both dream pool and
-customer main pool to inject the correct tenant soul at acquire time.
+"""Tests for _recycle_instance_for_tenant — the helper that injects the
+correct tenant soul onto a pooled instance at acquire time.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def test_recycle_same_tenant_is_noop():
     inst._pool_tenant_id = "acme"
 
     result = await _recycle_instance_for_tenant(
-        pool, inst, role="customer", tenant_id="acme", config=MagicMock(),
+        pool, inst, role="customer", tenant_id="acme",
     )
 
     assert result is inst
@@ -45,7 +45,6 @@ async def test_recycle_tenant_mismatch_rebuilds():
     ) as mk:
         result = await _recycle_instance_for_tenant(
             pool, inst, role="customer", tenant_id="mystore",
-            config=MagicMock(),
         )
 
     assert result is new_inst
@@ -70,7 +69,6 @@ async def test_recycle_first_bind_unset_tag_rebuilds():
     ):
         result = await _recycle_instance_for_tenant(
             pool, inst, role="customer", tenant_id="mystore",
-            config=MagicMock(),
         )
 
     assert result is new_inst
@@ -90,6 +88,29 @@ async def test_recycle_rebuild_failure_propagates():
         with pytest.raises(RuntimeError, match="boom"):
             await _recycle_instance_for_tenant(
                 pool, inst, role="customer", tenant_id="mystore",
-                config=MagicMock(),
             )
     pool._destroy_instance.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_recycle_both_none_is_noop():
+    """Instance stamped with _pool_tenant_id=None and target tenant_id=None:
+    must be treated as match (noop), NOT as "unset" (which would rebuild).
+    Validates the _UNSET sentinel does its job.
+    """
+    pool = MagicMock()
+    pool._destroy_instance = AsyncMock()
+    inst = _FakeInstance()
+    inst._pool_tenant_id = None  # explicitly stamped to None
+
+    with patch(
+        "autoservice.cc_pool._make_tenant_instance",
+        new=AsyncMock(),
+    ) as mk:
+        result = await _recycle_instance_for_tenant(
+            pool, inst, role="dream", tenant_id=None,
+        )
+
+    assert result is inst
+    pool._destroy_instance.assert_not_called()
+    mk.assert_not_called()

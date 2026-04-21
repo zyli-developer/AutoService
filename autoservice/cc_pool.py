@@ -821,6 +821,11 @@ _dream_pool: AsyncPool[CCClient] | None = None
 _dream_pool_lock = asyncio.Lock()
 
 
+# Sentinel for "attribute never set". ``None`` is a legitimate tenant_id
+# value (meaning "use fallback"), so we need a distinct marker.
+_UNSET: Any = object()
+
+
 async def _get_dream_pool() -> AsyncPool[CCClient]:
     """Lazily build the module-level dream pool.
 
@@ -878,35 +883,16 @@ async def _acquire_dream(
 
     instance = await pool.checkout(timeout=timeout)
     try:
-        # Dream pool uses its own tag name for backward-compat; translate
-        # to the generic ``_pool_tenant_id`` sentinel the helper expects.
-        # An instance warmed by the pool factory has neither tag set, so
-        # the helper's ``_UNSET`` path still fires — rebuilding with the
-        # target tenant's soul. The recycle only happens when the tenant
-        # actually changed (or on first real use of a warm instance), so
-        # repeat acquires for the same tenant are zero-cost hot-path
-        # lookups.
-        existing_tid = getattr(instance, "_dream_tenant_id", _UNSET)
-        if existing_tid is not _UNSET:
-            instance._pool_tenant_id = existing_tid  # type: ignore[attr-defined]
-
         instance = await _recycle_instance_for_tenant(
             pool, instance,
             role="dream",
             tenant_id=tenant_id,
-            config=pool._config,  # noqa: SLF001
         )
         # Tag the instance so release / leak-detection can identify it.
         instance._pool_role = "dream"  # type: ignore[attr-defined]
-        instance._dream_tenant_id = tenant_id  # type: ignore[attr-defined]
         yield instance
     finally:
         await pool.checkin(instance)
-
-
-# Sentinel for "attribute never set". ``None`` is a legitimate tenant_id
-# value (meaning "use fallback"), so we need a distinct marker.
-_UNSET: Any = object()
 
 
 async def _make_tenant_instance(
@@ -936,7 +922,7 @@ async def _make_tenant_instance(
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.
-        # TODO(task-2): enable_kb_tool=(role == "customer" and tenant_id is not None)
+        # TODO: enable_kb_tool=(role == "customer" and tenant_id is not None)
         client = await create_cc_client(
             cfg, role=role, tenant_id=tenant_id,
         )
@@ -959,7 +945,6 @@ async def _recycle_instance_for_tenant(
     *,
     role: str,
     tenant_id: str | None,
-    config: PoolConfig,  # accepted for API symmetry; currently unused
 ) -> PooledInstance[CCClient]:
     """Ensure *instance* has the right soul for (role, tenant_id); rebuild if not.
 
