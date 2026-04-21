@@ -2,13 +2,28 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 
-type TabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'billing';
+/**
+ * Rail variants (M2 spec §4.2).
+ *
+ * - `master` (default) — platform-admin rail; management-chat + cross-tenant
+ *   nav + wizard-derived ops/config sections. Back-compat for all M1 callers
+ *   that don't pass `variant`.
+ * - `tenant` — fork-side 4-tab rail: Chat (→ `_local_admin`), Dashboard,
+ *   Proposals, Billing. Master section (cross-tenant nav) is always hidden
+ *   in this variant per spec §4.2 row 6 ("去除").
+ */
+export type RailVariant = 'master' | 'tenant';
+
+type MasterTabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'billing';
+type TenantTabKey = 'chat' | 'dashboard' | 'proposals' | 'billing';
+type TabKey = MasterTabKey | TenantTabKey;
 
 interface RailItem {
   key: TabKey;
   labelKey: string;
   group: 'ops' | 'config';
   icon: React.ReactNode;
+  to: string;
 }
 
 const ChatIcon = () => (
@@ -22,11 +37,6 @@ const DashIcon = () => (
     <rect x="14" y="3" width="7" height="5" />
     <rect x="14" y="12" width="7" height="9" />
     <rect x="3" y="16" width="7" height="5" />
-  </svg>
-);
-const WizardIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3v18M5 12h14" />
   </svg>
 );
 const BulbIcon = () => (
@@ -53,31 +63,80 @@ const TenantsIcon = () => (
   </svg>
 );
 
-const ITEMS: RailItem[] = [
-  { key: 'notifications', icon: <ChatIcon />, labelKey: 'admin.nav.management_chat', group: 'ops' },
-  { key: 'dashboard',     icon: <DashIcon />, labelKey: 'admin.nav.dashboard',       group: 'ops' },
-  { key: 'wizard',        icon: <WizardIcon />, labelKey: 'admin.nav.wizard',        group: 'ops' },
-  { key: 'proposals',     icon: <BulbIcon />, labelKey: 'admin.nav.proposals',       group: 'ops' },
-  { key: 'billing',       icon: <CardIcon />, labelKey: 'admin.nav.billing',         group: 'config' },
-];
+// Declarative variant → items map (spec §4.2 + key invariant from eval-doc-012).
+// Branching lives in this table, NOT in the JSX tree. Add/change a variant's
+// set here, the component stays untouched.
+//
+// Note: the legacy "wizard" nav entry was removed from master in a prior batch
+// (replaced by the "新建租户" button on TenantListTab). Tenant variant row-3
+// ("Wizard") and row-6 ("Tenants 列表") are both spec §4.2 "去除".
+const RAIL_CONFIG: Record<RailVariant, RailItem[]> = {
+  master: [
+    { key: 'notifications', icon: <ChatIcon />, labelKey: 'admin.nav.management_chat', group: 'ops',    to: '/admin/chat' },
+    { key: 'dashboard',     icon: <DashIcon />, labelKey: 'admin.nav.dashboard',       group: 'ops',    to: '/admin/dashboard' },
+    { key: 'proposals',     icon: <BulbIcon />, labelKey: 'admin.nav.proposals',       group: 'ops',    to: '/admin/proposals' },
+    { key: 'billing',       icon: <CardIcon />, labelKey: 'admin.nav.billing',         group: 'config', to: '/admin/billing' },
+  ],
+  tenant: [
+    { key: 'chat',       icon: <ChatIcon />, labelKey: 'admin.nav.tenant.chat',      group: 'ops',    to: '/admin/chat' },
+    { key: 'dashboard',  icon: <DashIcon />, labelKey: 'admin.nav.tenant.dashboard', group: 'ops',    to: '/admin/dashboard' },
+    { key: 'proposals',  icon: <BulbIcon />, labelKey: 'admin.nav.tenant.proposals', group: 'ops',    to: '/admin/proposals' },
+    { key: 'billing',    icon: <CardIcon />, labelKey: 'admin.nav.tenant.billing',   group: 'config', to: '/admin/billing' },
+  ],
+};
 
 interface AdminRailProps {
   open?: boolean;
   onClose?: () => void;
+  /**
+   * Hide the "Master" section (租户列表 entry). Used when the rail is
+   * rendered inside the tenant-mode view (TenantLayout) where the master
+   * cross-tenant navigation is irrelevant.
+   *
+   * In `variant="tenant"` this value is ignored — the Master section is
+   * always suppressed per spec §4.2.
+   */
+  hideMasterSection?: boolean;
+  /**
+   * Override the store's `tenantId` for branding. Set when the rail is
+   * rendered inside a tenant-scoped iframe (/t/<tid>/admin) so the brand
+   * strip reflects the previewed tenant instead of the host session.
+   */
+  tenantIdOverride?: string;
+  /**
+   * Icon-set variant (spec §4.2). Defaults to `"master"` so all existing
+   * callers see zero behavior change.
+   */
+  variant?: RailVariant;
 }
 
-export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
+export function AdminRail({
+  open = false,
+  onClose,
+  hideMasterSection = false,
+  tenantIdOverride,
+  variant = 'master',
+}: AdminRailProps = {}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const tenantId = useAdminStore((s) => s.tenantId);
+  const storeTenantId = useAdminStore((s) => s.tenantId);
+  const tenantId = tenantIdOverride ?? storeTenantId;
   const activeTab = useAdminStore((s) => s.activeTab);
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
 
   const isMasterRoute = location.pathname.startsWith('/master/');
+  const items = RAIL_CONFIG[variant];
+  // Tenant variant forces master-section hidden (spec §4.2 row-6 "去除").
+  const showMasterSection = variant === 'master' && !hideMasterSection;
 
   const handlePick = (key: TabKey) => {
-    setActiveTab(key);
+    // `setActiveTab` is typed to the master-variant union; tenant variant
+    // introduces the `chat` key which the store will accept at runtime
+    // (zustand has no runtime type check). A future pass (T6F.5) will widen
+    // `AdminState.activeTab` to include tenant keys; for T6F.3 we stay
+    // scope-limited to shell/AdminRail only.
+    setActiveTab(key as MasterTabKey);
     // If we're currently on a /master/* route, jump back to legacy shell so the tab is visible
     if (isMasterRoute) navigate('/');
     onClose?.();
@@ -105,8 +164,8 @@ export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
     );
   };
 
-  const opsItems = ITEMS.filter((i) => i.group === 'ops');
-  const configItems = ITEMS.filter((i) => i.group === 'config');
+  const opsItems = items.filter((i) => i.group === 'ops');
+  const configItems = items.filter((i) => i.group === 'config');
   const tenant = tenantId ?? 'mystore';
 
   return (
@@ -125,18 +184,22 @@ export function AdminRail({ open = false, onClose }: AdminRailProps = {}) {
         <span className="cs-workspace-chev"><ChevIcon /></span>
       </div>
 
-      <div className="cs-nav-sec">{t('admin.nav.section.master')}</div>
-      <ul className="cs-nav">
-        <li
-          data-testid="tab-master-tenants"
-          className={`cs-nav-item ${isMasterRoute ? 'active' : ''}`}
-          onClick={handleMasterTenants}
-          aria-current={isMasterRoute ? 'page' : undefined}
-        >
-          <TenantsIcon />
-          <span className="cs-nav-label">{t('admin.nav.master_tenants')}</span>
-        </li>
-      </ul>
+      {showMasterSection && (
+        <>
+          <div className="cs-nav-sec">{t('admin.nav.section.master')}</div>
+          <ul className="cs-nav">
+            <li
+              data-testid="tab-master-tenants"
+              className={`cs-nav-item ${isMasterRoute ? 'active' : ''}`}
+              onClick={handleMasterTenants}
+              aria-current={isMasterRoute ? 'page' : undefined}
+            >
+              <TenantsIcon />
+              <span className="cs-nav-label">{t('admin.nav.master_tenants')}</span>
+            </li>
+          </ul>
+        </>
+      )}
 
       <div className="cs-nav-sec">{t('admin.nav.section.ops')}</div>
       <ul className="cs-nav">{opsItems.map(renderItem)}</ul>
