@@ -70,7 +70,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             <img
               data-testid="image-attachment"
               src={attachmentUrl}
-              alt="image attachment"
+              alt={t('customer.chat.image_attachment')}
               style={{ maxWidth: 200, borderRadius: 8 }}
               loading="lazy"
               onError={() => setImgError(true)}

@@ -15,6 +15,7 @@
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.4
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 interface ChatEntry {
   id: string;
@@ -44,6 +45,7 @@ export function ChatTab({
   fetcher = typeof window !== 'undefined' ? window.fetch.bind(window) : fetch,
   endpoint = '/api/admin/chat',
 }: ChatTabProps = {}) {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<ChatEntry[]>([]);
@@ -108,13 +110,14 @@ export function ChatTab({
     >
       <div
         className="im-main-header"
-        style={{ flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid var(--color-border, #eee)' }}
+        style={{ flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid var(--color-border)' }}
       >
         <div className="im-main-title" style={{ fontWeight: 600 }}>
-          Chat
+          {t('admin.tenant.chat.title')}
         </div>
-        <div className="im-main-subtitle" style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)' }}>
-          {/* Spec §4.4 — tenant admin talks to `_local_admin` */}
+        <div className="im-main-subtitle" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+          {/* Spec §4.4 — tenant admin talks to `_local_admin`. The agent
+              identifier is a system handle, not a localized label. */}
           _local_admin
         </div>
       </div>
@@ -123,16 +126,16 @@ export function ChatTab({
         ref={logRef}
         role="log"
         aria-live="polite"
-        aria-label="chat history"
+        aria-label={t('admin.tenant.chat.history_aria')}
         data-testid="chat-history"
         style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}
       >
         {history.length === 0 ? (
           <div
             data-testid="chat-empty-state"
-            style={{ color: 'var(--color-text-secondary, #888)', fontSize: 13 }}
+            style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}
           >
-            Ask _local_admin anything…
+            {t('admin.tenant.chat.placeholder')}
           </div>
         ) : (
           history.map((entry) => (
@@ -146,10 +149,10 @@ export function ChatTab({
                 borderRadius: 8,
                 background:
                   entry.role === 'user'
-                    ? 'var(--color-bg-user, #e7f0ff)'
+                    ? 'var(--indigo-50)'
                     : entry.role === 'error'
-                      ? 'var(--color-bg-error, #fde8e8)'
-                      : 'var(--color-bg-bot, #f3f4f6)',
+                      ? 'var(--vermillion-50)'
+                      : 'var(--color-bg-surface-tinted)',
                 whiteSpace: 'pre-wrap',
               }}
             >
@@ -160,7 +163,7 @@ export function ChatTab({
         {loading && (
           <div
             data-testid="chat-loading"
-            style={{ color: 'var(--color-text-secondary, #888)', fontSize: 12, fontStyle: 'italic' }}
+            style={{ color: 'var(--color-text-secondary)', fontSize: 12, fontStyle: 'italic' }}
           >
             …
           </div>
@@ -169,7 +172,7 @@ export function ChatTab({
 
       <form
         role="form"
-        aria-label="send chat message"
+        aria-label={t('admin.tenant.chat.form_aria')}
         onSubmit={(e) => {
           e.preventDefault();
           void send();
@@ -179,35 +182,35 @@ export function ChatTab({
           display: 'flex',
           gap: 8,
           padding: '10px 20px',
-          borderTop: '1px solid var(--color-border, #eee)',
+          borderTop: '1px solid var(--color-border)',
         }}
       >
         <input
           type="text"
           data-testid="chat-input"
-          aria-label="chat message"
-          placeholder="Ask _local_admin anything…"
+          aria-label={t('admin.tenant.chat.input_aria')}
+          placeholder={t('admin.tenant.chat.placeholder')}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={loading}
-          style={{ flex: 1, padding: '6px 10px', border: '1px solid var(--color-border, #ddd)', borderRadius: 6 }}
+          style={{ flex: 1, padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 6 }}
         />
         <button
           type="submit"
           data-testid="chat-send"
-          aria-label="send"
+          aria-label={t('common.send')}
           disabled={disabled}
           style={{
             padding: '6px 14px',
             borderRadius: 6,
-            border: '1px solid var(--color-border, #ddd)',
-            background: disabled ? 'var(--color-bg-disabled, #f3f4f6)' : 'var(--color-bg-primary, #3b82f6)',
-            color: disabled ? 'var(--color-text-disabled, #999)' : '#fff',
+            border: '1px solid var(--color-border)',
+            background: disabled ? 'var(--ink-50)' : 'var(--color-primary)',
+            color: disabled ? 'var(--color-text-muted)' : '#fff',
             cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          Send
+          {t('common.send')}
         </button>
       </form>
     </div>

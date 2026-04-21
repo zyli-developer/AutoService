@@ -26,7 +26,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { I18nextProvider, createI18n } from '@autoservice/i18n';
+import { I18nextProvider, createI18n, useTranslation } from '@autoservice/i18n';
 import { useSessionMode, type SessionMode } from '@autoservice/shared';
 import { App } from './App';
 import { NoTenantFallback } from './components/NoTenantFallback';
@@ -56,6 +56,7 @@ function Splash({
   message?: string;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="operator-splash"
@@ -68,11 +69,10 @@ function Splash({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 16,
-        color: '#24292f',
+        color: 'var(--color-text)',
         background:
-          'radial-gradient(ellipse at top, #f0f6ff 0%, #ffffff 60%)',
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          'radial-gradient(ellipse at top, var(--indigo-50) 0%, var(--color-bg) 60%)',
+        fontFamily: 'var(--font-sans)',
       }}
     >
       <div
@@ -81,17 +81,17 @@ function Splash({
           width: 48,
           height: 48,
           borderRadius: '50%',
-          border: '3px solid #d0d7de',
-          borderTopColor: variant === 'error' ? '#cf222e' : '#0969da',
+          border: '3px solid var(--color-border)',
+          borderTopColor: variant === 'error' ? 'var(--color-danger)' : 'var(--color-primary)',
           animation:
             variant === 'loading'
               ? 'operator-splash-spin 0.9s linear infinite'
               : 'none',
         }}
       />
-      <div style={{ fontWeight: 600, fontSize: 18 }}>AutoService · Operator</div>
+      <div style={{ fontWeight: 600, fontSize: 18 }}>{t('operator.splash.brand')}</div>
       {message ? (
-        <div style={{ color: '#57606a', fontSize: 13 }}>{message}</div>
+        <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>{message}</div>
       ) : null}
       {variant === 'error' && onRetry ? (
         <button
@@ -101,14 +101,14 @@ function Splash({
           style={{
             marginTop: 4,
             padding: '6px 14px',
-            borderRadius: 6,
-            border: '1px solid #d0d7de',
-            background: '#ffffff',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-bg-surface)',
             cursor: 'pointer',
             fontSize: 13,
           }}
         >
-          Retry
+          {t('operator.splash.retry')}
         </button>
       ) : null}
       <style>{'@keyframes operator-splash-spin{to{transform:rotate(360deg)}}'}</style>
@@ -129,6 +129,7 @@ export function RouteBootstrap({
   fetcher?: typeof fetch;
   endpoint?: string;
 } = {}) {
+  const { t } = useTranslation();
   const { data, loading, error, refetch } = useSessionMode(fetcher, endpoint);
 
   if (loading) {
@@ -139,7 +140,7 @@ export function RouteBootstrap({
     return (
       <Splash
         variant="error"
-        message="Session check failed — retry to continue."
+        message={t('operator.splash.session_error')}
         onRetry={refetch}
       />
     );

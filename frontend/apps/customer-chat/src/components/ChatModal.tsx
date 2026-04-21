@@ -52,7 +52,7 @@ export function ChatModal({
         className="w-handle"
         data-testid="sheet-handle"
         onClick={onToggleSheet}
-        aria-label={sheet === 'peek' ? 'Expand chat' : 'Collapse chat'}
+        aria-label={sheet === 'peek' ? t('customer.chat.expand') : t('customer.chat.collapse')}
       />
 
       <div className="web-modal-header">

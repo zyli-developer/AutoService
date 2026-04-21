@@ -1,23 +1,34 @@
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore, type Notification } from '../store/adminStore';
 
-const TYPE_STYLES: Record<Notification['type'], { bg: string; color: string; label: string }> = {
-  alert: { bg: 'var(--p)', color: '#fff', label: '告警' },
-  info: { bg: 'var(--m300)', color: 'var(--m800)', label: '信息' },
-  command: { bg: 'var(--m800)', color: '#fff', label: '命令' },
+const TYPE_STYLES: Record<Notification['type'], { bg: string; color: string; labelKey: string }> = {
+  alert: { bg: 'var(--p)', color: '#fff', labelKey: 'admin.notifications.type.alert' },
+  info: { bg: 'var(--m300)', color: 'var(--m800)', labelKey: 'admin.notifications.type.info' },
+  command: { bg: 'var(--m800)', color: '#fff', labelKey: 'admin.notifications.type.command' },
 };
 
 function makeId(): string {
   return `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const commandHandlers: Record<string, () => Pick<Notification, 'title' | 'description' | 'type'>> = {
-  '/rules': () => ({ type: 'command', title: '规则配置已更新', description: '已执行 /rules 命令' }),
-  '/status': () => ({ type: 'command', title: '系统状态：正常', description: '已执行 /status 命令' }),
-  '/review': () => ({ type: 'command', title: '审查已启动', description: '已执行 /review 命令' }),
-};
+type CommandKind = '/rules' | '/status' | '/review';
+const COMMAND_KINDS: CommandKind[] = ['/rules', '/status', '/review'];
+
+function makeCommand(
+  cmd: CommandKind,
+  t: (k: string, opts?: Record<string, unknown>) => string,
+): Pick<Notification, 'title' | 'description' | 'type'> {
+  const slug = cmd.slice(1);
+  return {
+    type: 'command',
+    title: t(`admin.notifications.cmd.${slug}.title`),
+    description: t('admin.notifications.cmd.executed', { cmd }),
+  };
+}
 
 export function NotificationsTab() {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const notifications = useAdminStore((s) => s.notifications);
   const addNotification = useAdminStore((s) => s.addNotification);
@@ -26,20 +37,18 @@ export function NotificationsTab() {
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    const handler = commandHandlers[trimmed];
-    if (handler) {
-      const result = handler();
+    if ((COMMAND_KINDS as string[]).includes(trimmed)) {
       addNotification({
         id: makeId(),
         ts: new Date().toISOString(),
-        ...result,
+        ...makeCommand(trimmed as CommandKind, t),
       });
     } else {
       addNotification({
         id: makeId(),
         type: 'info',
         title: trimmed,
-        description: '用户输入',
+        description: t('admin.notifications.user_input'),
         ts: new Date().toISOString(),
       });
     }
@@ -50,11 +59,12 @@ export function NotificationsTab() {
     <div data-testid="tab-notifications">
       <div data-testid="notification-list">
         {notifications.length === 0 ? (
-          <div className="im-empty">{'暂无通知'}</div>
+          <div className="im-empty">{t('admin.notifications.empty')}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {notifications.map((item) => {
               const style = TYPE_STYLES[item.type];
+              const label = t(style.labelKey);
               return (
                 <div
                   key={item.id}
@@ -65,7 +75,7 @@ export function NotificationsTab() {
                     className="im-avatar a1"
                     style={{ background: style.bg, color: style.color, fontSize: 10 }}
                   >
-                    {style.label.charAt(0)}
+                    {label.charAt(0)}
                   </div>
                   <div className="im-msg-body">
                     <div className="im-msg-meta">
@@ -79,7 +89,7 @@ export function NotificationsTab() {
                           fontWeight: 600,
                         }}
                       >
-                        {style.label}
+                        {label}
                       </span>
                       <span className="im-msg-author">{item.title}</span>
                       <span className="im-msg-time">{item.ts}</span>
@@ -98,13 +108,13 @@ export function NotificationsTab() {
       <div className="cs-notification-input">
         <input
           data-testid="notification-input"
-          placeholder="输入命令：/rules, /status, /review"
+          placeholder={t('admin.notifications.input_placeholder')}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
         />
         <button data-testid="notification-send" onClick={handleSend}>
-          {'发送'}
+          {t('common.send')}
         </button>
       </div>
     </div>

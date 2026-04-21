@@ -46,25 +46,25 @@ export function ComplianceCheckStep() {
     <div data-testid="compliance-step">
       <div className="cs-card hl">
         <div className="cs-ct" data-testid="compliance-summary">
-          <span className="num">4</span>合规预检 · 风险: {report.risk_level}
+          <span className="num">4</span>{t('admin.wizard.compliance.title', { risk: report.risk_level })}
         </div>
         <div className="cs-row">
-          <span>通过 / 总数</span>
+          <span>{t('admin.wizard.compliance.pass_count')}</span>
           <span style={{ color: 'var(--m600)', fontWeight: 700 }}>{report.passed} / {report.total_rules}</span>
         </div>
         <div className="cs-row">
-          <span>通过率</span>
+          <span>{t('admin.wizard.compliance.pass_rate')}</span>
           <span style={{ fontWeight: 700 }}>{(report.pass_rate * 100).toFixed(0)}%</span>
         </div>
         {report.failed > 0 && (
           <div className="cs-pg warn" data-testid="compliance-alert">
-            ⚠ {report.failed} 项未通过，外部访问阻塞，仅沙箱可用
+            ⚠ {t('admin.wizard.compliance.failed_alert', { count: report.failed })}
           </div>
         )}
       </div>
 
       <div className="cs-card" style={{ marginTop: 14 }}>
-        <div className="cs-ct">📋 {report.total_rules} 条规则（来自 /api/compliance/check）</div>
+        <div className="cs-ct">📋 {t('admin.wizard.compliance.rules_total', { count: report.total_rules })}</div>
         <div data-testid="compliance-table">
           {report.results.map((rule) => (
             <div key={rule.rule_id} className="cs-row">
@@ -72,10 +72,10 @@ export function ComplianceCheckStep() {
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{
                   fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                  background: rule.passed ? '#84e7a5' : 'var(--p)',
-                  color: rule.passed ? '#0a4d28' : '#fff',
+                  background: rule.passed ? 'var(--spring-200)' : 'var(--vermillion-500)',
+                  color: rule.passed ? 'var(--spring-900)' : '#fff',
                 }}>
-                  {rule.passed ? '通过' : '失败'}
+                  {rule.passed ? t('admin.wizard.compliance.passed') : t('admin.wizard.compliance.failed')}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--silver)' }}>{rule.severity}</span>
               </span>

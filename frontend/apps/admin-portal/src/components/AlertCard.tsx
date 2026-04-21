@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 export interface SLAAlert {
   rule_id: string;
@@ -19,10 +20,10 @@ export interface SLAAlert {
   timestamp: number;
 }
 
-const SEVERITY_STYLES: Record<SLAAlert['severity'], { bg: string; color: string; label: string }> = {
-  critical: { bg: '#dc2626', color: '#fff', label: '严重' },
-  high: { bg: '#ea580c', color: '#fff', label: '高' },
-  medium: { bg: '#ca8a04', color: '#fff', label: '中' },
+const SEVERITY_STYLES: Record<SLAAlert['severity'], { bg: string; color: string; labelKey: string }> = {
+  critical: { bg: 'var(--vermillion-500)', color: '#fff', labelKey: 'admin.alert.severity.critical' },
+  high:     { bg: 'var(--goose-500)',      color: '#fff', labelKey: 'admin.alert.severity.high' },
+  medium:   { bg: 'var(--gold-500)',       color: '#fff', labelKey: 'admin.alert.severity.medium' },
 };
 
 interface AlertCardProps {
@@ -31,8 +32,10 @@ interface AlertCardProps {
 }
 
 export function AlertCard({ alert, onDispatch }: AlertCardProps) {
+  const { t } = useTranslation();
   const [dispatched, setDispatched] = useState(false);
   const style = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.medium;
+  const label = t(style.labelKey);
 
   const handleDispatch = () => {
     setDispatched(true);
@@ -55,7 +58,7 @@ export function AlertCard({ alert, onDispatch }: AlertCardProps) {
         className="im-avatar a1"
         style={{ background: style.bg, color: style.color, fontSize: 10 }}
       >
-        {style.label.charAt(0)}
+        {label.charAt(0)}
       </div>
       <div className="im-msg-body" style={{ flex: 1 }}>
         <div className="im-msg-meta">
@@ -69,7 +72,7 @@ export function AlertCard({ alert, onDispatch }: AlertCardProps) {
               fontWeight: 600,
             }}
           >
-            {style.label}
+            {label}
           </span>
           <span className="im-msg-author">{alert.rule_name_zh}</span>
           <span className="im-msg-time">{ts}</span>
@@ -96,7 +99,7 @@ export function AlertCard({ alert, onDispatch }: AlertCardProps) {
           color: dispatched ? 'var(--m600)' : '#fff',
         }}
       >
-        {dispatched ? '已派单' : '/dispatch'}
+        {dispatched ? t('admin.alert.dispatched') : t('admin.alert.dispatch_action')}
       </button>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 
 export type ChatBlock =
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function InlineWidget({ block }: Props) {
+  const { t } = useTranslation();
   const setActiveTab = useAdminStore((s) => s.setActiveTab);
 
   switch (block.type) {
@@ -48,7 +50,7 @@ export function InlineWidget({ block }: Props) {
             data-testid="widget-launch-btn"
             onClick={() => setActiveTab(target)}
           >
-            启动
+            {t('admin.chat.widget.launch')}
           </button>
         </div>
       );
@@ -67,7 +69,7 @@ export function InlineWidget({ block }: Props) {
                 data-testid="widget-proposal-approve"
                 onClick={() => onApprove?.(id)}
               >
-                批准
+                {t('admin.chat.widget.approve')}
               </button>
               <button
                 type="button"
@@ -75,7 +77,7 @@ export function InlineWidget({ block }: Props) {
                 data-testid="widget-proposal-reject"
                 onClick={() => onReject?.(id)}
               >
-                驳回
+                {t('admin.chat.widget.reject')}
               </button>
               <button
                 type="button"
@@ -83,7 +85,7 @@ export function InlineWidget({ block }: Props) {
                 data-testid="widget-proposal-details"
                 onClick={() => setActiveTab('proposals')}
               >
-                详情
+                {t('admin.chat.widget.details')}
               </button>
             </div>
           </div>

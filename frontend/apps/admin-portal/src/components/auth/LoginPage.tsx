@@ -17,6 +17,7 @@
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.5, §5.2
  */
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 interface LoginPageProps {
   /**
@@ -31,6 +32,7 @@ interface LoginPageProps {
 type Status = 'idle' | 'submitting' | 'sent' | 'error';
 
 export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
     e.preventDefault();
     const trimmed = email.trim();
     if (!trimmed) {
-      setErrorMsg('Please enter your admin email address.');
+      setErrorMsg(t('admin.login.email_required'));
       setStatus('error');
       return;
     }
@@ -86,9 +88,8 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
         alignItems: 'center',
         justifyContent: 'center',
         background:
-          'radial-gradient(ellipse at top, #eff3fb 0%, #ffffff 60%)',
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          'radial-gradient(ellipse at top, var(--indigo-50) 0%, var(--color-bg) 60%)',
+        fontFamily: 'var(--font-sans)',
         padding: 16,
       }}
     >
@@ -97,15 +98,15 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
           width: '100%',
           maxWidth: 360,
           padding: 28,
-          background: '#ffffff',
-          border: '1px solid #d0d7de',
-          borderRadius: 12,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+          background: 'var(--color-bg-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-elevated)',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 20 }}>Sign in to AutoService</h1>
-        <p style={{ color: '#57606a', fontSize: 13, marginTop: 6 }}>
-          We&apos;ll email you a magic link. No password needed.
+        <h1 style={{ margin: 0, fontSize: 20 }}>{t('admin.login.title')}</h1>
+        <p style={{ color: 'var(--color-text-secondary)', fontSize: 13, marginTop: 6 }}>
+          {t('admin.login.subtitle')}
         </p>
 
         {status === 'sent' ? (
@@ -115,21 +116,19 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
             style={{
               marginTop: 20,
               padding: 12,
-              borderRadius: 8,
-              background: '#dafbe1',
-              color: '#116329',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--spring-50)',
+              color: 'var(--spring-900)',
               fontSize: 13,
             }}
           >
-            Check your email for a magic link.
+            {t('admin.login.sent')}
             {isLocalhost ? (
               <div
                 data-testid="login-dev-hint"
-                style={{ marginTop: 6, color: '#57606a', fontSize: 12 }}
+                style={{ marginTop: 6, color: 'var(--color-text-secondary)', fontSize: 12 }}
               >
-                Dev mode: tail{' '}
-                <code>.autoservice/logs/auth-devmail.jsonl</code> to
-                retrieve the link.
+                {t('admin.login.dev_hint')}
               </div>
             ) : null}
           </div>
@@ -146,11 +145,11 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
                 display: 'block',
                 fontSize: 12,
                 fontWeight: 600,
-                color: '#24292f',
+                color: 'var(--color-text)',
                 marginBottom: 6,
               }}
             >
-              Admin email
+              {t('admin.login.email_label')}
             </label>
             <input
               id="login-email"
@@ -166,8 +165,8 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
                 width: '100%',
                 padding: '8px 10px',
                 fontSize: 14,
-                border: '1px solid #d0d7de',
-                borderRadius: 6,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
                 boxSizing: 'border-box',
               }}
             />
@@ -178,7 +177,7 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
                 role="alert"
                 style={{
                   marginTop: 10,
-                  color: '#cf222e',
+                  color: 'var(--color-danger)',
                   fontSize: 12,
                 }}
               >
@@ -194,16 +193,16 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
                 marginTop: 16,
                 width: '100%',
                 padding: '9px 14px',
-                border: '1px solid #0969da',
-                borderRadius: 6,
-                background: busy ? '#97c2ff' : '#0969da',
-                color: '#ffffff',
+                border: '1px solid var(--color-primary)',
+                borderRadius: 'var(--radius-sm)',
+                background: busy ? 'var(--indigo-200)' : 'var(--color-primary)',
+                color: '#fff',
                 fontSize: 14,
                 fontWeight: 600,
                 cursor: busy ? 'wait' : 'pointer',
               }}
             >
-              {busy ? 'Sending…' : 'Send magic link'}
+              {busy ? t('admin.login.sending') : t('admin.login.send')}
             </button>
           </form>
         )}
