@@ -24,7 +24,7 @@
 | 2026-04-21 | 模板修复：m2/cc-prompt-templates.md + CLAUDE.md autorun 约定 | 本次 commit |
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
-| 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `<pending>` |
+| 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `5d614bc` |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -90,9 +90,9 @@
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T4B.1 | should_trigger() logic | 🟡 yellow | medium | ✅ done | Subagent batch-6 | `<pending>` (16 tests, inline reviewer APPROVED) |
-| T4B.2 | scheduler loop + active-tenant discovery | green | medium | ✅ done | Subagent batch-6 | `<pending>` (10 tests) |
-| T4B.3 | /dream-config → scheduler.refresh() | green | small | ✅ done | Subagent batch-6 | `<pending>` (7 tests) |
+| T4B.1 | should_trigger() logic | 🟡 yellow | medium | ✅ done | Subagent batch-6 | `5d614bc` (16 tests, inline reviewer APPROVED) |
+| T4B.2 | scheduler loop + active-tenant discovery | green | medium | ✅ done | Subagent batch-6 | `5d614bc` (10 tests) |
+| T4B.3 | /dream-config → scheduler.refresh() | green | small | ✅ done | Subagent batch-6 | `5d614bc` (7 tests) |
 
 **Gate**：idle 租户自动触发；/dream-config 动态 refresh 生效。
 
