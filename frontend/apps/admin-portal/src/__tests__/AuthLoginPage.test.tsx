@@ -70,6 +70,7 @@ describe('components/auth/LoginPage', () => {
     expect(body).toEqual({
       email: 'ops@autoservice.com',
       tenant_id: null,
+      redirect: `${window.location.origin}/admin`,
     });
   });
 

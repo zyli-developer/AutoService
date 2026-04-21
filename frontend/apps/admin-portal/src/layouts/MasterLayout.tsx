@@ -17,10 +17,11 @@
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.2, §5.3
  */
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Outlet } from 'react-router-dom';
 import { useAdminStore } from '../store/adminStore';
 import { LoginPage } from '../components/LoginPage';
 import { AdminWorkspace } from '../components/AdminWorkspace';
+import { AdminShell } from '../components/shell/AdminShell';
 import { WizardTab } from '../components/WizardTab';
 import { TenantListTab } from '../components/master/TenantListTab';
 import { TenantPreviewTab } from '../components/master/TenantPreviewTab';
@@ -45,16 +46,37 @@ function WizardRoute() {
 }
 
 /**
+ * Layout wrapper so /master/* and /admin/wizard routes share the admin
+ * topbar + sidebar (AdminShell) with the rest of the app. Previously these
+ * routes rendered bare, losing the header and nav rail.
+ */
+function MasterShellLayout() {
+  const location = useLocation();
+  const viewTag = location.pathname.startsWith('/master/tenants/new') || location.pathname === '/admin/wizard'
+    ? 'wizard'
+    : location.pathname.startsWith('/master/tenants/') && location.pathname.endsWith('/preview')
+      ? 'tenant-preview'
+      : 'master-tenants';
+  return (
+    <AdminShell viewTag={viewTag}>
+      <Outlet />
+    </AdminShell>
+  );
+}
+
+/**
  * Inner router node. Kept separate so tests can mount this under a
  * `<MemoryRouter>` without having to stub out `BrowserRouter`.
  */
 export function MasterRoutes() {
   return (
     <Routes>
-      <Route path="/master/tenants" element={<TenantListTab />} />
-      <Route path="/master/tenants/new" element={<WizardRoute />} />
-      <Route path="/master/tenants/:id/preview" element={<TenantPreviewTab />} />
-      <Route path="/admin/wizard" element={<WizardRoute />} />
+      <Route element={<MasterShellLayout />}>
+        <Route path="/master/tenants" element={<TenantListTab />} />
+        <Route path="/master/tenants/new" element={<WizardRoute />} />
+        <Route path="/master/tenants/:id/preview" element={<TenantPreviewTab />} />
+        <Route path="/admin/wizard" element={<WizardRoute />} />
+      </Route>
       {/* Everything else — including the legacy `/` — keeps the existing
           tab-based admin experience. */}
       <Route path="*" element={<AdminWorkspace />} />

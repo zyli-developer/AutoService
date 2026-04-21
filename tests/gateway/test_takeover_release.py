@@ -253,6 +253,50 @@ def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_
             )
 
 
+def test_history_snapshot_carries_per_message_source_display(fast_takeover_app):
+    """history_request must attach source_display.role to each message so
+    reloaded conversations render with the same badges as live broadcasts
+    (customer / operator / agent).
+
+    Regression: _serialize_message() drops role info. Without per-message
+    source_display, operator suggestions re-rendered as "AUTO" on refresh
+    because msg.source is an opaque participant id (e.g. "op42", "李"), and
+    the frontend's substring heuristic misclassified them as "agent".
+    """
+    with TestClient(fast_takeover_app) as client:
+        with client.websocket_connect("/ws/customer") as cws, \
+             client.websocket_connect("/ws/operator") as ows:
+            _setup(cws, ows)
+            conv_id = _customer_start_conv(cws)
+            _operator_join(ows, conv_id, "op42")
+
+            ows.send_json(_frame("operator_message", {
+                "conversation_id": conv_id,
+                "operator_id": "op42",
+                "content": "coach: ask about package size",
+            }))
+            # Drain broadcast so state is quiescent.
+            _wait_frame(ows, "message", timeout=0.5)
+
+            ows.send_json(_frame("history_request", {
+                "conversation_id": conv_id,
+                "limit": 50,
+            }))
+            snap = _wait_frame(ows, "history_snapshot", timeout=1.0)
+            assert snap is not None, "history_snapshot never arrived"
+
+            messages = snap["payload"]["messages"]
+            by_source = {m["source"]: m for m in messages}
+
+            assert "cust1" in by_source, "customer message missing from history"
+            assert by_source["cust1"]["source_display"]["role"] == "customer"
+            assert by_source["cust1"]["source_display"]["id"] == "cust1"
+
+            assert "op42" in by_source, "operator suggestion missing from history"
+            assert by_source["op42"]["source_display"]["role"] == "operator"
+            assert by_source["op42"]["source_display"]["id"] == "op42"
+
+
 def test_operator_message_reaches_customer_ws(fast_takeover_app):
     """After hijack, operator_message frames must push to the customer WS.
 

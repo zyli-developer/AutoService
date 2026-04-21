@@ -35,7 +35,11 @@ export function IMInput({ send }: IMInputProps) {
     const id = crypto.randomUUID();
     const ts = new Date().toISOString();
 
-    addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts });
+    // Mirror the backend gate: copilot/auto → SIDE suggestion, takeover → PUBLIC.
+    // Without this, a hijack reply shows "建议" optimistically until the backend
+    // echoes, and a copilot suggestion would briefly show as "driver".
+    const visibility: 'public' | 'side' = isTakeover ? 'public' : 'side';
+    addCopilotMessage(activeCopilotConvId, { id, text, sender: 'operator', ts, visibility });
 
     send({
       v: 1,

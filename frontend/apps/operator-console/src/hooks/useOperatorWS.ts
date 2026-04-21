@@ -163,15 +163,26 @@ export function useOperatorWS(url: string): {
           const msgs = (p.messages as Record<string, unknown>[]) ?? [];
           if (convId && msgs.length > 0) {
             for (const msg of msgs) {
+              // Prefer source_display.role (authoritative, set by backend against
+              // conversation participants). Fall back to substring heuristic on
+              // msg.source so a downlevel server still replays something sane.
+              const srcDisplay = msg.source_display as Record<string, unknown> | undefined;
+              const role = (srcDisplay?.role as string) ?? '';
               const src = (msg.source as string) ?? '';
-              const sender = (src.includes('customer') || src.startsWith('cust')) ? 'customer' as const
-                : src.includes('operator') ? 'operator' as const
-                : 'agent' as const;
+              const sender: 'customer' | 'operator' | 'agent' =
+                role === 'customer' || role === 'operator' || role === 'agent'
+                  ? role
+                  : (src.includes('customer') || src.startsWith('cust'))
+                    ? 'customer'
+                    : src.includes('operator')
+                      ? 'operator'
+                      : 'agent';
               addCopilotMessage(convId, {
                 id: (msg.id as string) ?? crypto.randomUUID(),
                 text: (msg.content as string) ?? '',
                 sender,
                 ts: (msg.timestamp as string) ?? new Date().toISOString(),
+                visibility: msg.visibility as 'public' | 'side' | 'system' | undefined,
               });
             }
           }
@@ -230,6 +241,7 @@ export function useOperatorWS(url: string): {
                 text: content,
                 sender,
                 ts,
+                visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
               });
             }
           }

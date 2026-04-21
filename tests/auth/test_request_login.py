@@ -174,6 +174,79 @@ auth:
     assert set(record.keys()) >= {"ts", "email", "tenant_id", "token", "link"}
 
 
+def test_redirect_override_uses_frontend_origin(
+    app_client, write_config, tmp_path
+):
+    """Frontend may pass ``redirect`` (absolute URL) to steer the post-verify
+    302 target back to its own origin — dev-mode port split between vite
+    (:5175) and the backend (:8000).  Allowed iff redirect's origin matches
+    the request's ``Origin`` header (open-redirect guard).
+    """
+    write_config(
+        """\
+auth:
+  admin_emails:
+    - admin@example.com
+  smtp:
+    host: ""
+"""
+    )
+
+    r = app_client.post(
+        "/api/auth/request-login",
+        json={
+            "email": "admin@example.com",
+            "tenant_id": None,
+            "redirect": "http://localhost:5175/admin",
+        },
+        headers={"origin": "http://localhost:5175"},
+    )
+    assert r.status_code == 200
+
+    log = (tmp_path / ".autoservice" / "logs" / "auth-devmail.jsonl").read_text(
+        encoding="utf-8"
+    ).strip()
+    link = json.loads(log)["link"]
+    # `urllib.parse.quote` leaves `/` unescaped by default.
+    assert "redirect=http%3A//localhost%3A5175/admin" in link
+
+
+def test_redirect_override_rejected_when_origin_mismatches(
+    app_client, write_config, tmp_path
+):
+    """An attacker-controlled ``redirect`` whose host differs from the
+    browser ``Origin`` must be dropped; magic link falls back to the default
+    path so the link can't phish a session.
+    """
+    write_config(
+        """\
+auth:
+  admin_emails:
+    - admin@example.com
+  smtp:
+    host: ""
+"""
+    )
+
+    r = app_client.post(
+        "/api/auth/request-login",
+        json={
+            "email": "admin@example.com",
+            "tenant_id": None,
+            "redirect": "http://evil.example.com/phish",
+        },
+        headers={"origin": "http://localhost:5175"},
+    )
+    assert r.status_code == 200
+
+    log = (tmp_path / ".autoservice" / "logs" / "auth-devmail.jsonl").read_text(
+        encoding="utf-8"
+    ).strip()
+    link = json.loads(log)["link"]
+    assert "evil.example.com" not in link
+    assert "redirect=/admin" in link  # default fallback
+
+
 def test_two_rapid_requests_create_two_tokens(
     app_client, auth_conn, write_config
 ):

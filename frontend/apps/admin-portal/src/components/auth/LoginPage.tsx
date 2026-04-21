@@ -49,12 +49,20 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
     }
     setStatus('submitting');
     setErrorMsg(null);
+    // Dev-port UX: vite (:5175) and uvicorn (:8000) differ, so ask the backend
+    // to bake an absolute redirect on THIS origin into the magic link. The
+    // server validates the redirect matches our `Origin` header (see
+    // tests/auth/test_request_login.py::test_redirect_override_*).
+    const redirect =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}${tenantId ? `/t/${tenantId}/admin` : '/admin'}`
+        : undefined;
     try {
       const resp = await fetch('/api/auth/request-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: trimmed, tenant_id: tenantId }),
+        body: JSON.stringify({ email: trimmed, tenant_id: tenantId, redirect }),
       });
       if (!resp.ok) {
         throw new Error(`request-login ${resp.status}`);
