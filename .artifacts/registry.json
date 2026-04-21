@@ -507,7 +507,8 @@
       "updated_at": "2026-04-21T00:22:53Z",
       "related_ids": [
         "test-diff-004",
-        "test-diff-005"
+        "test-diff-005",
+        "e2e-report-003"
       ]
     },
     {
@@ -662,7 +663,9 @@
       "path": ".artifacts/e2e-reports/e2e-m2-phase1-4.md",
       "created_at": "2026-04-21T00:23:37Z",
       "updated_at": "2026-04-21T00:23:37Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-005"
+      ]
     }
   ]
 }
