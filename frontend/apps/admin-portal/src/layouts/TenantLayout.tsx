@@ -44,13 +44,15 @@ import { ChatTab } from '../components/tenant/ChatTab';
 import { DashboardTab } from '../components/DashboardTab';
 import { ProposalsTab } from '../components/ProposalsTab';
 import { BillingTab } from '../components/BillingTab';
+import { DreamTab } from '../components/DreamTab';
 
-type TenantTabKey = 'chat' | 'dashboard' | 'proposals' | 'billing';
+type TenantTabKey = 'chat' | 'dashboard' | 'proposals' | 'dream' | 'billing';
 
 const TENANT_TABS: Record<TenantTabKey, React.ComponentType> = {
   chat: ChatTab,
   dashboard: DashboardTab,
   proposals: ProposalsTab,
+  dream: DreamTab,
   billing: BillingTab,
 };
 
@@ -73,7 +75,7 @@ export function TenantLayoutBody({ tenantId }: TenantLayoutProps = {}) {
   // (e.g. 'notifications' inherited from a prior master session in the
   // same browser). Explicit user picks are preserved.
   useEffect(() => {
-    const tenantKeys: TenantTabKey[] = ['chat', 'dashboard', 'proposals', 'billing'];
+    const tenantKeys: TenantTabKey[] = ['chat', 'dashboard', 'proposals', 'dream', 'billing'];
     if (!tenantKeys.includes(activeTab as TenantTabKey)) {
       setActiveTab('chat');
     }
@@ -85,6 +87,7 @@ export function TenantLayoutBody({ tenantId }: TenantLayoutProps = {}) {
     activeTab === 'chat' ||
     activeTab === 'dashboard' ||
     activeTab === 'proposals' ||
+    activeTab === 'dream' ||
     activeTab === 'billing'
       ? (activeTab as TenantTabKey)
       : 'chat';
