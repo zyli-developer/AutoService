@@ -815,6 +815,18 @@
       "created_at": "2026-04-21T01:13:26Z",
       "updated_at": "2026-04-21T01:13:26Z",
       "related_ids": []
+    },
+    {
+      "id": "eval-doc-013",
+      "name": "T6F.4 AdminTopbar + AvatarMenu extensions",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "subagent-t6f-4",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t6f-4-topbar-avatar.md",
+      "created_at": "2026-04-21T01:14:39Z",
+      "updated_at": "2026-04-21T01:14:39Z",
+      "related_ids": []
     }
   ]
 }
