@@ -93,6 +93,7 @@ export interface CanaryStateUI {
 
 export interface AdminState {
   tenantId: string | null;
+  isLoggedIn: boolean;
   // T6F.5 — widened to include tenant-variant `'chat'` key (spec §4.2).
   // Master variant continues to use 'notifications'/'dashboard'/'wizard'/
   // 'proposals'/'billing'; tenant variant adds 'chat'. The union is honest
@@ -113,6 +114,7 @@ export interface AdminState {
 
   canaryState: CanaryStateUI | null;
 
+  login: (tenantId: string) => void;
   setTenantId: (tenantId: string | null) => void;
   logout: () => void;
   setActiveTab: (tab: AdminState['activeTab']) => void;
@@ -146,6 +148,7 @@ const initialWizardFormData: WizardFormData = {
 
 export const initialState = {
   tenantId: null,
+  isLoggedIn: false,
   activeTab: 'notifications' as const,
   notifications: [] as Notification[],
   wizardStep: 0,
@@ -164,6 +167,7 @@ export const useAdminStore = create<AdminState>()(
     (set) => ({
       ...initialState,
 
+      login: (tenantId) => set({ tenantId, isLoggedIn: true }),
       setTenantId: (tenantId) => set({ tenantId }),
 
       logout: () => set({ ...initialState }),
