@@ -1218,6 +1218,18 @@
       "created_at": "2026-04-21T04:01:20Z",
       "updated_at": "2026-04-21T04:01:20Z",
       "related_ids": []
+    },
+    {
+      "id": "e2e-report-015",
+      "name": "M2 §8 acceptance RUN #2 (7/8 pass, all executable steps green)",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-m2-acceptance-RUN-2026-04-21-v2.md",
+      "created_at": "2026-04-21T04:23:48Z",
+      "updated_at": "2026-04-21T04:23:48Z",
+      "related_ids": []
     }
   ]
 }
