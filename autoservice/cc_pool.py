@@ -489,15 +489,22 @@ class CCPool(AsyncPool[CCClient]):
                 yield msg
 
     async def session_query(
-        self, chat_id: str, prompt: str, **kwargs: Any,
+        self, chat_id: str, prompt: str,
+        *, tenant_id: str | None = None,
+        **kwargs: Any,
     ) -> AsyncIterator[Message]:
         """Stateful multi-turn query: chat_id is sticky-bound to a CC instance.
 
         The same chat_id always gets the same Claude Code subprocess,
         preserving conversation context across multiple calls.
         Use end_session() to release the binding when the conversation ends.
+
+        When tenant_id is provided, the sticky instance is bound to that
+        tenant's soul + KB tool on first acquire. Subsequent calls for the
+        same chat_id MUST pass the same tenant_id or StickyTenantMismatch
+        is raised.
         """
-        instance = await self.acquire_sticky(chat_id)
+        instance = await self.acquire_sticky(chat_id, tenant_id=tenant_id)
         instance.query_count += 1
         session_id = kwargs.pop("session_id", chat_id)
         await instance.client.query(prompt, session_id=session_id)
