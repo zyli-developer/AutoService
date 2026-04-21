@@ -590,6 +590,18 @@
       "created_at": "2026-04-21T00:23:22Z",
       "updated_at": "2026-04-21T00:23:22Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-008",
+      "name": "M2 batch-4 test-diff (T3B.4 run_dream yellow)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-4.md",
+      "created_at": "2026-04-21T00:23:26Z",
+      "updated_at": "2026-04-21T00:23:26Z",
+      "related_ids": []
     }
   ]
 }
