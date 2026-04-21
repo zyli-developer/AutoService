@@ -1,0 +1,593 @@
+---
+# M3 Gap Analysis — Codebase vs PRD
+# Produced by: prd2impl:skill-2-gap-scan
+gap_analysis:
+  scan_date: "2026-04-21"
+  prd_source: "docs/plans/m3/2026-04-21-prd-structure.yaml"
+  baseline: "M2 (tenant-sandbox + triage dispatch + dream scheduler + magic-link admin)"
+  source_type: extracted
+
+  summary:
+    total_stories_original: 22
+    deferred_stories: 6         # Epic E2 DEFERRED_M4 per §8.1 Errata
+    in_scope_stories: 16
+    implemented: 0
+    partial: 8                  # E1.1/1.4/1.5, E3.1/3.3, E4.1, E5.2, E6.1
+    missing: 8                  # E1.2/1.3/1.6, E3.2/3.4, E4.2, E5.1, E6.2
+    coverage_pct: 27            # re-weighted over 16 in-scope stories
+    red_line_status: "CON-04 ENFORCED (verified in dream_agent.py:208,219; test coverage present)"
+    errata: "Epic E2 full descope to M4+ (2026-04-21). GAP-E2.* marked DEFERRED_M4 below."
+
+  by_module:
+    - module: MOD-E1
+      name: "Identity & RBAC"
+      stories_total: 6
+      implemented: 0
+      partial: 3            # E1.1, E1.4, E1.5
+      missing: 3            # E1.2, E1.3, E1.6
+      coverage_pct: 25
+    - module: MOD-E2
+      name: "Subtenant tier_2"
+      status: DEFERRED_M4
+      stories_total: 6
+      in_scope: 0
+      note: "All 6 stories deferred to M4+ per PRD §8.1 Errata (v1.1 §8 whitelabel OoS). Excluded from coverage calculation."
+    - module: MOD-E3
+      name: "Triage Dispatch Enhancement"
+      stories_total: 4
+      implemented: 0
+      partial: 2            # E3.1, E3.3
+      missing: 2            # E3.2, E3.4
+      coverage_pct: 35
+    - module: MOD-E4
+      name: "Compliance Deepening"
+      stories_total: 2
+      implemented: 0
+      partial: 1            # E4.1
+      missing: 1            # E4.2
+      coverage_pct: 25
+    - module: MOD-E5
+      name: "Dream Extension"
+      stories_total: 2
+      implemented: 0
+      partial: 1            # E5.2
+      missing: 1            # E5.1
+      coverage_pct: 30
+    - module: MOD-E6
+      name: "Operations & Deployment"
+      stories_total: 2
+      implemented: 0
+      partial: 1            # E6.1
+      missing: 1            # E6.2
+      coverage_pct: 30
+
+  # ---------------------------------------------------------------------------
+  # Detailed Gaps
+  # ---------------------------------------------------------------------------
+  gaps:
+    # ===== E1 Identity & RBAC =====
+    - id: GAP-E1.1
+      story_id: E1.1
+      module: MOD-E1
+      priority: P0
+      gap_type: partial
+      description: "Operator WS tracking exists, but no login endpoint, no persistent session, no SQLite operators table."
+      existing_code:
+        - file: "autoservice/web_gateway.py"
+          lines: "58-59, 92-106, 225-262, 330-335, 479-485"
+          note: "_operator_sessions dict (ephemeral); /ws/operator handshake; _send_to_operator helper"
+        - file: "autoservice/offline_watcher.py"
+          note: "grace period tracking for operator disconnects"
+        - file: "autoservice/auth.py"
+          lines: "57-71, 116-140"
+          note: "login_tokens table + issue_login_token for admin magic-link (reusable foundation)"
+      missing_parts:
+        - "HTTP login endpoint for operator (/api/auth/operator/login or equivalent)"
+        - "operator_session cookie (separate from admin_session per CON-08)"
+        - "SQLite operators table (persist operator records across restarts)"
+        - "WS handshake must validate session cookie (not JSON operator_id)"
+        - "Session expiry + idle cleanup for operator sessions"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-E1.2
+      story_id: E1.2
+      module: MOD-E1
+      priority: P0
+      gap_type: missing
+      description: "No per-tenant operator CRUD API."
+      existing_code: []
+      missing_parts:
+        - "POST /api/admin/{tenant_id}/operators (create)"
+        - "GET /api/admin/{tenant_id}/operators (list, tenant-scoped)"
+        - "PATCH /api/admin/{tenant_id}/operators/{id} (update)"
+        - "DELETE /api/admin/{tenant_id}/operators/{id}"
+        - "Authorization: only tenant_admin may CRUD operators for own tenant"
+      estimated_effort: small
+      depends_on_gaps: [GAP-E1.1]
+
+    - id: GAP-E1.3
+      story_id: E1.3
+      module: MOD-E1
+      priority: P0
+      gap_type: missing
+      description: "No operator invite flow. Magic-link foundation reusable but no role metadata on tokens."
+      existing_code:
+        - file: "autoservice/auth.py"
+          lines: "57, 116-140"
+          note: "login_tokens table + issue_login_token (admin-only today)"
+      missing_parts:
+        - "login_tokens.role column (admin | operator)"
+        - "issue_invite_token(role='operator', tenant_id, email, inviter_admin_id)"
+        - "Invite UI in admin-portal (copy invite link)"
+        - "Invite consumption flow: land on operator signup, set operator_session cookie"
+      estimated_effort: small
+      depends_on_gaps: [GAP-E1.1]
+
+    - id: GAP-E1.4
+      story_id: E1.4
+      module: MOD-E1
+      priority: P1
+      gap_type: partial
+      description: "Conversation-level ParticipantRole exists; no viewer/responder/admin tier RBAC."
+      existing_code:
+        - file: "autoservice/conversation_engine/types.py"
+          lines: "7-10"
+          note: "ParticipantRole: CUSTOMER/AGENT/OPERATOR/OBSERVER (conversation-scoped)"
+        - file: "autoservice/conversation_engine/local_engine.py"
+          lines: "282-291, 709, 726, 753"
+          note: "viewer_role message filtering; comment-only permission stubs"
+        - file: "autoservice/conversation_engine/event_bus.py"
+          lines: "47-54, 123-124"
+          note: "customer-visibility event filtering"
+      missing_parts:
+        - "Tenant-scoped RBAC enum: viewer | responder | admin"
+        - "Centralized permission matrix (rbac.py) hardcoded per CON-02"
+        - "Decorator / middleware for route-level RBAC checks"
+        - "/hijack endpoint gating (responder ≥ required, per takeover-release spec)"
+        - "RBAC decision P95 < 5ms benchmark (NFR-02)"
+        - "Session carries RBAC tier (extend auth.py sessions table)"
+      estimated_effort: medium
+      depends_on_gaps: [GAP-E1.1]
+
+    - id: GAP-E1.5
+      story_id: E1.5
+      module: MOD-E1
+      priority: P1
+      gap_type: partial
+      description: "Sessions table schema allows multiple admins per tenant, but no CRUD surface."
+      existing_code:
+        - file: "autoservice/auth.py"
+          lines: "64-71, 375-386"
+          note: "Sessions allow multiple rows per tenant_id+admin_email; tenant-scoped auth works"
+      missing_parts:
+        - "GET /api/admin/{tenant_id}/admins (list co-admins)"
+        - "PATCH / DELETE admin record endpoints"
+        - "Distinction first-admin vs co-admin is NOT required (per PRD §2 E1.5: 'permissions consistent')"
+      estimated_effort: small
+      depends_on_gaps: [GAP-E1.1]
+
+    - id: GAP-E1.6
+      story_id: E1.6
+      module: MOD-E1
+      priority: P2
+      gap_type: missing
+      description: "No admin-to-admin invite flow."
+      existing_code: []
+      missing_parts:
+        - "issue_invite_token(role='tenant_admin', tenant_id, email, inviter_admin_id)"
+        - "Admin-portal UI to send co-admin invite"
+        - "Invite consumption → promotes to tenant_admin role"
+      estimated_effort: small
+      depends_on_gaps: [GAP-E1.4]
+
+    # ===== E2 ALL DEFERRED_M4 per PRD §8.1 Errata (2026-04-21) =====
+    # Evidence: AutoService-PRD-v1.1.md §8 whitelabel OoS; v1.1 UserStories has
+    # zero subtenant/tier_2/referral entries. Original gap content preserved in
+    # git history (commit prior to descope). Tombstones retained for traceability.
+    - id: GAP-E2.1
+      story_id: E2.1
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS"
+    - id: GAP-E2.2
+      story_id: E2.2
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS"
+    - id: GAP-E2.3
+      story_id: E2.3
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS; both subtenant wizard and flat-peer referral variant deferred"
+    - id: GAP-E2.4
+      story_id: E2.4
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS; fork-internal emplace eliminated"
+    - id: GAP-E2.5
+      story_id: E2.5
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS; tier_2 billing + referral line-items both deferred"
+    - id: GAP-E2.6
+      story_id: E2.6
+      status: DEFERRED_M4
+      reason: "v1.1 §8 whitelabel OoS"
+
+    # ===== E3 Triage Enhancement =====
+    - id: GAP-E3.1
+      story_id: E3.1
+      module: MOD-E3
+      priority: P1
+      gap_type: partial
+      description: "SLAAggregator + AlertEngine in place AND already WS-wired to admin path. Missing: pool metrics + per-tenant thresholds + operator-WS parallel push."
+      existing_code:
+        - file: "autoservice/sla_aggregator.py"
+          lines: "71-76, 185-216"
+          note: "7 metrics, 3 windows, P50/P95, global SLA_THRESHOLDS; _on_per_record_breach callback exists (REUSABLE)"
+        - file: "autoservice/alert_engine.py"
+          lines: "166"
+          note: "AlertEngine with 4 rules; _notify_fn callback"
+        - file: "autoservice/web_gateway.py"
+          lines: "285-326"
+          note: "[CORRECTION 2026-04-21] AlertEngine IS already WS-wired — but only to _admin_connections, not _operator_connections. Original gap note 'connect _notify_fn to web_gateway' was inaccurate."
+        - file: "autoservice/alerts.yaml"
+          note: "alert rule config"
+        - file: "socialware/pool.py"
+          lines: "1-180"
+          note: "AsyncPool (no metrics emission)"
+      missing_parts:
+        - "Pool metrics surface: available_count, busy_count, queue_length, wait_time histogram (extend AsyncPool)"
+        - "MetricType.POOL_WAIT_MS + labels in sla_aggregator (reuses per-record breach callback)"
+        - "Per-tenant SLA thresholds (extend SLA_THRESHOLDS schema → keyed by tenant_id)"
+        - "Parallel WS push path to _operator_connections with tenant-scope filtering (reuses existing admin push pattern)"
+        - "New alert rule: pool_wait_time exceeds tenant threshold"
+      estimated_effort: medium   # downgrade candidate to small once pool-metrics task spun off
+      depends_on_gaps: []
+
+    - id: GAP-E3.2
+      story_id: E3.2
+      module: MOD-E3
+      priority: P1
+      gap_type: missing
+      description: "No handoff tag parser; no mid-conversation role switch mechanism. (Infrastructure to reuse is richer than originally assessed — see existing_code.)"
+      existing_code:
+        - file: "autoservice/sentiment.py"
+          lines: "69-92"
+          note: "parse_sentiment is the EXACT template: same (result, cleaned_output) return contract aligns with existing output-processing pipeline"
+        - file: "autoservice/triage.py"
+          lines: "82-229"
+          note: "TriageAgent (entry-point routing only, no re-triage)"
+        - file: "autoservice/cc_pool.py"
+          lines: "393-454"
+          note: "[CORRECTION 2026-04-21] cc_pool.acquire(role=..., tenant_id=...) already supports ALL 5 roles; E3.2 role switching needs only release_sticky/acquire_sticky orchestration, NO cc_pool changes."
+      missing_parts:
+        - "<handoff to='X'> tag parser (mirror parse_sentiment shape in sentiment.py:69-92)"
+        - "Re-triage trigger on handoff detection"
+        - "Role-switch orchestrator: release sticky session → acquire new role with same tenant_id → context re-seed via E3.4"
+        - "Contract: what context does new role receive? (links to GAP-E3.4)"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-E3.3
+      story_id: E3.3
+      module: MOD-E3
+      priority: P2
+      gap_type: partial
+      description: "classify_intent YAML + per-tenant cache infrastructure exists; missing DB backing + admin UI; hot-reload plumbing already present."
+      existing_code:
+        - file: "autoservice/classify_intent.yaml"
+          note: "5 intents + keyword mapping + confidence thresholds"
+        - file: "autoservice/model_router.py"
+          lines: "65, 91-114, 120"
+          note: "[CORRECTION 2026-04-21] FastClassifier.for_tenant() + clear_tenant_cache() ALREADY exist with per-tenant cache. E3.3 hot-reload plugs into existing clear_tenant_cache rather than building new invalidation plumbing."
+      missing_parts:
+        - "SQLite table: classify_intent_config (tenant_id, intent, keywords, thresholds, updated_at)"
+        - "Migration: seed DB from existing YAML on first run"
+        - "/api/admin/{tenant_id}/classify-intent CRUD endpoints (hit clear_tenant_cache on write)"
+        - "Admin-portal keyword editor (extension of existing admin-portal; CON-10)"
+      estimated_effort: small   # downgraded from medium: cache infra already exists
+      depends_on_gaps: []
+
+    - id: GAP-E3.4
+      story_id: E3.4
+      module: MOD-E3
+      priority: P2
+      gap_type: missing
+      description: "No LLM-based history compression; no >20 msg threshold; no re-seed path for role switch."
+      existing_code:
+        - file: "autoservice/crm.py"
+          lines: "153"
+          note: "fetches raw recent history (no aggregation)"
+        - file: "autoservice/gateway/message_router.py"
+          lines: "905, 963"
+          note: "hardcoded limit=200 / limit=50"
+      missing_parts:
+        - "history_compressor service (LLM summarization)"
+        - ">20 message threshold check on role switch"
+        - "Re-seed: new role receives summary + recent N messages (not full log)"
+        - "Cost budget guardrails (LLM call tracking)"
+        - "CON-11 scope: M3 uses only for triage re-seed; no broad rollout"
+      estimated_effort: medium
+      depends_on_gaps: [GAP-E3.2]
+
+    # ===== E4 Compliance =====
+    - id: GAP-E4.1
+      story_id: E4.1
+      module: MOD-E4
+      priority: P1
+      gap_type: partial
+      description: "16 rules + region_filter exist; no tenant.countries field; filter is single-region only."
+      existing_code:
+        - file: "autoservice/compliance/rules.yaml"
+          note: "EU(6) + US(4) + CN(6) = 16 rules; each has singular 'region' field"
+        - file: "autoservice/compliance/compliance.py"
+          lines: "147, 154"
+          note: "[PATH CORRECTION 2026-04-21] actual path is autoservice/compliance/compliance.py (package dir). scan() accepts region_filter; skips mismatched. region_filter has ZERO in-repo callers — backward-compat cost is cheap."
+        - file: "autoservice/api_routes.py"
+          lines: "1166"
+          note: "compliance endpoint (no tenant.countries extraction)"
+      missing_parts:
+        - "tenant.countries: list[str] field in config.json (ISO 3166-1 alpha-2 per CON-05)"
+        - "scan(countries=[...]) multi-region filter (extend from single region_filter)"
+        - "Compliance endpoint auto-extracts tenant.countries and applies filter"
+        - "Validation: tenant config must include required fields per operating country"
+      estimated_effort: small
+      depends_on_gaps: []
+
+    - id: GAP-E4.2
+      story_id: E4.2
+      module: MOD-E4
+      priority: P2
+      gap_type: missing
+      description: "No JP/SG/AU rulesets; country coverage limited to EU/US/CN."
+      existing_code:
+        - file: "autoservice/compliance/rules.yaml"
+          note: "covers EU/US/CN only; stops at cn-06"
+        - file: "cinnox-demo/scripts/route_query.py"
+          lines: "96-98"
+          note: "country detection code (unused by compliance engine)"
+      missing_parts:
+        - "JP ruleset (APPI — ~3-5 rules)"
+        - "SG ruleset (PDPA — ~3-5 rules)"
+        - "AU ruleset (Privacy Act — ~3-5 rules)"
+        - "Country registry: explicit list of supported countries"
+      estimated_effort: medium
+      depends_on_gaps: [GAP-E4.1]
+
+    # ===== E5 Dream =====
+    - id: GAP-E5.1
+      story_id: E5.1
+      module: MOD-E5
+      priority: P2
+      gap_type: missing
+      description: "Per-tenant dream agent works; no platform-level aggregator on _master."
+      existing_code:
+        - file: "autoservice/dream_agent.py"
+          lines: "56-83, 129-225"
+          note: "per-tenant dream + emit_proposal (CON-04 enforced at 208, 219)"
+        - file: "autoservice/dream_scheduler.py"
+          lines: "465-480"
+          note: "enumerates _master but treats it as regular tenant"
+        - file: "autoservice/bootstrap.py"
+          lines: "31"
+          note: "MASTER_TENANT_ID = '_master'"
+        - file: ".autoservice/sandbox/_master/"
+          note: "master tenant scaffold (M2)"
+      missing_parts:
+        - "master_dream_agent.py (aggregator role)"
+        - "Cross-tenant signal ingestion: cc_pool utilization, SLA breaches, skill usage, dream proposal counts"
+        - "platform_level proposal category (extend proposal schema)"
+        - ".autoservice/sandbox/_master/souls/dream_soul.md (aggregator soul template)"
+        - "DreamScheduler routes _master through master_dream_agent, not per-tenant path"
+      estimated_effort: large
+      depends_on_gaps: []
+
+    - id: GAP-E5.2
+      story_id: E5.2
+      module: MOD-E5
+      priority: P2
+      gap_type: partial
+      description: "Proposal state machine + /approve + /reject in place; missing apply_proposal function, audit log, applied state."
+      existing_code:
+        - file: "autoservice/proposal_pipeline.py"
+          lines: "29-42, 92, 358-376"
+          note: "proposals table schema; update_status validates draft→accepted→rejected→implemented"
+        - file: "autoservice/api_routes.py"
+          lines: "147-194"
+          note: "/approve calls update_status(..., 'accepted'); /reject also works"
+        - file: "autoservice/dream_agent.py"
+          lines: "208, 219, 129"
+          note: "RED LINE CON-04 ENFORCED — status='draft' hardcoded, no status kwarg on emit_proposal"
+        - file: "tests/dream_agent/test_emit_proposal_tool.py"
+          lines: "71-82"
+          note: "test locks signature — no status kwarg"
+      missing_parts:
+        - "apply_proposal(pid, admin_user_id) dedicated function (separate from /approve)"
+        - "Audit log table: proposal_audit (pid, admin_user_id, action, timestamp)"
+        - "State machine extension: accepted → applied (with admin_user_id required)"
+        - "apply_proposal() pre-condition: proposal.status MUST equal 'accepted' (error otherwise)"
+        - "Admin-portal 'Apply' button (distinct from 'Approve' button)"
+        - "/api/admin/proposal/<id>/apply endpoint"
+        - "Idempotency: re-clicking apply on applied proposal is no-op (not error)"
+      estimated_effort: small
+      depends_on_gaps: []
+
+    # ===== E6 Ops =====
+    - id: GAP-E6.1
+      story_id: E6.1
+      module: MOD-E6
+      priority: P2
+      gap_type: partial
+      description: "Archive mechanism works on explicit publish; no 30-day TTL enforcer."
+      existing_code:
+        - file: "autoservice/publish.py"
+          lines: "914-941, 944-1009"
+          note: "archive_sandbox() + unfreeze path (manual only)"
+        - file: "autoservice/api_routes.py"
+          lines: "312-380"
+          note: "archives enumerated in admin tenant list"
+        - file: ".autoservice/archived/"
+          note: "archive storage location"
+      missing_parts:
+        - "sandbox_gc.py background job (periodic scheduler)"
+        - "TTL logic: sandbox/<tid>/ mtime > 30d AND status != 'published' → auto-archive"
+        - "config.json.sandbox_ttl_days (per-tenant override)"
+        - "GC audit log (which sandboxes archived, when, why)"
+        - "Optional: purge archived/ older than N days (separate policy)"
+      estimated_effort: small
+      depends_on_gaps: []
+
+    - id: GAP-E6.2
+      story_id: E6.2
+      module: MOD-E6
+      priority: P2
+      gap_type: missing
+      description: "pytest E2E harness exists; no Playwright."
+      existing_code:
+        - file: "tests/e2e/test_m2_acceptance.py"
+          note: "M2 acceptance tests (pytest + e2e-evidence/); NOT Playwright"
+        - file: "tests/e2e/conftest.py"
+          note: "fixtures for LocalEngine, Gateway"
+      missing_parts:
+        - "Playwright dependency added to package.json (scoped to admin-portal)"
+        - "tests/e2e/playwright.config.ts (or .js)"
+        - "17-story Playwright specs (reference: docs/plans/batches-M1-to-M5-kickoff.md lines 271-296)"
+        - "CI integration (headless runner)"
+        - "Evidence persistence (screenshots, traces) to e2e-evidence/"
+        - "Fallback plan: CON-13 allows M3.5 slip without blocking gate"
+      estimated_effort: large
+      depends_on_gaps: [GAP-E1.1, GAP-E1.2, GAP-E1.3]
+
+  # ---------------------------------------------------------------------------
+  # NFR Gaps
+  # ---------------------------------------------------------------------------
+  nfr_gaps:
+    - nfr_id: NFR-01
+      story_refs: [E1.1]
+      status: unknown
+      note: "Operator WS handshake failure rate <1% — no measurement harness yet; needs metric emission + dashboard"
+
+    - nfr_id: NFR-02
+      story_refs: [E1.4]
+      status: unknown
+      note: "RBAC decision P95 <5ms — requires microbenchmark in test harness; RBAC matrix not yet implemented"
+
+    - nfr_id: NFR-03
+      story_refs: [E2.3]
+      status: DEFERRED_M4
+      note: "NFR-03 (subtenant wizard P95 <60s) was tied only to E2.3; deferred with Epic E2 per PRD §8.1 Errata. Reinstate with v1.2 PRD."
+
+    - nfr_id: NFR-04
+      status: available
+      note: >
+        M2 regression authoritative commands (FLAG-03 resolved 2026-04-21):
+        (1) pytest tests/ — unit + integration, default excludes e2e via addopts
+        (2) pytest -m e2e tests/e2e/test_m2_acceptance.py — 8 M2 acceptance steps
+        (step 1 wizard/publish · step 2 fork-creator · step 3 fork setup/web ·
+         step 4 browser chat · step 5 magic-link session · step 6 dream idle ·
+         step 7 master admin chat · step 8 proposal approve/reject).
+        e2e prerequisites: ANTHROPIC_API_KEY + gh CLI + live uvicorn.
+        Source: docs/plans/m2/2026-04-20-execution-plan.md:115-116
+
+    - nfr_id: NFR-05
+      status: partial
+      note: "Test coverage ≥80% — coverage tooling exists but no current coverage baseline; needs per-M3-task coverage gate"
+
+    - nfr_id: NFR-06
+      status: available
+      note: >
+        M3 Epic design specs completed 2026-04-21 (FLAG-04 resolved):
+        - E1 docs/superpowers/specs/2026-04-21-m3-e1-identity-rbac-design.md (~350L)
+        - E3 docs/superpowers/specs/2026-04-21-m3-e3-triage-enhancement-design.md (~540L)
+        - E4 docs/superpowers/specs/2026-04-21-m3-e4-compliance-country-filter-design.md (~474L)
+        - E5 docs/superpowers/specs/2026-04-21-m3-e5-dream-extension-design.md (~465L)
+        - E6 docs/superpowers/specs/2026-04-21-m3-e6-ops-gc-playwright-design.md (~540L)
+        E2 intentionally omitted (DEFERRED_M4 per §8.1 Errata).
+
+    - nfr_id: NFR-07
+      status: partial
+      note: ".artifacts/ convention: dev-loop-skills plugin installed; per-task enforcement via skill-5/6 depends on task execution"
+
+  # ---------------------------------------------------------------------------
+  # Dependency Gaps (external + infrastructure)
+  # ---------------------------------------------------------------------------
+  dependency_gaps:
+    - dep_id: DEP-01
+      status: available
+      note: "M2 tenant-sandbox delivered; plugins/_master and plugins/_local_admin bootstrapped"
+
+    - dep_id: DEP-02
+      status: available
+      note: "M2 triage dispatch delivered (triage.py, model_router.py, classify_intent.yaml)"
+
+    - dep_id: DEP-03
+      status: partial
+      note: "cc_pool/AsyncPool operational; busy-metrics surface (needed by E3.1) NOT emitted today — see GAP-E3.1"
+
+    - dep_id: DEP-04
+      status: available
+      note: "MasterLayout + TenantLayout exist (ControlLayout was only needed for E2.2, now DEFERRED_M4)"
+
+    - dep_id: DEP-05
+      status: available
+      note: "Magic-link admin auth in auth.py — ready for operator-role extension (GAP-E1.1/E1.3)"
+
+    - dep_id: DEP-06
+      status: available
+      note: "Takeover-release design spec present; RBAC hookup (E1.4) must include /hijack gating"
+
+  # ---------------------------------------------------------------------------
+  # Red-line CON-04 Verification (from subagent evidence)
+  # ---------------------------------------------------------------------------
+  red_line_verification:
+    con_id: CON-04
+    status: ENFORCED
+    evidence:
+      - file: "autoservice/dream_agent.py"
+        line: 208
+        match: "\"status\": \"draft\",  # red-line CON-04 — never overridable"
+      - file: "autoservice/dream_agent.py"
+        line: 219
+        match: "\"draft\",          # red-line CON-04 — status column hard-coded"
+      - file: "autoservice/dream_agent.py"
+        lines: "129, 459-519"
+        note: "emit_proposal signature has NO status kwarg; LLM tool schema has no status field"
+      - file: "tests/dream_agent/test_emit_proposal_tool.py"
+        lines: "71-82"
+        note: "test_emit_proposal_signature_has_no_status_kwarg locks signature"
+      - note: "grep for INSERT INTO proposals within dream context → only emit_proposal() hits; admin status transitions route through ProposalPipeline.update_status()"
+    guardrails_for_e5_2:
+      - "apply_proposal() MUST NOT invoke emit_proposal or touch dream code paths"
+      - "apply_proposal() pre-condition: proposal.status == 'accepted' (reject otherwise)"
+      - "Code review MUST flag any PR that adds status kwarg to emit_proposal or writes non-draft status from dream_agent"
+
+  # ---------------------------------------------------------------------------
+  # Blockers & Critical Path
+  # ---------------------------------------------------------------------------
+  critical_path:
+    note: "Critical path recomputed after Epic E2 descope (2026-04-21). Original estimate 12-14 days → now 7-9 days."
+    primary_blocker: "GAP-E1.1 (operator login) — blocks E1.2/E1.3/E1.4/E1.5/E1.6 and downstream E6.2"
+    secondary_blockers:
+      - "GAP-E1.4 (RBAC matrix) — blocks E1.6"
+      - "GAP-E3.2 (handoff) — blocks E3.4 (compression re-seed path)"
+      - "GAP-E4.1 (country filter) — blocks E4.2"
+    parallelizable_batches:
+      - "E3.1 SLA monitoring — independent; can start Day 1 with M2 baseline"
+      - "E4.1 country filter — independent; can start Day 1"
+      - "E5.1 platform dream — independent; can start Day 1"
+      - "E6.1 sandbox GC — independent; can start Day 1"
+    descoped_from_critical_path:
+      - "GAP-E2.1/2.2/2.4 chain (subtenant toggle → ControlLayout → emplace) — all DEFERRED_M4"
+      - "GAP-E2.4 (nested emplace) — was the only Red-tier task; eliminated"
+      - "E1.4 → E2.1 dependency — removed"
+
+  # ---------------------------------------------------------------------------
+  # Recommendations for task-gen
+  # ---------------------------------------------------------------------------
+  task_gen_hints:
+    - hint: "E1.1 (operator auth) should be split into ≥3 tasks: SQLite schema, HTTP login endpoint, WS handshake cookie validation"
+      rationale: "Large scope + critical-path blocker; finer granularity enables parallel dev + independent testing"
+    # hint for E2.4 removed — Epic E2 DEFERRED_M4 per PRD §8.1 Errata (2026-04-21)
+    - hint: "E3.1 should include a standalone pool-metrics task (Green) separate from SLA wiring (Yellow)"
+      rationale: "Metrics emission is a well-defined addition to AsyncPool; SLA wiring touches cross-cutting code"
+    - hint: "E5.2 apply_proposal is SMALL but SECURITY-CRITICAL — Yellow tier with mandatory code-reviewer subagent"
+      rationale: "Any mistake that lets dream agent reach this path violates CON-04 red line"
+    - hint: "E6.2 Playwright should be last or parallel-tail — per CON-13 it may slip to M3.5"
+      rationale: "Not a gate-blocker; reduces M3 critical-path risk"

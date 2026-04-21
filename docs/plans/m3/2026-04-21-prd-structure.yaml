@@ -1,0 +1,706 @@
+---
+# M3 PRD Structured Extraction
+# Source: docs/prd/AutoService-M3-PRD.md (v1.0, 2026-04-21)
+# Extracted by: prd2impl:skill-1-prd-analyze
+source_type: extracted
+source_prd: docs/prd/AutoService-M3-PRD.md
+extracted_at: "2026-04-21"
+milestone: M3
+prerequisite_baselines:
+  - "M2 tenant-sandbox (plugins/<tid>/souls/* fork runtime)"
+  - "M2 triage dispatch (customer→customer/lead/translate routing)"
+  - "M2 cc_pool lazy subpool"
+  - "_master + _local_admin built-in tenants"
+  - "Magic-link admin auth"
+
+# -----------------------------------------------------------------------------
+# Modules (Epics)
+# -----------------------------------------------------------------------------
+modules:
+  - id: MOD-E1
+    name: "Identity & RBAC"
+    description: >
+      Multi-layer identity system (operator/client/admin) with per-tenant team
+      management. Covers operator auth, team invites, RBAC coarse-grained 3-tier,
+      multi-admin support.
+    prd_sections: ["§2 Epic E1"]
+    sub_modules: []
+
+  - id: MOD-E2
+    name: "[DEFERRED_M4] Subtenant / Whitelabel / Referral"
+    status: DEFERRED_M4
+    description: >
+      **Final decision (2026-04-21, A confirmed):** Entire Epic E2 descoped from
+      M3 to M4+. Evidence: (1) AutoService-PRD-v1.1.md §8 Out of Scope lists
+      whitelabel as not-in-scope; (2) AutoService-UserStories-v1.1.md 17 stories
+      have zero subtenant/tier_2/referral entries; (3) M3 PRD's Epic E2 was a
+      scope expansion beyond v1.1 without v1.2 PRD authorization. Applying the
+      same "PRD 没有就不做" principle that dropped revshare% and B-visibility
+      details, all 6 E2 stories are now tombstones (DEFERRED_M4) for traceability.
+      Intermediate flat-peer-referral design (errata phase 1) is also NOT adopted.
+      Any M4+ revival requires v1.2 PRD expansion first.
+    prd_sections: ["§8.1 Errata"]
+    sub_modules: []
+
+  - id: MOD-E3
+    name: "Triage Dispatch Enhancement"
+    description: >
+      Completes M2's triage dispatch deferred items: SLA monitoring with pool
+      busy metrics, handoff protocol (<handoff to=X>), DB-backed classify_intent
+      config, conversation history compression for re-seed.
+    prd_sections: ["§2 Epic E3"]
+    sub_modules: []
+
+  - id: MOD-E4
+    name: "Compliance Deepening"
+    description: >
+      Closes PRD gap A-④: filter compliance templates by tenant.countries; add
+      3-5 country rulesets (JP/SG/AU etc). Rules remain hardcoded (hot-reload
+      deferred to M4+).
+    prd_sections: ["§2 Epic E4"]
+    sub_modules: []
+
+  - id: MOD-E5
+    name: "Dream Extension"
+    description: >
+      Platform-level dream agent (master-side, aggregate signals → platform
+      improvement proposals) + semi-automatic apply (one-button after A review).
+      Red line: dream never auto-applies.
+    prd_sections: ["§2 Epic E5"]
+    sub_modules: []
+
+  - id: MOD-E6
+    name: "Operations & Deployment"
+    description: >
+      Supports 5-10 tenant internal beta: sandbox GC (30-day archive) and
+      Playwright E2E scripting for 17-story coverage.
+    prd_sections: ["§2 Epic E6"]
+    sub_modules: []
+
+# -----------------------------------------------------------------------------
+# User Stories (22 total — PRD §3.1 miscounts as 18; see flagged_items)
+# -----------------------------------------------------------------------------
+user_stories:
+  # ---- E1 Identity & RBAC ----
+  - id: E1.1
+    module: MOD-E1
+    persona: "Operator (customer service staff)"
+    action: "Log in via credentials and get a session"
+    goal: "Access only own tenant's conversations; WS handshake validates identity"
+    priority: P0
+    acceptance_criteria:
+      - "Operator can log in and receive operator_session cookie"
+      - "WS handshake enforces operator identity; failure rate < 1%"
+      - "Session persisted in .autoservice/database/sessions.db"
+    prd_ref: "§2 E1.1 / §6.1 / §6.2"
+
+  - id: E1.2
+    module: MOD-E1
+    persona: "Tenant admin"
+    action: "CRUD per-tenant operator list"
+    goal: "Manage operator roster for own tenant"
+    priority: P0
+    acceptance_criteria:
+      - "Admin can create/read/update/delete operators scoped to own tenant"
+      - "List endpoint enforces tenant-scoped filter"
+    prd_ref: "§2 E1.2"
+
+  - id: E1.3
+    module: MOD-E1
+    persona: "Tenant admin"
+    action: "Send operator team invite links (magic-link reused)"
+    goal: "Onboard operators without manual credential handoff"
+    priority: P0
+    acceptance_criteria:
+      - "Admin generates magic-link invite for operator role"
+      - "Invitee completes signup via link and lands in correct tenant"
+    prd_ref: "§2 E1.3 / §6.1"
+
+  - id: E1.4
+    module: MOD-E1
+    persona: "Any authenticated user"
+    action: "Operate under coarse 3-tier RBAC (viewer/responder/admin)"
+    goal: "Permissions enforced on all sensitive endpoints and UI"
+    priority: P1
+    acceptance_criteria:
+      - "Permission matrix hardcoded in source (not runtime config)"
+      - "RBAC decision P95 < 5ms"
+      - "viewer cannot /hijack; responder cannot invite; admin can both"
+    prd_ref: "§2 E1.4 / §6.2 / §7 takeover-release"
+
+  - id: E1.5
+    module: MOD-E1
+    persona: "Tenant admin"
+    action: "Support ≥2 admins per tenant with identical permissions"
+    goal: "No single-admin lock-in; co-admin management possible"
+    priority: P1
+    acceptance_criteria:
+      - "1 tenant can host multiple tenant_admin records"
+      - "All admins see same view and can perform same actions"
+    prd_ref: "§2 E1.5 / §6.1"
+
+  - id: E1.6
+    module: MOD-E1
+    persona: "Existing tenant admin"
+    action: "Invite another admin via magic-link"
+    goal: "Delegate admin rights without platform admin intervention"
+    priority: P2
+    acceptance_criteria:
+      - "Admin invite link promotes invitee to tenant_admin role on acceptance"
+    prd_ref: "§2 E1.6"
+
+  # ---- E2 ALL DEFERRED_M4 (final decision 2026-04-21) ----
+  # Reason: v1.1 §8 Out of Scope lists whitelabel as not-in-scope; v1.1 UserStories
+  # has zero subtenant/tier_2/referral entries. Entire Epic E2 (original 6 stories
+  # AND the interim flat-peer-referral redesign) moved to M4+. Tombstones retained
+  # for cross-document ID continuity. Any M4+ revival requires v1.2 PRD first.
+  - id: E2.1
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; no v1.2 authorization for subtenant enable toggle"
+    prd_ref: "§8.1 Errata"
+  - id: E2.2
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; ControlLayout is tier_2 concept"
+    prd_ref: "§8.1 Errata"
+  - id: E2.3
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; both subtenant wizard and flat-peer referral variant deferred"
+    prd_ref: "§8.1 Errata"
+  - id: E2.4
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; fork-internal emplace not in scope"
+    prd_ref: "§8.1 Errata"
+  - id: E2.5
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; tier_2 billing + referral line-items both deferred"
+    prd_ref: "§8.1 Errata"
+  - id: E2.6
+    module: MOD-E2
+    status: DEFERRED_M4
+    reason: "v1.1 §8 whitelabel OoS; trivially covered by E4.1 if ever resurrected"
+    prd_ref: "§8.1 Errata"
+
+  # ---- E3 Triage Enhancement ----
+  - id: E3.1
+    module: MOD-E3
+    persona: "Operator / operator-console"
+    action: "Receive alert when target role pool wait time exceeds per-tenant SLA threshold"
+    goal: "M2 SLA promise operationalized"
+    priority: P1
+    acceptance_criteria:
+      - "pool busy metrics emitted + wait time measured"
+      - "Per-tenant SLA threshold configurable"
+      - "Alert surfaces in operator-console when exceeded"
+    prd_ref: "§2 E3.1 / §6.1"
+
+  - id: E3.2
+    module: MOD-E3
+    persona: "Agent soul"
+    action: "Emit <handoff to='X'>; parser triggers re-triage and role switch"
+    goal: "In-conversation role transitions without human intervention"
+    priority: P1
+    acceptance_criteria:
+      - "Parser recognizes <handoff to=X> tag"
+      - "Re-triage switches to role X and replays context per protocol"
+    prd_ref: "§2 E3.2 / §6.1 / §7 triage-dispatch-design"
+
+  - id: E3.3
+    module: MOD-E3
+    persona: "Tenant admin"
+    action: "Edit classify_intent keywords via admin-portal UI"
+    goal: "Tune intent classification without code changes; hot-effective"
+    priority: P2
+    acceptance_criteria:
+      - "classify_intent config DB-backed"
+      - "admin-portal keyword editor exists (extension, not new page)"
+      - "Edits take effect without service restart"
+    prd_ref: "§2 E3.3 / §6.1"
+
+  - id: E3.4
+    module: MOD-E3
+    persona: "System (re-triage flow)"
+    action: "Compress conversation history (>20 messages) via LLM summary; re-seed new role with summary"
+    goal: "Keep context usable when switching roles without blowing token budget"
+    priority: P2
+    acceptance_criteria:
+      - "History compression service operational"
+      - "Role switch after ≥20 messages uses summary, not full log"
+    prd_ref: "§2 E3.4 / §6.1"
+
+  # ---- E4 Compliance ----
+  - id: E4.1
+    module: MOD-E4
+    persona: "System (compliance engine)"
+    action: "Filter 16 compliance templates by tenant.countries"
+    goal: "Tenants see only rules relevant to their operating countries"
+    priority: P1
+    acceptance_criteria:
+      - "US tenant does not see EU-only rules"
+      - "Country codes in ISO 3166-1 alpha-2"
+    prd_ref: "§2 E4.1 / §6.1"
+
+  - id: E4.2
+    module: MOD-E4
+    persona: "Compliance team / developers"
+    action: "Ship 3-5 new country rulesets (JP/SG/AU etc)"
+    goal: "Expand country coverage for internal beta"
+    priority: P2
+    acceptance_criteria:
+      - "Rulesets land in repo (hardcoded)"
+      - "Passes E4.1 filter for respective countries"
+    prd_ref: "§2 E4.2"
+
+  # ---- E5 Dream ----
+  - id: E5.1
+    module: MOD-E5
+    persona: "Platform admin (A)"
+    action: "Run platform-level dream agent that aggregates signals across tenants and emits platform-level proposals"
+    goal: "Platform improvements (skill / cc_pool policy) surface from cross-tenant data"
+    priority: P2
+    acceptance_criteria:
+      - "Master-side dream agent runs"
+      - "Produces platform-level proposal artifact with status='draft'"
+    prd_ref: "§2 E5.1"
+
+  - id: E5.2
+    module: MOD-E5
+    persona: "Platform admin (A)"
+    action: "After reviewing proposal, click 'apply' button to land low-risk proposal"
+    goal: "Tighten dream review→apply loop without crossing red line"
+    priority: P2
+    acceptance_criteria:
+      - "apply_proposal(pid, admin_user_id) requires proposal status='accepted'"
+      - "A's admin identity audit-logged"
+      - "Proposal state transitions: draft → accepted → applied"
+      - "NO code path allows dream agent to write accepted/applied directly"
+    prd_ref: "§2 E5.2 / CON-04 red line"
+
+  # ---- E6 Ops ----
+  - id: E6.1
+    module: MOD-E6
+    persona: "System (background GC)"
+    action: "Archive sandboxes that haven't published for 30 days (configurable per tenant)"
+    goal: "Reclaim storage from abandoned sandbox sessions"
+    priority: P2
+    acceptance_criteria:
+      - "GC job runs and archives eligible sandboxes"
+      - "Per-tenant override respected"
+    prd_ref: "§2 E6.1"
+
+  - id: E6.2
+    module: MOD-E6
+    persona: "QA / CI"
+    action: "Run 17-story Playwright E2E suite"
+    goal: "Automated regression coverage across M3 user flows"
+    priority: P2
+    acceptance_criteria:
+      - "Playwright script covers all 17 stories from M5 Batch 14 reference"
+      - "Suite runs green OR explicitly deferred to M3.5 at gate time"
+    prd_ref: "§2 E6.2 / §5 decision 7 / §6.1"
+
+# -----------------------------------------------------------------------------
+# Non-Functional Requirements
+# -----------------------------------------------------------------------------
+nfrs:
+  - id: NFR-01
+    category: reliability
+    requirement: "Operator WS handshake failure rate"
+    metric: "handshake failure rate"
+    target: "< 1%"
+    prd_ref: "§6.2"
+
+  - id: NFR-02
+    category: performance
+    requirement: "RBAC decision latency"
+    metric: "p95 latency"
+    target: "< 5ms"
+    prd_ref: "§6.2"
+
+  - id: NFR-03
+    category: performance
+    requirement: "Subtenant creation wizard completion time"
+    metric: "p95 latency"
+    target: "< 60s"
+    prd_ref: "§6.2"
+
+  - id: NFR-04
+    category: reliability
+    requirement: "M2 regression suite must pass after M3 changes"
+    metric: "suite status"
+    target: "all green (dream / triage / customer dialog / magic-link admin)"
+    prd_ref: "§6.2"
+
+  - id: NFR-05
+    category: reliability
+    requirement: "Test coverage for new M3 code"
+    metric: "line coverage"
+    target: "≥ 80%"
+    prd_ref: "§6.2"
+
+  - id: NFR-06
+    category: compliance
+    requirement: "Every Epic must have matching design spec under docs/superpowers/specs/"
+    metric: "spec presence"
+    target: "1 spec per Epic"
+    prd_ref: "§6.3"
+
+  - id: NFR-07
+    category: compliance
+    requirement: ".artifacts/ produced per dev-loop convention (eval-doc / test-plan / test-diff / e2e-report)"
+    metric: "artifact completeness per task"
+    target: "full set per task closure"
+    prd_ref: "§6.3"
+
+# -----------------------------------------------------------------------------
+# Technical Constraints
+# -----------------------------------------------------------------------------
+constraints:
+  - id: CON-01
+    type: architecture
+    description: >
+      Session storage MUST use SQLite; do not introduce Redis.
+      [DISCREPANCY 2026-04-21] PRD §5 decision 2 names `.autoservice/database/sessions.db`,
+      but current M2 code uses `.autoservice/database/auth.db` (see auth.py:307).
+      Open question OQ-3 (E1 spec): keep auth.db or rename to sessions.db? Defaulting to
+      auth.db until user decides (changing name breaks M2 regression).
+    rationale: "Reduce deployment dependency footprint; A pinned decision 2026-04-21"
+    prd_ref: "§5 decision 2 / §2 E1 constraints"
+
+  - id: CON-02
+    type: architecture
+    description: "RBAC is coarse 3-tier (viewer/responder/admin); permission matrix hardcoded in source"
+    rationale: "Fast ship; fine-grained permissions punted to M4+"
+    prd_ref: "§5 decision 3 / §2 E1 constraints"
+
+  - id: CON-03
+    type: architecture
+    status: DELETED_2026-04-21
+    description: "[DELETED] Original: Subtenant URL /t/<b>/t/<c>/. Overturned by §8.1 Errata — tenants are flat; C uses /t/<c>/ (peer of B)."
+    rationale: "CLAUDE.md glossary forbids tenant nesting"
+    prd_ref: "§8.1 Errata"
+
+  - id: CON-04
+    type: architecture
+    description: >
+      DREAM RED LINE: dream_agent.emit_proposal(status='draft') is hardcoded. Dream
+      agents MAY NEVER write status='accepted' or status='applied' directly. All
+      transitions require explicit human-initiated apply_proposal(pid, admin_user_id).
+      PRs attempting to bypass this are rejected on sight.
+    rationale: "Irreversible auto-apply is a trust-killer; A explicit red line"
+    prd_ref: "§2 E5 red-line constraints / §1.3 non-goals"
+
+  - id: CON-05
+    type: data
+    description: "Country codes use ISO 3166-1 alpha-2"
+    rationale: "Industry standard; matches existing compliance template schema"
+    prd_ref: "§2 E4 constraints"
+
+  - id: CON-06
+    type: deployment
+    description: "Compliance rules remain hardcoded in repo; runtime hot-reload deferred to M4+"
+    rationale: "Ship simple; hot-reload needs governance story"
+    prd_ref: "§2 E4 constraints / §1.3 non-goals"
+
+  - id: CON-07
+    type: architecture
+    description: >
+      [REVISED 2026-04-21] Commercial relationship B→C tracked via tenant_referrals
+      table; B's monthly bill displays referred tenants' usage as a line group
+      (read-only). NO revshare% calculation in M3 (PRD defines no percentage).
+      Original wording 'B collects from C at tier_2 rate' is deferred.
+    rationale: "Whitelabel commercial intent preserved; implementation decoupled from architecture per §8.1 Errata"
+    prd_ref: "§8.1 Errata / §5 decision 5 (revised)"
+
+  - id: CON-08
+    type: architecture
+    description: >
+      Operator session cookie MUST be separate from admin cookie.
+      [DISCREPANCY 2026-04-21] PRD §2 E1 names the existing admin cookie `admin_session`,
+      but M2 code actually uses `auth_session` (see auth.py:307, api_routes.py:1641).
+      Open question OQ-1 (E1 spec): use `operator_session` vs existing `auth_session`
+      (default), or rename admin cookie to `admin_session` for consistency with PRD naming?
+      Renaming carries regression risk.
+    rationale: "Prevent privilege confusion across role boundaries"
+    prd_ref: "§2 E1 constraints"
+
+  - id: CON-09
+    type: architecture
+    description: >
+      [REVISED 2026-04-21] B and C are flat peer tenants — architectural isolation
+      is inherent (no engineering work). Original 'default-deny with C authorization'
+      is moot. Cross-tenant visibility remains out of scope for M3.
+    rationale: "§8.1 Errata — no nesting means no special isolation layer needed"
+    prd_ref: "§8.1 Errata"
+
+  - id: CON-10
+    type: architecture
+    description: "E3.3 admin UI for classify_intent keyword editing is an admin-portal extension, not a standalone page"
+    rationale: "Consistency with existing admin surface"
+    prd_ref: "§2 E3 constraints"
+
+  - id: CON-11
+    type: architecture
+    description: "History compression service (E3.4) targets triage re-seed only in M3; broad rollout to dream/triage internals deferred to M4+"
+    rationale: "Scope control; one use case to validate"
+    prd_ref: "§2 E3 constraints"
+
+  - id: CON-12
+    type: architecture
+    description: "SLA (E3.1) implemented before Handoff (E3.2)"
+    rationale: "SLA is M2-commitment debt; Handoff depends on agent maturity"
+    prd_ref: "§5 decision 6 / §2 E3"
+
+  - id: CON-13
+    type: deployment
+    description: "Playwright (E6.2) may fall back to M3.5 mini-sprint; does NOT block M3 gate"
+    rationale: "§5 decision 7; gate risk mitigation"
+    prd_ref: "§5 decision 7 / §2 E6 constraints"
+
+# -----------------------------------------------------------------------------
+# External Dependencies
+# -----------------------------------------------------------------------------
+external_deps:
+  - id: DEP-01
+    name: "M2 tenant-sandbox baseline"
+    type: service
+    status: available
+    owner: "M2 delivery (this repo)"
+    prd_ref: "§1.1"
+    notes: "Required for all E2 subtenant work and any plugins/<tid>/souls/* interaction"
+
+  - id: DEP-02
+    name: "M2 triage dispatch (customer→role routing)"
+    type: service
+    status: available
+    owner: "M2 delivery"
+    prd_ref: "§1.1 / §7 triage-dispatch-design"
+    notes: "E3.1/E3.2 build on this; any triage regression blocks Epic E3"
+
+  - id: DEP-03
+    name: "M2 cc_pool lazy subpool + busy metrics surface"
+    type: library
+    status: available
+    owner: "M2 delivery"
+    prd_ref: "§2 E3.1 dependency note"
+    notes: "E3.1 SLA monitoring reads from here"
+
+  - id: DEP-04
+    name: "Admin-portal web layout (MasterLayout / TenantLayout)"
+    type: library
+    status: available
+    owner: "Frontend team"
+    prd_ref: "§7 admin-portal-web-layout-design"
+    notes: "ControlLayout extension was only needed for E2.2 (DEFERRED_M4). Existing layouts suffice for in-scope M3 Epics."
+
+  - id: DEP-05
+    name: "Magic-link auth mechanism"
+    type: service
+    status: available
+    owner: "M2 delivery"
+    prd_ref: "§1.1 / §2 E1.1"
+    notes: "Reused for operator session (E1.1) and invites (E1.3, E1.6)"
+
+  - id: DEP-06
+    name: "Takeover-release design (/hijack endpoint)"
+    type: service
+    status: available
+    owner: "Prior spec 2026-04-17"
+    prd_ref: "§7 takeover-release"
+    notes: "E1.4 RBAC must gate /hijack; permission matrix must cover it"
+
+# -----------------------------------------------------------------------------
+# Complexity Assessment
+# -----------------------------------------------------------------------------
+complexity:
+  - module: MOD-E1
+    estimated_tasks: "8-12"
+    risk_level: medium
+    risk_factors:
+      - "Session security: operator_session cookie separation must be airtight to prevent privilege confusion"
+      - "WS handshake validation touches channel_server — risk of breaking existing connections"
+      - "RBAC permission matrix is a cross-cutting concern; late bugs expensive"
+    suggested_type_split:
+      green: 6
+      yellow: 3
+      red: 1
+
+  - module: MOD-E2
+    status: DEFERRED_M4
+    estimated_tasks: "0 (in M3)"
+    risk_level: n/a
+    errata_note: "Entire Epic E2 deferred to M4+ per §8.1 Errata final decision (2026-04-21). v1.1 §8 whitelabel OoS. No task-gen; no gap remediation."
+
+  - module: MOD-E3
+    estimated_tasks: "6-9"
+    risk_level: medium
+    risk_factors:
+      - "SLA threshold tuning is operational — likely needs multiple iterations"
+      - "Handoff parser must handle adversarial/malformed agent output"
+      - "History compression LLM call introduces latency and cost; budget risk"
+    suggested_type_split:
+      green: 4
+      yellow: 3
+      red: 1
+
+  - module: MOD-E4
+    estimated_tasks: "3-5"
+    risk_level: low
+    risk_factors:
+      - "Straightforward filter; bigger risk is rule correctness, not engineering"
+    suggested_type_split:
+      green: 3
+      yellow: 1
+      red: 0
+
+  - module: MOD-E5
+    estimated_tasks: "4-6"
+    risk_level: high
+    risk_factors:
+      - "CON-04 red line: any bug that lets dream auto-apply is a trust-killer — requires audit-grade review"
+      - "Platform-level dream sees cross-tenant data — privacy boundaries non-trivial"
+    suggested_type_split:
+      green: 2
+      yellow: 2
+      red: 2
+
+  - module: MOD-E6
+    estimated_tasks: "4-6"
+    risk_level: low
+    risk_factors:
+      - "GC cron reliability (clock skew, partial failures)"
+      - "Playwright flakiness historically a problem; mitigated by M3.5 fallback"
+    suggested_type_split:
+      green: 4
+      yellow: 1
+      red: 0
+
+# -----------------------------------------------------------------------------
+# Flagged Items Needing Clarification
+# -----------------------------------------------------------------------------
+flagged_items:
+  - id: FLAG-01
+    type: inconsistency
+    description: >
+      PRD §3.1 summarizes "全量 P0/P1/P2 一览（18 story）" with breakdown P0(3)+P1(8)+P2(7)=18.
+      But §2 Epic tables enumerate 22 distinct stories. Recount: P0=3 (E1.1-3), P1=9
+      (E1.4, E1.5, E2.1-4, E3.1, E3.2, E4.1), P2=10 (E1.6, E2.5, E2.6, E3.3, E3.4, E4.2,
+      E5.1, E5.2, E6.1, E6.2). §3.1 summary undercounts by 4.
+    suggested_action: "Confirm all 22 stories are in scope (assume yes — §5 decision 1 says 'P0+P1+P2 全部'); update §3.1 summary."
+    severity: low
+
+  - id: FLAG-02
+    type: unclear_scope
+    description: >
+      E3.4 history compression service — PRD §2 E3 constraints say "M3 只做 triage re-seed
+      用例；广泛铺开到 dream/triage agent 本身留 M4+". Does "广泛铺开" include reusing the service
+      for dream-agent's own context pruning in M3, or strictly M3 = triage re-seed only?
+    suggested_action: "Confirm E3.4 service scope: triage-re-seed-only, or also dream context?"
+    severity: low
+
+  - id: FLAG-03
+    type: missing_metric
+    description: >
+      NFR-04 "M2 full regression green" — what is the regression suite's current baseline?
+      Need authoritative test list to make 'green' verifiable at gate.
+    suggested_action: "Point to specific test command (e.g., make test-m2) or test plan artifact for gate."
+    severity: medium
+
+  - id: FLAG-04
+    type: missing_spec
+    status: RESOLVED_2026-04-21
+    description: >
+      §7 table references specs for E1/E2/E3/E4 background, but no M3-specific design specs exist
+      yet for these Epics. §9 step 1 directs brainstorm→writing-plans per Epic; this is required
+      by NFR-06 (1 spec per Epic).
+    resolution: >
+      5 specs produced 2026-04-21 (E1/E3/E4/E5/E6). E2 intentionally skipped per §8.1 Errata
+      (DEFERRED_M4). See gap-analysis.yaml nfr_gaps.NFR-06 for paths + line counts.
+    severity: medium
+
+  - id: FLAG-05
+    type: dependency
+    status: RESOLVED_2026-04-21
+    description: >
+      §1.1 lists M2 deliverables as baseline, but M2 is not yet gated (project.yaml plans_dir
+      still docs/plans/m2). M3 B-M3-0 depends on 'M2 完成'. Actual M3 kickoff gated on M2 gate.
+    resolution: >
+      M2 gate passed 2026-04-21 (7/7 acceptance steps; 1 skip = step 8 explicitly M3 scope; 0 fail).
+      Evidence: e2e-evidence/fork-sim-m2/. project.yaml.plans_dir switched m2→m3 same day.
+      M3 kickoff unblocked; batch-0 ready.
+    severity: medium
+
+  - id: FLAG-06
+    type: unclear_scope
+    description: >
+      E1.3 says 'magic-link 复用' but also CON-08 mandates operator_session cookie separate from
+      admin_session. Mechanism reuse is fine; need to confirm operator-invite flow uses same
+      backend generator but different cookie output.
+    suggested_action: "Design spec for E1 should explicitly document the shared-backend/different-cookie split."
+    severity: low
+
+# -----------------------------------------------------------------------------
+# Module Dependency Graph (Mermaid)
+# -----------------------------------------------------------------------------
+module_dependencies_mermaid: |
+  graph TD
+    M2[M2 baseline<br/>tenant-sandbox + triage + cc_pool] --> E1
+    M2 --> E3
+    M2 --> E5
+    E1[E1 Identity & RBAC] --> E6[E6 Ops & Playwright]
+    E3[E3 Triage Enhancement]
+    E4[E4 Compliance country filter]
+    E5[E5 Dream Extension]
+    E2[E2 Subtenant - DEFERRED M4+]:::deferred
+    classDef deferred stroke-dasharray: 5 5,fill:#eee,color:#999
+
+# -----------------------------------------------------------------------------
+# Story Dependency (from PRD §3.2)
+# -----------------------------------------------------------------------------
+story_dependencies:
+  E1.1: []
+  E1.2: [E1.1]
+  E1.3: [E1.1]
+  E1.4: [E1.1]
+  E1.5: [E1.1]
+  E1.6: [E1.4]
+  # E2.* all DEFERRED_M4 per §8.1 Errata (v1.1 §8 whitelabel OoS) — no deps listed
+  E3.1: [DEP-03]  # cc_pool lazy subpool
+  E3.2: [DEP-02]  # M2 triage dispatch
+  E3.3: []
+  E3.4: [E3.3]
+  E4.1: []
+  E4.2: [E4.1]
+  E5.1: [DEP-01]  # M2 dream stable
+  E5.2: [E5.1]
+  E6.1: []
+  E6.2: [E1.1, E1.2, E1.3]  # needs login state
+
+# -----------------------------------------------------------------------------
+# Summary
+# -----------------------------------------------------------------------------
+summary:
+  module_count: 6              # 5 active + 1 deferred (MOD-E2)
+  active_module_count: 5
+  deferred_modules: [MOD-E2]
+  user_story_count_total: 22
+  user_story_count_in_scope: 16   # 22 - 6 deferred (E2.1-E2.6)
+  deferred_stories: [E2.1, E2.2, E2.3, E2.4, E2.5, E2.6]
+  priority_breakdown_in_scope:
+    P0: 3    # E1.1, E1.2, E1.3
+    P1: 5    # E1.4, E1.5, E3.1, E3.2, E4.1  (was 9; -4 from E2.1-E2.4)
+    P2: 8    # E1.6, E3.3, E3.4, E4.2, E5.1, E5.2, E6.1, E6.2  (was 10; -2 from E2.5-E2.6)
+  nfr_count: 7
+  constraint_count_total: 13
+  constraint_count_active: 10   # CON-03/07/09 marked DELETED or DEFERRED
+  external_dep_count: 6
+  flagged_items_count: 6
+  estimated_total_tasks: "27-40"        # reduced from 35-52 (MOD-E2 removed ~8-12)
+  estimated_duration_days: "7-9"        # reduced from 12-17 (no B-M3-3 batch, no E2.4 Red-tier)
+  red_tier_tasks_count: 0               # was 2 under original E2.4; zero after descope
+  milestone_gate: "v1.2.0-mvp tag after smoke test (PRD §6.3)"
+  errata_note: "Epic E2 descoped to M4+ (2026-04-21). See PRD §8.1 Errata and memory project_m3_epic_e2_descoped.md."

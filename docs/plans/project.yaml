@@ -3,7 +3,7 @@ project:
   branch: "dev-a"
   main_branch: "dev"
   generated_at: "2026-04-20"
-  plans_dir: docs/plans/m2
+  plans_dir: docs/plans/m3   # switched from m2 to m3 on 2026-04-21 (M2 gate passed; per AutoService-M3-PRD §9.4)
   parallel_capacity: 2
   team:
     - id: Dev1
@@ -32,7 +32,7 @@ project:
       name: "Production-readiness + Identity/RBAC + Triage/Compliance/Dream/Ops"
       scope_doc: "docs/prd/AutoService-M3-PRD.md"
       plans_dir: docs/plans/m3
-      status: "planned"       # kickoff pending M2 gate
+      status: "ready"         # M2 gate passed 2026-04-21; M3 unblocked, awaiting kickoff decision
       epic_design_specs:
         - "docs/superpowers/specs/2026-04-21-m3-e1-identity-rbac-design.md"
         - "docs/superpowers/specs/2026-04-21-m3-e3-triage-enhancement-design.md"
