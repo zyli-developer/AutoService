@@ -26,6 +26,48 @@ from autoservice.memory_pool import MemoryPool
 
 logger = logging.getLogger(__name__)
 
+# T4S.2: proposal_audit table (contract e5-dream §2.4).
+# Writes come from:
+#   * proposal_apply.apply_proposal (action='apply')
+#   * api_routes /approve /reject handlers (action='approve' | 'reject') [T4S.3]
+# AST guardrail T4S.8 asserts 'INSERT INTO proposal_audit' string literal
+# appears ONLY in these files.
+PROPOSAL_AUDIT_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS proposal_audit (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id     TEXT NOT NULL,
+    admin_user_id   TEXT NOT NULL,
+    action          TEXT NOT NULL
+                    CHECK(action IN ('approve', 'reject', 'apply')),
+    previous_status TEXT NOT NULL,
+    new_status      TEXT NOT NULL,
+    session_id      TEXT,
+    timestamp       TEXT NOT NULL,
+    details         TEXT,
+    FOREIGN KEY (proposal_id) REFERENCES proposals(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposal_audit_proposal
+    ON proposal_audit(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_proposal_audit_admin
+    ON proposal_audit(admin_user_id);
+"""
+
+
+def apply_m3_migration(conn: sqlite3.Connection) -> int:
+    """Sweep legacy status='implemented' rows to 'applied'.
+
+    M3 T4S.2 (contract e5-dream §2.2): rename resolves naming conflict
+    between contract ('applied') and legacy code ('implemented').
+    Returns number of rows migrated.  Idempotent.
+    """
+    cur = conn.execute(
+        "UPDATE proposals SET status='applied' WHERE status='implemented'"
+    )
+    conn.commit()
+    return cur.rowcount
+
+
 PROPOSALS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS proposals (
     id TEXT PRIMARY KEY,
@@ -64,6 +106,8 @@ def apply_schema(conn: sqlite3.Connection) -> None:
     if existing_table is None:
         # Fresh DB — the full schema (including tenant_id) is created in one go.
         conn.executescript(PROPOSALS_SCHEMA)
+        # T4S.2: proposal_audit table for apply/approve/reject audit trail
+        conn.executescript(PROPOSAL_AUDIT_SCHEMA)
         conn.commit()
         return
 
@@ -85,11 +129,31 @@ def apply_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_proposals_tenant ON proposals(tenant_id)"
     )
+    # T4S.2: ensure proposal_audit table + indexes on existing DBs (idempotent)
+    conn.executescript(PROPOSAL_AUDIT_SCHEMA)
+    # T4S.2: sweep legacy 'implemented' → 'applied' (idempotent)
+    apply_m3_migration(conn)
     conn.commit()
 
-VALID_CATEGORIES = {"response_quality", "workflow", "knowledge_gap", "tone"}
+VALID_CATEGORIES = {"response_quality", "workflow", "knowledge_gap", "tone", "platform_level"}
+# M3 T2S.8: 'platform_level' added for master_dream_agent emissions.
+
+
+class ProposalNotFound(LookupError):
+    """Raised when an apply/update targets a missing proposal_id."""
+
+
+class ProposalStateError(RuntimeError):
+    """Raised on illegal state transitions (CON-04 enforcement + state machine).
+
+    Examples:
+    - ``update_status(new_status='applied')`` — applied is apply_proposal-only
+    - ``_mark_applied_internal()`` called on a draft/rejected proposal
+    """
 VALID_PRIORITIES = {"high", "medium", "low"}
-VALID_STATUSES = {"draft", "accepted", "rejected", "implemented"}
+VALID_STATUSES = {"draft", "accepted", "rejected", "applied"}
+# M3 T4S.2: renamed 'implemented' → 'applied' (contract e5-dream §2.2, reviewer C3).
+# Migration on first-load sweeps legacy rows via apply_m3_migration().
 
 
 # ── LLM analyzer constants ────────────────────────────────────────────────
@@ -358,10 +422,29 @@ class ProposalPipeline:
     def update_status(self, proposal_id: str, new_status: str) -> dict | None:
         """Update a proposal's status. Returns the updated proposal or None if not found.
 
-        Valid transitions: draft → accepted | rejected, accepted → implemented.
+        Valid transitions via this PUBLIC method:
+            draft → accepted
+            draft → rejected
+            accepted → rejected
+
+        **CON-04 red line** (contract e5-dream §2.2): this method does NOT
+        accept new_status='applied'.  That transition requires the private
+        :func:`_mark_applied_internal` helper which is only imported by
+        :mod:`autoservice.proposal_apply`.  This is Layer 2b of the 5-layer
+        defense: value rejection at the public API boundary, no frame
+        introspection needed (reviewer C1 feedback from T0S.4 v1.0).
         """
+        if new_status == "applied":
+            raise ProposalStateError(
+                "Cannot write status='applied' via update_status(). "
+                "This transition is reserved for proposal_apply.apply_proposal() "
+                "only (CON-04 red line, contract e5-dream §2.2)."
+            )
         if new_status not in VALID_STATUSES:
-            raise ValueError(f"Invalid status {new_status!r}, must be one of {VALID_STATUSES}")
+            raise ValueError(
+                f"Invalid status {new_status!r}, must be one of "
+                f"{VALID_STATUSES - {'applied'}} (applied is CON-04 protected)"
+            )
 
         proposal = self.get_proposal(proposal_id)
         if proposal is None:
@@ -374,6 +457,79 @@ class ProposalPipeline:
         )
         self._conn.commit()
         return proposal
+
+    def _mark_applied_internal(
+        self,
+        proposal_id: str,
+        admin_user_id: str,
+    ) -> dict:
+        """PRIVATE — transition 'accepted' → 'applied'. NOT A PUBLIC API.
+
+        **CON-04 Layer 3 import cone**: this function name starts with
+        an underscore AND is only imported by
+        :mod:`autoservice.proposal_apply`.  Any other caller is a
+        red-line violation and will be flagged by :mod:`tests.dream_agent.
+        test_con04_guardrail` AST walk (T4S.8).
+
+        Uses CONDITIONAL UPDATE pattern (contract §2.3, reviewer C2):
+            UPDATE proposals SET status='applied' WHERE id=? AND status='accepted'
+        Checks rowcount:
+          * 1 → transition succeeded; write audit row in same txn
+          * 0 → SELECT current status; if 'applied' → idempotent no-op;
+                else raise ProposalStateError
+
+        Raises:
+            ProposalNotFound: row doesn't exist
+            ProposalStateError: status != 'accepted' AND != 'applied'
+        """
+        from datetime import datetime, timezone
+        now_iso = datetime.now(tz=timezone.utc).isoformat()
+
+        # Reviewer T4S.1 Important #1: explicit `with self._conn:` block for
+        # BEGIN IMMEDIATE semantics (contract e5-dream §2.3).  Context manager
+        # commits on success or rolls back on exception — matches the
+        # "all-or-nothing state+audit" invariant even if Python sqlite3's
+        # default isolation behaviour drifts across versions.
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE proposals SET status='applied' "
+                "WHERE id = ? AND status = 'accepted'",
+                (proposal_id,),
+            )
+
+            if cur.rowcount == 1:
+                proposal = self.get_proposal(proposal_id)
+                if proposal is None:  # pragma: no cover — defensive
+                    raise ProposalNotFound(proposal_id)
+                proposal["status"] = "applied"
+                self._conn.execute(
+                    "UPDATE proposals SET data = ? WHERE id = ?",
+                    (json.dumps(proposal, ensure_ascii=False), proposal_id),
+                )
+                self._conn.execute(
+                    """INSERT INTO proposal_audit
+                         (proposal_id, admin_user_id, action, previous_status,
+                          new_status, session_id, timestamp, details)
+                       VALUES (?, ?, 'apply', 'accepted', 'applied', NULL, ?, NULL)""",
+                    (proposal_id, admin_user_id, now_iso),
+                )
+                # Context manager commits on successful exit
+                return {"idempotent": False, "proposal": proposal, "applied_at": now_iso}
+
+        # rowcount == 0 → either idempotent (already applied) or illegal state
+        row = self._conn.execute(
+            "SELECT status FROM proposals WHERE id = ?", (proposal_id,)
+        ).fetchone()
+        if row is None:
+            raise ProposalNotFound(proposal_id)
+        current = row["status"]
+        if current == "applied":
+            proposal = self.get_proposal(proposal_id)
+            return {"idempotent": True, "proposal": proposal, "applied_at": None}
+        raise ProposalStateError(
+            f"Cannot apply proposal {proposal_id!r}: current status "
+            f"{current!r} != 'accepted'"
+        )
 
     def list_proposals(self, status: str | None = None) -> list[dict]:
         """Query stored proposals, optionally filtered by status."""

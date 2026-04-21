@@ -660,6 +660,154 @@ async def accept_operator_invite(
     return response
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# classify_intent CRUD (T3S.4) — admin-only; hot-reload via clear_tenant_cache
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@operator_router.get("/admin/{tenant_id}/classify-intent")
+async def list_classify_intents(
+    tenant_id: str,
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    from autoservice import classify_intent_config as _cic
+    conn = _get_op_db()
+    # Ensure schema + defaults seeded (safe/idempotent on each call; cheap)
+    _cic.apply_schema(conn)
+    try:
+        _cic.seed_defaults_from_yaml(conn)
+    except FileNotFoundError:
+        pass  # test env without YAML — fall through
+
+    rows = _cic.list_intents(conn, tenant_id)
+    return {
+        "tenant_id": tenant_id,
+        "intents": [
+            {
+                "tenant_id": r.tenant_id,  # _default means inherited, tenant_id means overridden
+                "intent": r.intent,
+                "keywords": r.keywords,
+                "threshold": r.threshold,
+                "model_tier": r.model_tier,
+                "route_role": r.route_role,
+                "priority": r.priority,
+                "description": r.description,
+                "updated_at": r.updated_at,
+                "updated_by": r.updated_by,
+            }
+            for r in rows
+        ],
+    }
+
+
+@operator_router.put("/admin/{tenant_id}/classify-intent/{intent}")
+async def upsert_classify_intent(
+    tenant_id: str,
+    intent: str,
+    payload: dict[str, Any] = Body(...),
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    from autoservice import classify_intent_config as _cic
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail={"error": "body must be JSON"})
+    keywords = payload.get("keywords")
+    if not isinstance(keywords, list) or not all(
+        isinstance(k, str) for k in keywords
+    ):
+        raise HTTPException(
+            status_code=422, detail={"error": "keywords must be list[str]"}
+        )
+    threshold = payload.get("threshold", 0.5)
+    if not isinstance(threshold, (int, float)):
+        raise HTTPException(
+            status_code=422, detail={"error": "threshold must be number"}
+        )
+
+    conn = _get_op_db()
+    _cic.apply_schema(conn)
+
+    try:
+        cfg = _cic.upsert_intent(
+            conn,
+            tenant_id=tenant_id,
+            intent=intent,
+            keywords=keywords,
+            threshold=float(threshold),
+            model_tier=payload.get("model_tier", "fast"),
+            route_role=payload.get("route_role", "customer"),
+            priority=payload.get("priority", "normal"),
+            description=payload.get("description"),
+            updated_by=ctx.admin_email,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail={"error": str(e)})
+
+    # Hot-reload: invalidate the tenant's classifier cache so the next
+    # classify call picks up the new keywords (model_router.py:91-114
+    # already owns the per-tenant cache; we just clear it here).
+    _invalidate_classifier_cache(tenant_id)
+
+    return {
+        "intent": cfg.intent,
+        "keywords": cfg.keywords,
+        "threshold": cfg.threshold,
+        "model_tier": cfg.model_tier,
+        "route_role": cfg.route_role,
+        "priority": cfg.priority,
+        "updated_at": cfg.updated_at,
+        "updated_by": cfg.updated_by,
+    }
+
+
+@operator_router.delete("/admin/{tenant_id}/classify-intent/{intent}")
+async def delete_classify_intent(
+    tenant_id: str,
+    intent: str,
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Response:
+    from autoservice import classify_intent_config as _cic
+
+    conn = _get_op_db()
+    _cic.apply_schema(conn)
+
+    try:
+        removed = _cic.delete_tenant_override(conn, tenant_id, intent)
+    except ValueError as e:
+        # Attempt to delete _default
+        raise HTTPException(status_code=422, detail={"error": str(e)})
+
+    _invalidate_classifier_cache(tenant_id)
+    return Response(status_code=204 if removed else 404)
+
+
+def _invalidate_classifier_cache(tenant_id: str) -> None:
+    """Call FastClassifier.clear_tenant_cache() on intent-config change.
+
+    T3S.4 hot-reload: the cache in model_router is per-tenant but
+    ``clear_tenant_cache`` takes no args (nukes all); we pass tenant_id
+    for audit/log purposes only.  A future refactor can narrow to just
+    the affected tenant.  Soft dependency — missing module is OK in tests.
+    """
+    try:
+        from autoservice import model_router
+        if hasattr(model_router, "FastClassifier") and hasattr(
+            model_router.FastClassifier, "clear_tenant_cache"
+        ):
+            # Signature-tolerant call: some deployments may pass tenant_id,
+            # upstream's doesn't.  Try with-arg first (if tests mock it to
+            # capture the id), fall back to no-arg.
+            try:
+                model_router.FastClassifier.clear_tenant_cache(tenant_id)
+            except TypeError:
+                model_router.FastClassifier.clear_tenant_cache()
+    except Exception:
+        logger.debug(
+            "classifier cache invalidation skipped (module not available)",
+            exc_info=True,
+        )
+
+
 def _operator_to_dict(op: operators.Operator | None) -> dict:
     if op is None:
         return {}
