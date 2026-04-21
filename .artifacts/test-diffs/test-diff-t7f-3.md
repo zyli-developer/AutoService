@@ -1,7 +1,8 @@
 # Test Diff: T7F.3 — customer-chat + operator-console mode-based routing
 
+**Artifact ID**: test-diff-018
 **Related eval**: [eval-doc-017](../eval-docs/eval-t7f-3-routing.md)
-**Task**: T7F.3 · Phase 7 · Green · batch-13 (parallel with T7S.4)
+**Task**: T7F.3 · Phase 7 · Green · batch-13 (parallel with T7S.4 — test-diff-017)
 **Producer**: phase-7-main
 
 ## Files added

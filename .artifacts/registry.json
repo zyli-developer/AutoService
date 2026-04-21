@@ -981,7 +981,7 @@
       "related_ids": [
         "eval-doc-011",
         "eval-doc-015",
-        "test-diff-017"
+        "test-diff-018"
       ]
     },
     {
@@ -999,7 +999,7 @@
       ]
     },
     {
-      "id": "test-diff-017",
+      "id": "test-diff-018",
       "name": "T7F.3 customer-chat + operator-console mode-routing tests",
       "type": "test-diff",
       "status": "executed",
