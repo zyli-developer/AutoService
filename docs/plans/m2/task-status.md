@@ -28,7 +28,7 @@
 | 2026-04-21 | Phase 1-4 artifact backfill (option B) | eval-doc-005/006/007/008, test-diff-004/005/006/007/008/009/010, e2e-report-003 |
 | 2026-04-21 | batch-7 P5 auth core (artifact-compliant: eval-doc-009, test-diff-011, e2e-report-004) | `442c02b` |
 | 2026-04-21 | batch-8 P5 auth gating (eval-doc-010, test-diff-012, e2e-report-005) | `98b21ff` |
-| 2026-04-20 | batch-9 P6 frontend shell hooks — T6F.1 + T6F.2 (eval-doc-011, test-diff-013, e2e-report-006) | PENDING (this commit) |
+| 2026-04-20 | batch-9 P6 frontend shell hooks — T6F.1 + T6F.2 (eval-doc-011, test-diff-013, e2e-report-006) | `ed4ec38` |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -132,8 +132,8 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T6F.1 | useSessionMode + useTenantId real impl | green | small | ✅ done | Subagent batch-9 | `PENDING` (13 tests, all hooks green) |
-| T6F.2 | AuthGate + LoginPage | green | medium | ✅ done | Subagent batch-9 | `PENDING` (9 tests: 5 AuthGate + 4 LoginPage; App rewrite +1) |
+| T6F.1 | useSessionMode + useTenantId real impl | green | small | ✅ done | Subagent batch-9 | `ed4ec38` (13 tests, all hooks green) |
+| T6F.2 | AuthGate + LoginPage | green | medium | ✅ done | Subagent batch-9 | `ed4ec38` (9 tests: 5 AuthGate + 4 LoginPage; App rewrite +1) |
 | T6F.3 | AdminRail variant prop | green | small | ⏳ pending | — | — |
 | T6F.4 | AdminTopbar + AvatarMenu extensions | green | small | ⏳ pending | — | — |
 | T6F.5 | TenantLayout 4-tab component | green | medium | ⏳ pending | — | — |
