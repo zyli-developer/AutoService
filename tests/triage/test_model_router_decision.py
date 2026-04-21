@@ -38,3 +38,77 @@ class TestKeywordCleanup:
     def test_refund_routes_to_complaint(self):
         result = self.clf.classify("我要退款")
         assert result.intent == Intent.COMPLAINT
+
+
+import pytest_asyncio
+
+from autoservice.conversation_engine.local_engine import LocalEngine
+from autoservice.model_router import ModelRouter, TriageDecision
+
+
+@pytest_asyncio.fixture()
+async def engine() -> LocalEngine:
+    return LocalEngine()
+
+
+@pytest_asyncio.fixture()
+async def conv_id(engine):
+    conv = await engine.create_conversation(channel="web", external_id="cdec")
+    return conv.id
+
+
+class _StaticTenantConfig:
+    def __init__(self, supported=("zh", "en")):
+        self.supported_languages = list(supported)
+        self.tenant_id = "acme"
+
+
+class TestRouteMessage:
+    @pytest.mark.asyncio
+    async def test_language_barrier_short_circuits_to_translate(self, engine, conv_id):
+        r = ModelRouter()
+        tc = _StaticTenantConfig(supported=("zh", "en"))
+        decision = await r.route_message(
+            "こんにちは、助けてください", tenant_config=tc,
+            conv_id=conv_id, engine=engine,
+        )
+        assert isinstance(decision, TriageDecision)
+        assert decision.role == "translate"
+        assert decision.source == "fastpath"
+        assert decision.detected_language == "ja"
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_fastpath(self, engine, conv_id):
+        r = ModelRouter()
+        decision = await r.route_message(
+            "我想购买你们的产品,价格多少", tenant_config=_StaticTenantConfig(),
+            conv_id=conv_id, engine=engine,
+        )
+        assert decision.role == "lead"
+        assert decision.source == "fastpath"
+        assert decision.confidence >= 0.6
+
+    @pytest.mark.asyncio
+    async def test_drift_counter_increments_on_mismatch(self, engine, conv_id):
+        r = ModelRouter()
+        tc = _StaticTenantConfig()
+        # Prime active_role = customer
+        await engine.update_triage_state(conv_id, active_role="customer")
+        # Send a lead-intent message → drift
+        decision = await r.route_message(
+            "想购买试用一下", tenant_config=tc, conv_id=conv_id, engine=engine,
+        )
+        state = await engine.get_triage_state(conv_id)
+        assert state["drift_counter"] == 1
+        assert decision.role in ("lead", "customer")
+
+    @pytest.mark.asyncio
+    async def test_drift_resets_on_match(self, engine, conv_id):
+        r = ModelRouter()
+        tc = _StaticTenantConfig()
+        await engine.update_triage_state(conv_id, active_role="customer", drift_counter=3)
+        await r.route_message(
+            "怎么使用这个功能", tenant_config=tc, conv_id=conv_id, engine=engine,
+        )
+        state = await engine.get_triage_state(conv_id)
+        assert state["drift_counter"] == 0

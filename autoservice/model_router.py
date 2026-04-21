@@ -11,7 +11,7 @@ import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Literal, Optional, Protocol
 
 
 class Intent(str, Enum):
@@ -51,6 +51,24 @@ class RoutingDecision:
     priority: str
     classification: ClassificationResult
     needs_operator_notice: bool = False  # 中/低信心时通知 operator
+
+
+@dataclass
+class TriageDecision:
+    """Triage-and-route decision consumed by triage_and_route()."""
+    role: str                          # customer | lead | translate
+    confidence: float
+    source: Literal["fastpath", "triage_agent", "fallback"]
+    intent: str
+    detected_language: Optional[str]
+    summary: Optional[str] = None
+    needs_operator_notice: bool = False
+    previous_role: Optional[str] = None
+
+
+class _TenantConfigLike(Protocol):
+    supported_languages: list[str]
+    tenant_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +222,84 @@ class ModelRouter:
             priority=result.priority,
             classification=result,
             needs_operator_notice=needs_notice,
+        )
+
+    async def route_message(
+        self,
+        message: str,
+        *,
+        tenant_config: "_TenantConfigLike",
+        conv_id: Optional[str] = None,
+        engine: Any = None,
+    ) -> TriageDecision:
+        """Full triage-and-route decision (async).
+
+        Steps:
+          1. detect language (heuristic + langdetect)
+          2. if language NOT IN tenant.supported_languages → translate
+          3. FastClassifier with tenant overlay
+          4. drift probe (engine.incr_drift / reset_drift)
+          5. decide fastpath vs fallback (Task 8 will replace the fallback branch
+             with a real triage-agent call)
+        """
+        from autoservice.language_detect import detect_language
+
+        tenant_id = getattr(tenant_config, "tenant_id", None)
+        supported = set(getattr(tenant_config, "supported_languages", []) or ["zh", "en"])
+
+        lang = detect_language(message)
+        if lang != "unknown" and lang not in supported:
+            return TriageDecision(
+                role="translate",
+                confidence=0.9,
+                source="fastpath",
+                intent="language_barrier",
+                detected_language=lang,
+                needs_operator_notice=False,
+            )
+
+        clf = FastClassifier.for_tenant(tenant_id)
+        fast = clf.classify(message, detected_language=lang if lang != "unknown" else None)
+
+        previous_role: Optional[str] = None
+        drift_count = 0
+        if conv_id is not None and engine is not None:
+            state = await engine.get_triage_state(conv_id)
+            previous_role = state.get("active_role")
+            if previous_role and previous_role != fast.route_to.value:
+                drift_count = await engine.incr_drift(conv_id)
+            else:
+                await engine.reset_drift(conv_id)
+
+        threshold = self._thresholds["medium"]
+        can_fastpath = (
+            fast.confidence >= threshold
+            and (previous_role is None or drift_count < 2 or fast.confidence < threshold)
+        )
+        if can_fastpath:
+            return TriageDecision(
+                role=fast.route_to.value,
+                confidence=fast.confidence,
+                source="fastpath",
+                intent=fast.intent.value,
+                detected_language=lang if lang != "unknown" else None,
+                summary=fast.summary,
+                needs_operator_notice=fast.confidence < self._thresholds["high"],
+                previous_role=previous_role,
+            )
+
+        # Low confidence or sustained drift: placeholder — Task 8 replaces
+        # this branch with _invoke_triage_agent. For now, fall back to the
+        # FastClassifier result so tests see a concrete role.
+        return TriageDecision(
+            role=fast.route_to.value,
+            confidence=fast.confidence,
+            source="fallback",
+            intent=fast.intent.value,
+            detected_language=lang if lang != "unknown" else None,
+            summary=fast.summary or message[:100],
+            needs_operator_notice=True,
+            previous_role=previous_role,
         )
 
     def should_use_placeholder(self, decision: RoutingDecision) -> bool:
