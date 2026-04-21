@@ -133,33 +133,44 @@ Downstream (skill-3, skill-12-contract-check) reads this to know where to apply 
 
 ### 6.1 Current behavior
 
-`skill-3-task-gen` reads `{plans_dir}/{date}-prd-structure.yaml` (required) + `{date}-task-hints.yaml` (optional) + `{date}-gap-analysis.yaml` (optional). Missing `prd-structure.yaml` → hard error.
+`skill-3-task-gen` reads `{plans_dir}/{date}-prd-structure.yaml` (required) + `{date}-gap-analysis.yaml` (required) + `{date}-task-hints.yaml` (optional). Missing either required file → hard error.
 
 ### 6.2 B2 change
 
-If `prd-structure.yaml` absent AND `task-hints.yaml` present AND `task-hints.implementation_steps` non-empty:
+If `task-hints.yaml` is present with non-empty `implementation_steps`, AND either `prd-structure.yaml` OR `gap-analysis.yaml` (or both) are absent:
 
-1. Synthesize a skeleton `prd_structure` **in memory** (not persisted to disk):
-   - `modules[]` = one entry per `implementation_steps[]` entry
-     - `id` = `MOD-NN` (sequential)
-     - `name` = step.description truncated to 60 chars
-     - `sub_modules` = `touches_files` mapped to simple `{id, name}` pairs
-   - `user_stories: []`
-   - `nfrs: []`
-   - `constraints: []`
-   - `external_deps: []`
-2. Mark the synthesis in memory: `source: synthesized-from-task-hints`.
+1. Synthesize in memory whatever is missing (NEVER persist to disk):
 
-If `task-hints.implementation_steps` is empty → hard error (same as the "neither present" case in §7.2 — nothing to synthesize from).
-3. Generate `tasks.yaml` as normal.
-4. Each task gets a new field `traceability: task-hints-only`.
-5. Print warning:
+   - If `prd-structure.yaml` missing: synthesize a skeleton `prd_structure` with:
+     - `modules[]` = one entry per `implementation_steps[]` entry
+       - `id` = `MOD-NN` (sequential)
+       - `name` = step.description truncated to 60 chars
+       - `sub_modules` = `touches_files` mapped to simple `{id, name}` pairs
+     - `user_stories: []`
+     - `nfrs: []`
+     - `constraints: []`
+     - `external_deps: []`
+     - Marker: `source: synthesized-from-task-hints`
+   - If `gap-analysis.yaml` missing: synthesize `gap_analysis = { gaps: [] }` — task generation proceeds off `implementation_steps` alone, no gap-ID linking.
+
+2. Generate `tasks.yaml` as normal using the synthesized structures alongside any real ones.
+3. Each task gets a new field `traceability: task-hints-only` and (when prd-structure synthesized) a `synthesized_module_id` pointing to its skeleton module.
+4. Print warning banner listing which files were missing.
+
+If `task-hints.implementation_steps` is empty → hard error (nothing to synthesize from; same as the "neither present" case in §7.2).
+
+Warning banner format:
 
 ```
-No prd-structure.yaml found; running in task-hints-only mode.
+─────────────────────────────────────────────────────
+B2 degradation mode active
+─────────────────────────────────────────────────────
+Missing: {list of absent required files}
 Synthesized {N} skeleton modules (MOD-01..MOD-{N}) from implementation_steps.
 user_stories / nfrs / constraints / external_deps are empty — downstream
 skills (contract-check, retro) will skip checks that depend on these fields.
+Re-run /ingest-docs on a richer source document to upgrade.
+─────────────────────────────────────────────────────
 ```
 
 ### 6.3 Downstream impact
@@ -170,8 +181,8 @@ skills (contract-check, retro) will skip checks that depend on these fields.
 
 ### 6.4 What does NOT change
 
-- If both files present → zero behavior change (regression guard).
-- The synthesized `prd_structure` is NEVER written to disk. If user runs `/ingest-docs` afterward, they get a real file; the skeleton was only scaffolding for this `/task-gen` call.
+- If all three input files (prd-structure, gap-analysis, task-hints) are present → zero behavior change (regression guard).
+- Synthesized structures are NEVER written to disk. If user runs `/ingest-docs` afterward, they get real files; the skeleton was only scaffolding for this `/task-gen` call.
 
 ## 7. Testing
 
@@ -181,18 +192,21 @@ Add fixtures under `skill-0-ingest/tests/fixtures/design-spec-extraction/`:
 
 | Fixture | Shape | Assertion |
 |---------|-------|-----------|
-| `deps-table.md` | §8 Dependencies as markdown table | `len(external_deps) == 4`; `DEP-01.version == "^9.0.1"` |
-| `deps-bullets.md` | §8 Dependencies as bullet list | Same count, bullet-form parser works |
-| `sparse-no-deps.md` | §Scope only, no §Dependencies | `external_deps == []`; `llm_fields` includes `user_stories` |
-| `real/chat-markdown-design.md` | Copy of actual spec | DEP count = 4 (react-markdown / remark-gfm / rehype-highlight / highlight.js); `user_stories` LLM-synthesized with 4-5 stories matching 4 surfaces |
+| `deps-table.md` | §8 Dependencies as markdown table (no §Scope) | `len(external_deps) == 4`; `DEP-01.version == "^9.0.1"` |
+| `deps-bullets.md` | §8 Dependencies as bullet list (no §Scope) | Same count, bullet-form parser works |
+| `sparse-opt-in.md` | §Scope only, no §Dependencies — run with `--synthesize-user-stories` | flag-off: `user_stories == []`; flag-on: 2 synthesized stories with `source: synthesized`, personas verbatim from §Scope |
+| `real/chat-markdown-design.md` (DEFERRED — Task 11) | Copy of actual spec | DEP count = 4; `user_stories` (flag-on) 4-5 stories matching 4 surfaces |
 
 ### 7.2 B — skill-3 degradation tests
 
 | Scenario | Inputs | Assertion |
 |----------|--------|-----------|
-| task-hints-only | `task-hints.yaml` present, no `prd-structure.yaml` | `tasks.yaml` generated; warning printed; each task has `traceability: task-hints-only` |
-| both present | `prd-structure.yaml` + `task-hints.yaml` | Regression — behavior identical to pre-change |
-| neither present | empty plans_dir | Hard error (no degradation path) |
+| task-hints-only (neither gap nor prd) | `task-hints.yaml` only | `tasks.yaml` generated; warning printed; each task has `traceability: task-hints-only` |
+| prd-only-missing | `task-hints.yaml` + `gap-analysis.yaml` | Tasks gain gap IDs but synthetic module IDs |
+| gap-only-missing | `task-hints.yaml` + `prd-structure.yaml` | Tasks gain real module IDs but no gap refs |
+| all three present | prd-structure + gap-analysis + task-hints | Regression — behavior identical to pre-change |
+| only prd-structure (no hints, no gap) | `prd-structure.yaml` only | Hard error (no degradation path) |
+| fully empty | empty plans_dir | Hard error |
 
 ### 7.3 End-to-end validation (DEFERRED)
 
