@@ -1,0 +1,169 @@
+task_hints:
+  source_type: "ingested"
+  source_role: "design-spec"
+  source_files:
+    - "docs/superpowers/specs/2026-04-21-chat-markdown-design.md"
+
+  file_changes:
+    # ── Shared component (§4 + §6 + §7.1 + §8) ─────────────────────
+    - path: "frontend/packages/shared/MarkdownMessage.tsx"
+      change_type: create
+      purpose: "React component wrapping ReactMarkdown with remark-gfm + rehype-highlight; security overrides force <a target=_blank rel=noopener> and strip <img>"
+      source_anchor: "§4 Component — MarkdownMessage"
+      related_gap_refs: []
+
+    - path: "frontend/packages/shared/MarkdownMessage.css"
+      change_type: create
+      purpose: "Scoped CSS for .md-msg / .md-chat / .md-compact variants; imports highlight.js/styles/github.css; reuses cs-* tokens with literal hex fallbacks"
+      source_anchor: "§6 Styling"
+      related_gap_refs: []
+
+    - path: "frontend/packages/shared/MarkdownMessage.test.tsx"
+      change_type: create
+      purpose: "10 unit tests — basic CommonMark, lists, blockquote, GFM table, task list, code block + highlight class, link hardening, image stripped, raw HTML escaped, javascript: scheme filtered"
+      source_anchor: "§7.1 Shared component tests"
+      related_gap_refs: []
+
+    - path: "frontend/packages/shared/package.json"
+      change_type: modify
+      purpose: "Add deps: react-markdown^9, remark-gfm^4, rehype-highlight^7, highlight.js^11"
+      source_anchor: "§8 Dependencies"
+      related_gap_refs: []
+
+    # ── Integration: customer-chat (§5.1) ────────────────────────
+    - path: "frontend/apps/customer-chat/src/components/MessageBubble.tsx"
+      change_type: modify
+      purpose: "Render assistant messages via MarkdownMessage(variant=chat); user-role messages stay plain text"
+      source_anchor: "§5.1 customer-chat MessageBubble"
+      related_gap_refs: []
+
+    - path: "frontend/apps/customer-chat/src/__tests__/MessageBubble.test.tsx"
+      change_type: modify
+      purpose: "Add 2 regression cases — assistant **bold** → <strong>; user **bold** → literal text"
+      source_anchor: "§7.2 Per-surface regression"
+      related_gap_refs: []
+
+    # ── Integration: operator-console (§5.2) ─────────────────────
+    - path: "frontend/apps/operator-console/src/components/CopilotView.tsx"
+      change_type: modify
+      purpose: "Render agent copilot suggestions via MarkdownMessage(variant=compact) — tighter sidebar font"
+      source_anchor: "§5.2 operator-console CopilotView"
+      related_gap_refs: []
+
+    - path: "frontend/apps/operator-console/src/components/ConversationFeed.tsx"
+      change_type: modify
+      purpose: "Render agent messages in the conversation feed via MarkdownMessage(variant=chat)"
+      source_anchor: "§5.2 operator-console ConversationFeed"
+      related_gap_refs: []
+
+    - path: "frontend/apps/operator-console/src/__tests__/CopilotView.test.tsx"
+      change_type: modify
+      purpose: "Assistant-markdown + user-plain regression (file may need creation if absent)"
+      source_anchor: "§7.2 Per-surface regression"
+      related_gap_refs: []
+
+    - path: "frontend/apps/operator-console/src/__tests__/ConversationFeed.test.tsx"
+      change_type: modify
+      purpose: "Assistant-markdown + user-plain regression (file may need creation if absent)"
+      source_anchor: "§7.2 Per-surface regression"
+      related_gap_refs: []
+
+    # ── Integration: admin-portal (§5.3 + §5.4) ───────────────────
+    - path: "frontend/apps/admin-portal/src/components/ManagementChat.tsx"
+      change_type: modify
+      purpose: "Render _master agent replies via MarkdownMessage(variant=chat); swap plain-text render"
+      source_anchor: "§5.3 admin-portal ManagementChat"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"
+      change_type: modify
+      purpose: "Render _local_admin agent replies via MarkdownMessage(variant=chat); role discriminator = msg.role === 'assistant'"
+      source_anchor: "§5.4 admin-portal ChatTab (batch-11)"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/__tests__/ChatTab.test.tsx"
+      change_type: modify
+      purpose: "Assistant-markdown + user-plain regression cases"
+      source_anchor: "§7.2 Per-surface regression"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/__tests__/ManagementChat.test.tsx"
+      change_type: modify
+      purpose: "Assistant-markdown regression case (file may need creation if absent)"
+      source_anchor: "§7.2 Per-surface regression"
+      related_gap_refs: []
+
+  implementation_steps:
+    - step: 1
+      description: "Shared component slice: install 4 deps; write MarkdownMessage.tsx + MarkdownMessage.css + MarkdownMessage.test.tsx (10 unit cases); tests green in isolation before any integration"
+      depends_on_steps: []
+      touches_files:
+        - "frontend/packages/shared/MarkdownMessage.tsx"
+        - "frontend/packages/shared/MarkdownMessage.css"
+        - "frontend/packages/shared/MarkdownMessage.test.tsx"
+        - "frontend/packages/shared/package.json"
+      source_anchor: "§9.1 shared-component slice"
+
+    - step: 2
+      description: "customer-chat + operator-console integration (3 points): MessageBubble + CopilotView(compact) + ConversationFeed(chat); add per-file regression cases; per-app focused vitest green"
+      depends_on_steps: [1]
+      touches_files:
+        - "frontend/apps/customer-chat/src/components/MessageBubble.tsx"
+        - "frontend/apps/customer-chat/src/__tests__/MessageBubble.test.tsx"
+        - "frontend/apps/operator-console/src/components/CopilotView.tsx"
+        - "frontend/apps/operator-console/src/components/ConversationFeed.tsx"
+        - "frontend/apps/operator-console/src/__tests__/CopilotView.test.tsx"
+        - "frontend/apps/operator-console/src/__tests__/ConversationFeed.test.tsx"
+      source_anchor: "§9.2 customer-chat + operator-console slice"
+
+    - step: 3
+      description: "admin-portal integration (2 points): ManagementChat + ChatTab; add 2 regression cases; admin-portal focused vitest green"
+      depends_on_steps: [2]
+      touches_files:
+        - "frontend/apps/admin-portal/src/components/ManagementChat.tsx"
+        - "frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"
+        - "frontend/apps/admin-portal/src/__tests__/ChatTab.test.tsx"
+        - "frontend/apps/admin-portal/src/__tests__/ManagementChat.test.tsx"
+      source_anchor: "§9.3 admin-portal slice"
+
+    - step: 4
+      description: "Close slice: full frontend vitest regression across shared + 3 apps; produce eval-doc + test-diff + e2e-report per cc-prompt-templates §6; register artifacts; link bidirectionally; commit + update task-status"
+      depends_on_steps: [3]
+      touches_files:
+        - ".artifacts/eval-docs/"
+        - ".artifacts/test-diffs/"
+        - ".artifacts/e2e-reports/"
+      source_anchor: "§9.4 close slice"
+
+  non_goals:
+    # From §11 Non-goals
+    - "Dark-mode theme swap for code blocks"
+    - "Copy-to-clipboard buttons on code blocks"
+    - "Mermaid / KaTeX / LaTeX rendering"
+    - "User input markdown rendering (user-side stays plain text)"
+    - "Live preview editor"
+    - "Per-tenant markdown settings (opt-in/out)"
+
+  test_strategy:
+    preserved_testids: []
+    new_tests:
+      - "frontend/packages/shared/MarkdownMessage.test.tsx — 10 unit cases"
+      - "Per-surface regression (4 files) — 1-2 cases each, total ~6-8 new cases"
+    e2e_delta: |
+      No new E2E. The existing M2 §8 acceptance tests (steps 6, 7 — dream agent
+      run + management chat with local SDK) will naturally exercise markdown
+      rendering once integrated, since LLM replies commonly contain markdown
+      (bold, lists, code blocks). Visual verification during acceptance runs
+      is sufficient for this feature.
+
+  risks:
+    - risk: "LLM outputs raw HTML that looks like code but is partially interpreted"
+      mitigation: "react-markdown default (no rehype-raw) + pinned 'raw-HTML-escaped' unit test; call-site role gate keeps user input off the parser"
+    - risk: "Bundle bloat (~70kb gzipped added per app)"
+      mitigation: "Acceptable for agent UX value; lazy-load highlight.js variant planned for M3 if bundle complaints arise"
+    - risk: "Per-surface role-discriminator field drift (different apps name it differently)"
+      mitigation: "Step 2/3 prompts enumerate each surface's exact field name (message.role, message.sender, etc.) before touching code; regression tests pin 'user = plain text' invariant"
+    - risk: "Existing pre-wrap whitespace behaviour lost"
+      mitigation: "CSS preserves white-space:pre-wrap inside <pre>; inline text flow matches prior behaviour (no change)"
+    - risk: "pnpm workspace transitive-dep resolution may not work in strict mode"
+      mitigation: "After step 1 lands, run vitest in one consumer app as a probe; if import fails, add deps to each app's package.json (§8 explicit fallback)"

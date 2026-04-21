@@ -1,0 +1,140 @@
+prd_structure:
+  source_type: "ingested"
+  source_role: "design-spec-derived"
+  source_files:
+    - "docs/superpowers/specs/2026-04-21-chat-markdown-design.md"
+  note: |
+    Spec is design-type, so skill-0's spec-extractor only produced task-hints.
+    This prd-structure is a hand-written companion to unblock skill-3. Modules
+    are distilled from spec §2 (5 surfaces, minus ConversationFeed — see §5
+    NOTE below for the deviation) + §4 Component.
+
+  modules:
+    - id: MOD-01
+      name: "Shared MarkdownMessage component"
+      description: "Single React component at frontend/packages/shared/MarkdownMessage.tsx wrapping react-markdown + remark-gfm + rehype-highlight; one place to maintain security overrides + CSS"
+      prd_sections: ["§4 Component", "§6 Styling", "§7.1 Tests", "§8 Dependencies"]
+      sub_modules:
+        - id: MOD-01a
+          name: "Component implementation"
+          description: "MarkdownMessage.tsx — props {content, variant, className}; remarkGfm + rehypeHighlight plugins; components override for <a> (target=_blank rel=noopener) and <img> (returns null)"
+        - id: MOD-01b
+          name: "Styling"
+          description: "MarkdownMessage.css — .md-msg base + .md-chat / .md-compact variants; imports highlight.js/styles/github.css; reuses cs-* CSS tokens with literal hex fallbacks"
+        - id: MOD-01c
+          name: "Unit tests"
+          description: "10 cases — CommonMark basics / lists / blockquote / GFM table / GFM task list / code block + highlight class / link hardening / image stripped / raw HTML escaped / javascript: scheme filtered / variant class"
+        - id: MOD-01d
+          name: "Workspace deps"
+          description: "Add react-markdown^9 + remark-gfm^4 + rehype-highlight^7 + highlight.js^11 to frontend/packages/shared/package.json; per-app pkg may also need them if pnpm strict transitive resolution fails"
+
+    - id: MOD-02
+      name: "customer-chat MessageBubble integration"
+      description: "MessageBubble renders agent-role messages via MarkdownMessage(variant=chat); customer/operator/system stay plain"
+      prd_sections: ["§5.1"]
+      sub_modules:
+        - id: MOD-02a
+          name: "MessageBubble.tsx role-gate swap"
+          description: "Add import of MarkdownMessage; find the text-render site near line 83 (`<span>{message.content}</span>` in the non-image branch); wrap in `role === 'agent' ? <MarkdownMessage ...> : <span>...`"
+        - id: MOD-02b
+          name: "MessageBubble regression tests"
+          description: "2 new cases in MessageBubble.test.tsx — agent **bold** → <strong>; customer-authored **bold** → literal text (no <strong>)"
+
+    - id: MOD-03
+      name: "operator-console CopilotView integration"
+      description: "CopilotView wraps agent-authored message text in MarkdownMessage(variant=compact) at 4 render sites"
+      prd_sections: ["§5.2 (CopilotView only)"]
+      note: |
+        Spec §5.2 lists ConversationFeed as an integration point. During planning
+        we found ConversationFeed only renders 40-char truncate() previews
+        (not full messages), so markdown there is pointless. Dropped from scope;
+        this module covers CopilotView only. 4 integration surfaces total across
+        the whole feature, not the 5 listed in the spec.
+      sub_modules:
+        - id: MOD-03a
+          name: "CopilotMessage role discriminator discovery"
+          description: "Read operatorStore.ts to identify the field that distinguishes agent-generated vs operator/customer messages (likely msg.from or msg.role)"
+        - id: MOD-03b
+          name: "CopilotView 4-site wrapping"
+          description: "Find 4 occurrences of `<div className=\"op-msg-text\">{msg.text}</div>` (lines ~72, ~93, ~107, ~122); wrap the agent-branch sites with <MarkdownMessage variant='compact'>; leave operator/customer sites plain"
+        - id: MOD-03c
+          name: "CopilotView regression tests"
+          description: "2 cases in CopilotView.test.tsx (create if absent) — agent msg with **bold** → <strong>; operator-authored **bold** → literal"
+
+    - id: MOD-04
+      name: "admin-portal integration (2 chats)"
+      description: "ManagementChat (Admin ↔ _master platform agent) + ChatTab (tenant admin ↔ _local_admin fork-side agent) both wrap agent-role replies in MarkdownMessage(variant=chat)"
+      prd_sections: ["§5.3", "§5.4"]
+      sub_modules:
+        - id: MOD-04a
+          name: "ManagementChat swap + test seam"
+          description: "Add optional `initialMessages` prop (test seam; default unchanged); wrap dream_engine-role render (line ~120 `<div className=\"im-msg-text\" style={{whiteSpace:'pre-wrap'}}>{msg.content}</div>`) with <MarkdownMessage variant='chat'>; drop the inline pre-wrap style (MarkdownMessage CSS handles whitespace)"
+        - id: MOD-04b
+          name: "ChatTab role-gate swap"
+          description: "Wrap entry.role === 'assistant' render (line ~148 `{entry.text}`) with <MarkdownMessage variant='chat'>; user/error roles stay plain"
+        - id: MOD-04c
+          name: "Admin-portal regression tests"
+          description: "ManagementChat.test.tsx 2 cases (dream_engine markdown + user literal); ChatTab.test.tsx 2 cases (assistant via fetch mock + user literal via direct type)"
+
+  constraints:
+    - id: CON-01
+      type: security
+      description: "User-typed content MUST NEVER enter the markdown parser — every chat surface role-gates the render path so only assistant/agent/dream_engine messages reach MarkdownMessage"
+      rationale: "Anti-XSS; user input is an untrusted surface. Spec §4.4 security layer 2."
+      prd_ref: "§4.4 Security"
+
+    - id: CON-02
+      type: technology
+      description: "Rendering stack is fixed: react-markdown + remark-gfm + rehype-highlight + highlight.js. No rehype-raw (which would parse raw HTML — unsafe)."
+      rationale: "Library choice determines both features and attack surface. Spec §8."
+      prd_ref: "§8 Dependencies"
+
+    - id: CON-03
+      type: security
+      description: "MarkdownMessage forces all `<a>` to target=_blank + rel=noopener noreferrer; all `<img>` returns null (strip)"
+      rationale: "Anti-tabnabbing; anti-img-onerror LLM injection. Spec §4.4 security layer 3."
+      prd_ref: "§4.4 Security"
+
+    - id: CON-04
+      type: architecture
+      description: "Single shared component at frontend/packages/shared/MarkdownMessage.tsx — 4 chat surfaces all import from the shared package. No per-app duplication."
+      rationale: "Monorepo single-source-of-truth; one place to upgrade/patch. Spec §4.1."
+      prd_ref: "§4.1 Location"
+
+    - id: CON-05
+      type: architecture
+      description: "User input side stays plain text across all 4 surfaces — no opt-in for user-markdown in M2/feature scope"
+      rationale: "Spec §3 non-goals + §11 non-goals; decided during brainstorm Q3 (option A chosen)"
+      prd_ref: "§3 Out of scope / §11 Non-goals"
+
+  user_stories: []
+  nfrs:
+    - id: NFR-01
+      type: performance
+      description: "Bundle impact ≤ ~70kb gzipped per app (react-markdown ~30 + remark-gfm ~15 + rehype-highlight ~5 + highlight.js ~20)"
+      rationale: "Spec §8 acceptance threshold"
+      prd_ref: "§8 Dependencies bundle estimate"
+
+    - id: NFR-02
+      type: compatibility
+      description: "React 18+ (matches existing 3-app workspace); pnpm workspace transitive deps from frontend/packages/shared"
+      rationale: "Spec §8 environment"
+      prd_ref: "§8 Dependencies"
+
+  external_deps:
+    - id: DEP-01
+      name: "react-markdown"
+      version: "^9.0.1"
+      purpose: "Core markdown → React AST renderer"
+    - id: DEP-02
+      name: "remark-gfm"
+      version: "^4.0.0"
+      purpose: "GitHub-flavored markdown extensions (tables, task lists, strikethrough, autolinks)"
+    - id: DEP-03
+      name: "rehype-highlight"
+      version: "^7.0.0"
+      purpose: "Syntax highlighting via highlight.js applied to fenced code blocks"
+    - id: DEP-04
+      name: "highlight.js"
+      version: "^11.9.0"
+      purpose: "Syntax highlighter engine + theme CSS (imports github.css light theme)"
