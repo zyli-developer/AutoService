@@ -666,27 +666,30 @@ async def dream_trigger(payload: dict[str, Any] = Body(...)) -> Any:
 
 
 async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
-    """Schedule ``run_dream`` for an already-opened ``dream_runs`` row.
+    """Schedule the right dream entry for an already-opened ``dream_runs`` row.
 
-    ``run_dream`` always calls ``dream_runs.start_run`` itself — so when the
-    trigger endpoint pre-opens the row (to return ``run_id`` in the 202),
-    the actual agent run lands with a DIFFERENT row id.  That's acceptable
-    for M2: the trigger-row records the "requested" state (and blocks the
-    concurrency guard while the run is active); the run_dream-row records
-    the "observed" state with tokens / tool_calls.  Both are visible via
-    ``GET /api/dream/runs`` ordered by ``started_at DESC``.
+    Routing (M3 T2S.8 mirrors ``dream_scheduler._dispatch``):
+    * ``tenant_id == bootstrap.MASTER_TENANT_ID`` → ``run_platform_dream``
+      (cross-tenant aggregate; does NOT open its own ``dream_runs`` row, so
+      the pre-opened trigger-row IS the agent row → 1 row per trigger).
+    * otherwise → per-tenant ``dream_agent.run_dream``, which opens its own
+      ``dream_runs`` row internally (2 rows per trigger — the pre-opened
+      trigger-row records the "requested" state, the run_dream-row the
+      "observed" state; both visible via ``GET /api/dream/runs``).
 
     A future refactor may let ``run_dream`` accept a pre-opened ``run_id``
-    — out of scope for T3B.6.  The end_run hook below is best-effort: if
-    the run completes normally the row gets finalised by ``run_dream``'s
-    own row; our trigger-row stays as 'running' only until the background
-    coroutine's ``finally`` block updates it.
+    — out of scope for T3B.6.
+
+    The ``finally`` block records the REAL outcome (completed / failed)
+    on the trigger-row so the UI doesn't show a misleading green row next
+    to the actual failed agent row.
 
     Tests monkey-patch this function to a no-op so they can assert the
     trigger endpoint's HTTP behaviour without touching cc_pool.
     """
     from autoservice.cc_pool import get_pool
     from autoservice.memory_pool import MemoryPool
+    from autoservice import bootstrap as _bootstrap
 
     pool = await get_pool()
     pp = _get_proposal_pipeline()
@@ -694,21 +697,48 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     runs_conn = _get_dream_runs_db()
     mempool = getattr(pp, "_memory_pool", None) or MemoryPool()
 
+    # M3 T2S.8 routing: for the master tenant, dispatch to run_platform_dream
+    # (cross-tenant aggregate dream) — mirrors dream_scheduler._dispatch logic.
+    # Per-tenant run_dream requires llm_send + cc_pool capabilities that the
+    # master tenant deliberately doesn't have.
+    is_master = tenant_id == _bootstrap.MASTER_TENANT_ID
+
     async def _run_and_mark():
-        """Wrap run_dream so the pre-opened trigger-row gets finalised."""
+        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised."""
+        agent_status = "completed"
+        agent_error: str | None = None
         try:
-            await dream_agent.run_dream(
-                tenant_id,
-                pool,
-                mempool,
-                proposals_conn,
-                runs_conn,
-                max_tool_turns=10,
-            )
+            if is_master:
+                from autoservice import master_dream_agent as _master_dream
+                await _master_dream.run_platform_dream(
+                    tenant_id,
+                    pool,
+                    mempool,
+                    proposals_conn,
+                    runs_conn,
+                    max_tool_turns=10,
+                )
+            else:
+                await dream_agent.run_dream(
+                    tenant_id,
+                    pool,
+                    mempool,
+                    proposals_conn,
+                    runs_conn,
+                    max_tool_turns=10,
+                )
+        except Exception as exc:  # noqa: BLE001
+            agent_status = "failed"
+            agent_error = f"{type(exc).__name__}: {exc}"
+            logger.exception("dream run failed for tenant=%s", tenant_id)
         finally:
-            # Always close the trigger-row so the concurrency guard releases.
+            # Close the trigger-row with the REAL outcome (completed vs failed)
+            # so the UI doesn't show a misleading green "completed" row next
+            # to the actual failed agent-row.
             try:
-                dream_runs.end_run(runs_conn, run_id, status="completed")
+                dream_runs.end_run(
+                    runs_conn, run_id, status=agent_status, error=agent_error,
+                )
             except Exception:
                 logger.exception(
                     "dream_runs.end_run cleanup for trigger row %s failed", run_id,
