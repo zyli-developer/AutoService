@@ -379,6 +379,7 @@ class CCPool(AsyncPool[CCClient]):
         self._role_pool_last_used: dict[tuple[str, str | None], float] = {}
         self._role_pool_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task | None = None
+        self._closed = False
 
     async def query(self, prompt: str, **kwargs: Any) -> AsyncIterator[Message]:
         """Convenience: checkout, query, yield messages, checkin."""
@@ -496,6 +497,10 @@ class CCPool(AsyncPool[CCClient]):
         the (role, tenant) → sub-pool map + a last-used timestamp for the
         reaper.
         """
+        # Fix 3 (defense-in-depth): refuse to spin up new sub-pools after shutdown.
+        if self._closed:
+            raise RuntimeError("CCPool is shut down")
+
         key = (role, tenant_id)
         async with self._role_pool_lock:
             sub_pool = self._role_pools.get(key)
@@ -506,16 +511,20 @@ class CCPool(AsyncPool[CCClient]):
                     self._reaper_task = asyncio.create_task(
                         self._reaper_loop(), name="cc-pool-role-reaper",
                     )
-        self._role_pool_last_used[key] = time.monotonic()
+            # Fix 1: update last-used INSIDE the lock so the reaper can never
+            # observe a stale timestamp while this acquirer holds the lock.
+            self._role_pool_last_used[key] = time.monotonic()
+
         async with sub_pool.acquire(timeout=timeout) as inst:
             inst._pool_role = role  # type: ignore[attr-defined]
             inst._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
-            # Refresh last-used both on checkout and on release (updated
-            # below via the outer context). This makes a sub-pool that is
-            # actively being used look "recent" to the reaper even if a
-            # single acquire is long-running.
-            self._role_pool_last_used[key] = time.monotonic()
-            yield inst
+            try:
+                yield inst
+            finally:
+                # Fix 2: refresh last-used on release so a long-running acquire
+                # does not leave the timestamp frozen at checkout time, which
+                # would allow the reaper to close an in-flight sub-pool.
+                self._role_pool_last_used[key] = time.monotonic()
 
     async def _create_role_pool(
         self, role: str, tenant_id: str | None,
@@ -568,13 +577,23 @@ class CCPool(AsyncPool[CCClient]):
         ``monkeypatch.setattr`` the threshold without restarting the loop.
         """
         now = time.monotonic()
-        victims: list[tuple[str, str | None]] = []
-        for key, last in list(self._role_pool_last_used.items()):
-            if now - last > _REAP_IDLE_SEC:
-                victims.append(key)
-        for key in victims:
-            sub_pool = self._role_pools.pop(key, None)
-            self._role_pool_last_used.pop(key, None)
+        # Fix 1 (continued): Candidate scan is outside the lock (cheap read),
+        # but the actual pop + shutdown decision is retaken INSIDE the lock so
+        # a concurrent _acquire_role_pool that just refreshed the timestamp
+        # (also under the lock) cannot be evicted mid-checkout.
+        candidate_keys: list[tuple[str, str | None]] = [
+            key for key, last in list(self._role_pool_last_used.items())
+            if now - last > _REAP_IDLE_SEC
+        ]
+        for key in candidate_keys:
+            async with self._role_pool_lock:
+                # Re-check the timestamp now that we hold the lock; the
+                # acquirer may have refreshed it while we were waiting.
+                last = self._role_pool_last_used.get(key)
+                if last is None or now - last <= _REAP_IDLE_SEC:
+                    continue
+                sub_pool = self._role_pools.pop(key, None)
+                self._role_pool_last_used.pop(key, None)
             if sub_pool is not None:
                 try:
                     await sub_pool.shutdown()
@@ -590,6 +609,9 @@ class CCPool(AsyncPool[CCClient]):
         so we don't race its own shutdown of a sub-pool. After sub-pools are
         closed we delegate to ``AsyncPool.shutdown`` for the main pool.
         """
+        # Fix 3: mark as closed before tearing down so _acquire_role_pool
+        # refuses to recreate sub-pools after shutdown starts.
+        self._closed = True
         if self._reaper_task is not None and not self._reaper_task.done():
             self._reaper_task.cancel()
             try:

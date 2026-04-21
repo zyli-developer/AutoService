@@ -90,3 +90,17 @@ async def test_reaper_closes_idle_pools(pool, monkeypatch):
     await asyncio.sleep(0.1)
     await pool._reap_idle_role_pools_once()
     assert ("lead", "acme") not in pool._role_pools
+
+
+@pytest.mark.asyncio
+async def test_concurrent_acquire_same_key_shares_subpool(pool):
+    """Concurrent first-acquires for the same (role, tenant) must share one sub-pool."""
+    async def _take():
+        async with pool.acquire(role="lead", tenant_id="concurrent") as inst:
+            await asyncio.sleep(0.01)
+            return inst
+    results = await asyncio.gather(*[_take() for _ in range(4)])
+    assert len(results) == 4
+    # Only one sub-pool entry should exist for the (role, tenant) key.
+    assert ("lead", "concurrent") in pool._role_pools
+    assert sum(1 for k in pool._role_pools if k == ("lead", "concurrent")) == 1
