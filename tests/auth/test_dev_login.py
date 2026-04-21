@@ -173,3 +173,21 @@ auth:
 
     r = app_client.get("/api/auth/dev-mode")
     assert "_example" in r.json()["tenants"]
+
+
+# ── /auth/dev-login — disabled path ───────────────────────────────────────
+
+
+def test_dev_login_returns_404_when_env_unset(
+    dev_mode_off, app_client, auth_conn
+):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "admin@dev.local"},
+    )
+    assert r.status_code == 404
+    # No session row created.
+    rows = auth_conn.execute("SELECT COUNT(*) AS c FROM sessions").fetchone()
+    assert rows["c"] == 0
+    # No cookie set.
+    assert "auth_session" not in r.cookies

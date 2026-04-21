@@ -2040,3 +2040,33 @@ async def auth_dev_mode() -> Any:
         "personas": _load_dev_personas(),
         "tenants": _scan_dev_tenants(),
     }
+
+
+@api_router.post("/auth/dev-login")
+async def auth_dev_login(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> Any:
+    """Dev-only: mint a session cookie directly, bypassing magic-link.
+
+    Gated by AUTH_DEV_MODE=1. When disabled, returns 404 to avoid advertising
+    the endpoint's existence in production.
+
+    Request body::
+
+        {"email": "<admin@dev.local>", "tenant_id": "<tid>" | null}
+
+    Response (200)::
+
+        {"ok": true, "redirect": "/admin" | "/t/<tid>/admin"}
+
+    Side effects on success:
+      • Row inserted into the ``sessions`` table.
+      • ``auth_session`` cookie set (HttpOnly, SameSite=Lax, Max-Age = session TTL).
+      • WARNING log line + JSONL audit entry.
+    """
+    if not DEV_MODE_ENABLED:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+
+    # Enabled-path implementation in Task 4.
+    return JSONResponse(status_code=501, content={"error": "not implemented"})
