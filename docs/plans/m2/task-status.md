@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：37
+- **已完成**：38
 - **进行中**：0
 - **阻塞**：0
 - **待办**：3
-- **完成率**：97% (37/38)
+- **完成率**：100% (38/38) 🎉 M2 代码完整；人工 E2E run 是单独动作
 - **最后更新**：2026-04-20
 
 ### 会话日志
@@ -38,7 +38,8 @@
 | 2026-04-20 | batch-14 T7S.5 fork-mode boot smoke test (eval-doc-018, test-diff-019; 5 new tests, 0 regression on fork_runtime+bootstrap+setup scope) | pending commit |
 | 2026-04-20 | batch-14 T7B.6 /api/management/chat → _master routing (eval-doc-019, test-diff-020; 7 new tests, 0 regression across api+auth+cc_pool+dream_agent+bootstrap scope; admin tool set deferred to M3) | `e9557cc` |
 | 2026-04-21 | batch-14 combined e2e-report-011 + batch-14 close (Phase 7 COMPLETE · 35/38 = 92%) | e2e-report-011 registered |
-| 2026-04-21 | batch-15 P8 ForkCreator — T8B.1 (yellow L, reviewer APPROVED) + T8B.2 (eval-doc-020, test-diff-022, e2e-report-012; 19 new + 172 regression green; subagent rate-limited, main orchestrator closed) | pending code commit |
+| 2026-04-21 | batch-15 P8 ForkCreator — T8B.1 (yellow L, reviewer APPROVED) + T8B.2 (eval-doc-020, test-diff-022, e2e-report-012; 19 new + 172 regression green; subagent rate-limited, main orchestrator closed) | `e3f2318` |
+| 2026-04-21 | **M2 CODE COMPLETE 🎉** · batch-16 T8S.3 E2E test code (eval-doc-021, test-diff-023, e2e-report-013; 8 @pytest.mark.e2e tests; subagent stalled, main orchestrator finished; inline reviewer APPROVED) | pending final commit |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -170,7 +171,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 |----|------|------|--------|------|-------|-----------|
 | T8B.1 | GitHubApiForkCreator (gh CLI) | 🟡 yellow | **large** | ✅ done | Subagent aa8af5a2 (impl + tests) + main orchestrator (reviewer + close; subagent hit rate limit) | pending commit (11 tests, eval-doc-020, test-diff-022, e2e-report-012, reviewer APPROVED) |
 | T8B.2 | LocalTarballForkCreator runbook config step | green | small | ✅ done | Subagent aa8af5a2 | pending commit (8 tests, same artifacts as T8B.1) |
-| T8S.3 | Full E2E acceptance (@pytest.mark.e2e) | 🟡 yellow | **large** | ⏳ pending | — | — |
+| T8S.3 | Full E2E acceptance (@pytest.mark.e2e) | 🟡 yellow | **large** | ✅ done | Subagent adaa7ca54 (stalled pre-produce) + main orchestrator | pending commit (8 @pytest.mark.e2e tests encoding spec §8 1–8; default-excluded via `addopts = "-m 'not e2e'"`; eval-doc-021, test-diff-023, e2e-report-013, inline reviewer APPROVED) |
 
 **Gate**：spec §8 8-step 验收通过。
 
@@ -196,4 +197,4 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-13 | P7 | ✅ 完成 | T7S.4 ✅ (8 tests) ∥ T7F.3 ✅ (10 tests); combined e2e-report-010 (18 new + 110 backend regression green, 0 new failures); artifacts linked |
 | batch-14 | P7 | ✅ 完成 | T7S.5 ✅ (5 smoke) ∥ T7B.6 ✅ (7 mgmt-chat); combined e2e-report-011 (187 pass / 0 regression); Phase 7 COMPLETE. Note: test-diff-020 is authoritative; test-diff-021 dup (same file, main-orchestrator race) |
 | batch-15 | P8 | ✅ 完成 | T8B.1 (yellow L, 11 tests, reviewer APPROVED — 4 red-line PASS) + T8B.2 (8 tests); 19 new + 172 regression green; subagent rate-limited pre-commit, main orchestrator closed |
-| batch-16 | P8 | ⏳ pending | — |
+| batch-16 | P8 | ✅ 完成 | T8S.3 ✅ yellow L; 8 E2E tests encoding spec §8; default-excluded; `pytest -m e2e` collects 8; eval-doc-021 + test-diff-023 + e2e-report-013; inline reviewer APPROVED. **M2 COMPLETE** 🎉 |

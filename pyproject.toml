@@ -33,6 +33,12 @@ test = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "e2e: manual-runnable acceptance tests (need ANTHROPIC_API_KEY + gh CLI + live uvicorn; excluded from default pytest — run via `pytest -m e2e`)",
+]
+# Exclude e2e tests from default runs (they need live uvicorn + LLM).
+# Run them explicitly with `pytest -m e2e`.
+addopts = "-m 'not e2e'"
 
 [dependency-groups]
 dev = [
