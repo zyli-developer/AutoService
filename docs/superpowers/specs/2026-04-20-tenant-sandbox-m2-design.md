@@ -10,7 +10,7 @@
 
 ### 0.1 In scope
 
-- **Tenant fork runtime 真跑**：fork 仓以 `deployment_mode=tenant` 启动，5-agent 栈全部使用 `plugins/<tid>/souls/*`，URL 无 `/t/<tid>/` 前缀
+- **Tenant fork runtime 真跑**：fork 仓以 `deployment_mode=tenant` 启动，5-agent 栈全部使用 `plugins/<tid>/souls/*`，URL 无 `/tenant/<tid>/` 前缀
 - **ForkCreator 自动化最小落地**：保留 `LocalTarballForkCreator` 为默认；新增 `GitHubApiForkCreator`（gh CLI subprocess 版）；`config.local.yaml.fork_creator` 切换
 - **admin-portal TenantLayout** 最小闭环：`useSessionMode` 返 `tenant` → 渲染 TenantLayout，4 tab（Dashboard / Proposals / Billing / Chat）；无 wizard、无租户列表
 - **Dream agent 升级为租户第 5 角色**：`soul_generator` 扩 5 角色（LLM 生成 `dream_soul.md`）；`proposal_pipeline` 改为 agent 驱动（带 soul、通过 cc_pool 跑、走 tool-use）；`DreamScheduler` 按 `config.json.dream.trigger` 自动唤醒
@@ -337,7 +337,7 @@ async def tenant_context_middleware(request, call_next):
     mode = get_deployment_mode()
     if mode == "tenant":
         self_tid = get_tenant_id()
-        if request.url.path.startswith("/t/"):
+        if request.url.path.startswith("/tenant/"):
             tid = _extract_tid_from_path(request.url.path)
             if tid != self_tid:
                 return Response(status_code=404)
@@ -467,10 +467,10 @@ type SessionMode =
 const { mode } = useSessionMode() ?? {};
 if (!mode) return <Splash />;
 const routes = mode === 'tenant'
-  ? [{ path: '/', element: <Redirect to={`/t/${selfTid}/chat`} /> },
+  ? [{ path: '/', element: <Redirect to={`/tenant/${selfTid}/chat`} /> },
      { path: '/chat', element: <App /> },                         // 裸路径兼容
-     { path: '/t/:tenantId/chat', element: <App /> }]             // assertion 由后端中间件做
-  : [{ path: '/t/:tenantId/chat', element: <App /> }];
+     { path: '/tenant/:tenantId/chat', element: <App /> }]             // assertion 由后端中间件做
+  : [{ path: '/tenant/:tenantId/chat', element: <App /> }];
 ```
 
 [useTenantId.ts](../../../frontend/packages/shared/useTenantId.ts)：fork 模式从 `useSessionMode().tenant_id` 拿；master 从 URL params 拿。
@@ -728,7 +728,7 @@ SMTP `host` 为空时：
 1. **Master 跑向导创建租户 B** → publish tarball → 归档沙盒
 2. **按 runbook 手工 fork**（或 `fork_creator=github_api` 自动 fork）：tarball 解压到 fork 仓 `plugins/B/`；`.autoservice/config.local.yaml` 已由 ForkCreator 写入 `deployment_mode=tenant` + `tenant_id=B`
 3. **Fork 仓 `make setup && make run-web` 启动** 无报错
-4. **浏览器访问 `http://fork-host:8000/chat`**（无 `/t/<tid>/` 前缀）能对话
+4. **浏览器访问 `http://fork-host:8000/chat`**（无 `/tenant/<tid>/` 前缀）能对话
 5. **admin-portal 走 magic-link 登录** → TenantLayout 显示 B 的 4 tab
 6. **对话 5 轮后，Dream agent 按 `dream.trigger=idle` 自动触发** → `proposals` 表出现新条目；`dream_runs` 表有 run 记录
 7. **回 Master 打开 `http://master:8000/admin/chat`** → 和 `_master` 对话 → `_master` dream 产生平台级 proposal

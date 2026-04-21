@@ -38,7 +38,7 @@
 - 沙盒目录 schema（`.autoservice/sandbox/<tenant_id>/`），Dream Engine **留位**（`souls/dream_soul.md` + `config.json.dream`）但 pipeline 不改造
 - 向导各步骤产物落盘（souls / kb / rehearsal / config / dream 配置）
 - Master 端 runtime 按 `tenant_id` 注入对应 soul（仅 soul 隔离，skills 走全局）
-- Master 端三端 URL path 化 `/t/<tenant_id>/{chat|operator|admin}` + WS `?tenant=` 路由
+- Master 端三端 URL path 化 `/tenant/<tenant_id>/{chat|operator|admin}` + WS `?tenant=` 路由
 - `/publish` 端点产出 tarball + 操作手册（**模拟 fork**，不跑 git）
 - Publish 完成后沙盒归档到 `.autoservice/archived/<tid>_<ts>/`
 
@@ -67,8 +67,8 @@
 │    souls/, kb/, rehearsal.json, config.json                         │
 │                                                                     │
 │  预览/团队试用 URL (for tenant B during sandbox phase):             │
-│    /t/<tenant_id>/chat        (B 的客户视角)                        │
-│    /t/<tenant_id>/operator    (B 的客服视角)                        │
+│    /tenant/<tenant_id>/chat        (B 的客户视角)                        │
+│    /tenant/<tenant_id>/operator    (B 的客服视角)                        │
 │    /master/tenants/<id>/preview (A 的管控视角)                      │
 └────────────┬────────────────────────────────────────────────────────┘
              │ /api/onboard/publish → 生成 tarball + runbook
@@ -85,7 +85,7 @@
 │  plugins/<tenant_id>/       ← 沙盒 tarball 解压到这里               │
 │    souls/, kb/, rehearsal_baseline.json, config.json, plugin.yaml   │
 │                                                                     │
-│  单租户 URL（无 /t/<tid>/ 前缀）:                                   │
+│  单租户 URL（无 /tenant/<tid>/ 前缀）:                                   │
 │    /chat         /operator          /admin                          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -109,7 +109,7 @@ B = tenant_admin (B 的 fork 部署)
 - 沙盒存在于 **Master 端** `.autoservice/sandbox/<tid>/`，是 A 为 B 筹备时的临时工作区
 - 沙盒也供 B 的试用团队（M2 的邀请流，或 M1 的简单 token）**实际对话测试**
 - `/publish` 触发后：沙盒内容打 tarball → A 人工（M1）或自动（M2）建 B 的 fork → **沙盒目录移动到 `.autoservice/archived/<tid>_<ts>/`**
-- B 的 fork 部署起来后，B 团队从 Master 的 `/t/<tid>/*` 迁移到 B 自己域名下的 `/chat /operator /admin`
+- B 的 fork 部署起来后，B 团队从 Master 的 `/tenant/<tid>/*` 迁移到 B 自己域名下的 `/chat /operator /admin`
 - Master 端不再服务该 tenant 的对话流量（但保留 archive 供审计）
 
 ---
@@ -273,7 +273,7 @@ def activate_sandbox(tenant_id, channels):
 ### 4.1 路由层
 
 `TenantContext` 中间件：
-- HTTP：从 URL path `/t/<tenant_id>/...` 提取
+- HTTP：从 URL path `/tenant/<tenant_id>/...` 提取
 - WS：从 query `?tenant=<tenant_id>` 提取
 - 挂到 `request.state.tenant_id`
 
@@ -314,7 +314,7 @@ KB 查询工具统一接受 `tenant_id`，按 §2.4 优先级查。沿用 [api_r
 |---|---|---|
 | 租户数 | N（A 筹备的所有 B/C/D…） | 1（仅自己） |
 | admin 布局 | MasterLayout | TenantLayout |
-| URL 前缀 | `/master/*` + `/t/<tid>/*` | 无前缀 `/chat` `/admin` |
+| URL 前缀 | `/master/*` + `/tenant/<tid>/*` | 无前缀 `/chat` `/admin` |
 | wizard | ✅ | ❌ |
 | 租户列表 | ✅ | ❌ |
 | 代入预览 | ✅（A 可切换看任意 B） | ❌ |
@@ -328,8 +328,8 @@ KB 查询工具统一接受 `tenant_id`，按 §2.4 优先级查。沿用 [api_r
 | A 租户列表 | `http://localhost:8000/master/tenants` | （无） |
 | A 新建租户向导 | `http://localhost:8000/master/tenants/new` | （创建过程中生成） |
 | A 代入 B 的预览 | `http://localhost:8000/master/tenants/<tid>/preview` | path |
-| 客户体验（for B 团队/A 验证） | `http://localhost:8000/t/<tid>/chat` | path |
-| 客服工作台预览 | `http://localhost:8000/t/<tid>/operator` | path |
+| 客户体验（for B 团队/A 验证） | `http://localhost:8000/tenant/<tid>/chat` | path |
+| 客服工作台预览 | `http://localhost:8000/tenant/<tid>/operator` | path |
 | WS（客户） | `ws://localhost:8000/ws/customer?tenant=<tid>` | query |
 | WS（客服） | `ws://localhost:8000/ws/operator?tenant=<tid>` | query |
 
@@ -344,8 +344,8 @@ export function useTenantId(): string | null {
 ```
 
 所有 WS/API 连接点读 `useTenantId()`；硬编码地址全部替换。路由：
-- customer-chat: `/t/:tenantId/chat` → App
-- operator-console: `/t/:tenantId/operator` → WorkspacePage
+- customer-chat: `/tenant/:tenantId/chat` → App
+- operator-console: `/tenant/:tenantId/operator` → WorkspacePage
 - admin-portal: 保留当前 `/admin/*` 路由；新增 `/master/*` 路由组
 
 ### 5.3 admin-portal 双模式（**设计，M1 只做 Master**）
@@ -370,7 +370,7 @@ return mode === "master" ? <MasterLayout /> : <TenantLayout />;
 ```
 /master/tenants            → TenantListTab
 /master/tenants/new        → WizardTab（当前 WizardTab 迁移到这）
-/master/tenants/:id/preview → TenantPreviewTab（iframe 嵌入 /t/<tid>/chat）
+/master/tenants/:id/preview → TenantPreviewTab（iframe 嵌入 /tenant/<tid>/chat）
 /admin/*                    → 原有 tab 组（Dashboard/Proposals/Billing/ManagementChat）
                               M1 保持不变，显示平台级数据（不过滤到特定 tenant）；
                               tenant 过滤是 M2 的事（含 admin-portal TenantLayout 上线）
@@ -392,15 +392,15 @@ Fork 仓单租户部署，URL 无前缀：
 ws://.../ws/customer    ws://.../ws/operator
 ```
 
-后端的 `tenant_id` 来自 fork 仓的 `plugins/<tid>/config.json`（启动时加载为 `ENV["TENANT_ID"]`），不再从 URL 提取。为兼容 path 形式（例如 subdomain + path 路由），fork 也接受 `/t/<tid>/*` 形态并做 assertion：URL 里的 tid 必须等于 fork 自己的 tid。
+后端的 `tenant_id` 来自 fork 仓的 `plugins/<tid>/config.json`（启动时加载为 `ENV["TENANT_ID"]`），不再从 URL 提取。为兼容 path 形式（例如 subdomain + path 路由），fork 也接受 `/tenant/<tid>/*` 形态并做 assertion：URL 里的 tid 必须等于 fork 自己的 tid。
 
 ### 5.5 生产期主域名设计（**只设计不实现**，M3+）
 
 | 场景 | URL 形态 | 路由机制 |
 |---|---|---|
 | 客户聊天嵌入商户自家站 | `<script src="autoservice.com/sdk.js" data-tenant="X">` | SDK 初始化读 `data-tenant` → WS 回 `autoservice.com/ws/customer?tenant=X` |
-| 客服工作台（平台托管） | `console.autoservice.com/t/<tid>` | Wildcard DNS + ingress path 路由 |
-| 商户管理（默认） | `admin.autoservice.com/t/<tid>` | 同上 |
+| 客服工作台（平台托管） | `console.autoservice.com/tenant/<tid>` | Wildcard DNS + ingress path 路由 |
+| 商户管理（默认） | `admin.autoservice.com/tenant/<tid>` | 同上 |
 | 商户管理（自定义域） | 商户 CNAME → `autoservice.com`，边缘读 Host header → 查域名→tid 映射 | 需额外 `domain_routing` 表（M3+） |
 
 Sandbox 的 path-based URL 和生产的 "subdomain + path" 前端代码一致（`useTenantId()` hook 屏蔽差异），部署时 ingress 配置不同。
@@ -529,7 +529,7 @@ http_routes: []
    cd AutoService-<tenant_id> && make check && make run-web
 
 5. 冒烟测试:
-   访问 http://localhost:8000/chat 对话一条（Tenant fork 模式，无 /t/<tid>/ 前缀）
+   访问 http://localhost:8000/chat 对话一条（Tenant fork 模式，无 /tenant/<tid>/ 前缀）
 
 6. 部署（参照 infra 文档）
 ```
@@ -565,7 +565,7 @@ class GitHubApiForkCreator:               # M2 占位
 `_archive_sandbox(tenant_id)`：
 - 把 `.autoservice/sandbox/<tid>/` 物理移动到 `.autoservice/archived/<tid>_<ts>/`
 - 归档目录保留 config.json 的 `status` 更新为 `archived`
-- Master runtime 的 `/t/<tid>/*` 在归档后返回 410 Gone + 指引用户去 fork 域名
+- Master runtime 的 `/tenant/<tid>/*` 在归档后返回 410 Gone + 指引用户去 fork 域名
 
 ### 7.3 回滚（解归档）
 
@@ -611,13 +611,13 @@ class GitHubApiForkCreator:               # M2 占位
 |---|---|
 | 新增 `frontend/packages/shared/useTenantId.ts` | 通用 hook |
 | 新增 `frontend/packages/shared/useSessionMode.ts` | 调 `/api/session/mode`；M1 master 分支可用，tenant 分支 stub |
-| [frontend/apps/customer-chat/src/App.tsx](../../../frontend/apps/customer-chat/src/App.tsx) | 路由 `/t/:tenantId/chat` + `useTenantId()` 替换硬编码 |
-| [frontend/apps/operator-console/src/components/WorkspacePage.tsx](../../../frontend/apps/operator-console/src/components/WorkspacePage.tsx) | 同上，`/t/:tenantId/operator` |
+| [frontend/apps/customer-chat/src/App.tsx](../../../frontend/apps/customer-chat/src/App.tsx) | 路由 `/tenant/:tenantId/chat` + `useTenantId()` 替换硬编码 |
+| [frontend/apps/operator-console/src/components/WorkspacePage.tsx](../../../frontend/apps/operator-console/src/components/WorkspacePage.tsx) | 同上，`/tenant/:tenantId/operator` |
 | [frontend/apps/admin-portal/src/App.tsx](../../../frontend/apps/admin-portal/src/App.tsx) | 根据 `useSessionMode` 渲染 `MasterLayout`（M1）或 `TenantLayout` stub |
 | 新增 `frontend/apps/admin-portal/src/layouts/MasterLayout.tsx` | 带 wizard + 租户列表 + `/master/*` 路由 |
 | 新增 `frontend/apps/admin-portal/src/layouts/TenantLayout.tsx` | M1 只是 stub（渲染"feature not available in M1"） |
 | 新增 `frontend/apps/admin-portal/src/components/master/TenantListTab.tsx` | 列出所有沙盒租户，点击进入 preview |
-| 新增 `frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx` | 代入某 tenant 视角，嵌入 customer-chat iframe (`/t/<tid>/chat`) |
+| 新增 `frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx` | 代入某 tenant 视角，嵌入 customer-chat iframe (`/tenant/<tid>/chat`) |
 | [frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx](../../../frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx) | 路由从 `/admin/wizard` 迁到 `/master/tenants/new`；Step 4 "一键对外"接 `/onboard/publish`；Step 2 审核接 `/rehearsal/review` |
 
 ---
@@ -629,11 +629,11 @@ class GitHubApiForkCreator:               # M2 占位
 1. **A 打开 Master**：访问 `http://localhost:8000/master/tenants` 看到空租户列表
 2. **A 走向导**：`/master/tenants/new` → Step 0 上传 → Step 1 渠道 → Step 2 预演 + 审核 → Step 3 合规 → Step 4 沙盒就绪
 3. **沙盒产物齐全**：`.autoservice/sandbox/<tid>/` 下 `souls/` 有 4 个 md + `dream_soul.md` 占位、`kb/kb.db` 有 >0 chunk、`rehearsal.json` 有 12 条全 reviewed、`config.json` status=`sandbox` 且 `channels`、`dream` 字段正确
-4. **Master 沙盒预览可用**：访问 `/t/<tid>/chat` 能对话，WS 日志可见 `tenant_id=<id>` 上下文
-5. **多租户隔离**：同时启两个沙盒 X 和 Y，`/t/X/chat` 和 `/t/Y/chat` 的 agent 用各自 soul（回复风格可肉眼区分）
-6. **A 代入预览**：`/master/tenants/<tid>/preview` 能嵌入展示 `/t/<tid>/chat`
+4. **Master 沙盒预览可用**：访问 `/tenant/<tid>/chat` 能对话，WS 日志可见 `tenant_id=<id>` 上下文
+5. **多租户隔离**：同时启两个沙盒 X 和 Y，`/tenant/X/chat` 和 `/tenant/Y/chat` 的 agent 用各自 soul（回复风格可肉眼区分）
+6. **A 代入预览**：`/master/tenants/<tid>/preview` 能嵌入展示 `/tenant/<tid>/chat`
 7. **Dream 配置落盘**：在 ManagementChat 里走完 `/dream-config`，`config.json.dream` 有 4 参数
-8. **Publish 完整产物**：Step 4 点"一键对外" → 后端产 tarball + runbook + record → 沙盒物理移动到 `.autoservice/archived/<tid>_<ts>/` → `/t/<tid>/chat` 开始返回 410
+8. **Publish 完整产物**：Step 4 点"一键对外" → 后端产 tarball + runbook + record → 沙盒物理移动到 `.autoservice/archived/<tid>_<ts>/` → `/tenant/<tid>/chat` 开始返回 410
 9. **Fork 手工验证**：tarball 解压得到的 `plugins/<tid>/` 手工 git mv 到一个 fork 仓，`make check` 通过（不要求实际跑起来，那是 M2）
 
 ---
