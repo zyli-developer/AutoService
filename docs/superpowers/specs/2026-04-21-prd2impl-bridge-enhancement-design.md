@@ -22,15 +22,9 @@ Two changes, both in prd2impl, none in superpowers:
 
 ## 4. Where changes live
 
-prd2impl is installed as a plugin at `C:/Users/nity/.claude/plugins/cache/ezagent42/prd2impl/0.2.2/`. Modifying the cache directly is fragile — a plugin update will wipe changes.
+prd2impl source repo at `D:/Work/h2os.cloud/prd2impl/` is the maintainer's own active development repo (not a fork, not a cache). Current branch `feat/design-spec-ingest` is already the ongoing dev line for design-spec ingestion (recent commits: v0.2.1, v0.2.2). We continue on this branch — **no fork, no `~/.claude/settings.json` change, no clone required**.
 
-Deployment plan:
-
-1. Fork prd2impl to a local working clone at `~/.claude-plugin-forks/prd2impl/` (git clone from upstream `ezagent42/prd2impl`).
-2. Point Claude Code at the fork via `~/.claude/settings.json` plugin source override (exact key TBD during implementation).
-3. Iterate there. Once stable, push the fork to `github.com/<user>/prd2impl` and PR to upstream.
-
-Until PR merges, pin the upstream commit SHA in the fork's README so re-basing is traceable.
+Deployment: plain git commits on `feat/design-spec-ingest`, tested in a separate Claude Code session that loads prd2impl from this repo. Release cadence (next version bump, changelog) is the maintainer's existing flow.
 
 ## 5. A' design — design-spec extractor enrichment
 
@@ -75,12 +69,21 @@ external_deps:
     source_anchor: "§8 Dependencies"
 ```
 
-### 5.3 New LLM pass: user_stories synthesis
+### 5.3 New LLM pass: user_stories synthesis (opt-in)
 
-Trigger conditions (all must hold):
+**Design tension:** `lib/prd-extractor.md:290-291` explicitly states `user_stories: []` is intentional for `role=design-spec` ("design-spec focuses on what/how, not who/why"). That decision remains the default. LLM synthesis is gated behind an **opt-in flag**:
 
+```
+/ingest-docs <files> --synthesize-user-stories
+```
+
+Without the flag → current behavior preserved (empty `user_stories` for design-spec).
+
+When the flag is passed, trigger conditions still apply:
 - `§Scope` section is present (detected by heading match)
-- Regex extraction for `user_stories` yields empty (always true for design-spec today)
+- Regex extraction for `user_stories` yields empty (always true for design-spec)
+
+Without `§Scope` but with the flag → emit warning `--synthesize-user-stories set but §Scope section not found; user_stories remains []`.
 
 Prompt shape (single call, returns YAML):
 
@@ -117,9 +120,12 @@ prd_structure:
   source_role: "design-spec"
   extraction:
     regex_fields: [modules, nfrs, constraints, external_deps]
-    llm_fields: [user_stories]          # only present when LLM fallback ran
+    llm_fields: [user_stories]          # only present when --synthesize-user-stories fired AND produced stories
   ...
 ```
+
+When `--synthesize-user-stories` was NOT passed: `llm_fields: []`.
+When flag passed but `§Scope` missing OR LLM failed: `llm_fields: []` (same as no-flag case, so downstream treats it uniformly).
 
 Downstream (skill-3, skill-12-contract-check) reads this to know where to apply fuzzy matching vs. strict validation.
 
@@ -188,14 +194,16 @@ Add fixtures under `skill-0-ingest/tests/fixtures/design-spec-extraction/`:
 | both present | `prd-structure.yaml` + `task-hints.yaml` | Regression — behavior identical to pre-change |
 | neither present | empty plans_dir | Hard error (no degradation path) |
 
-### 7.3 End-to-end validation
+### 7.3 End-to-end validation (DEFERRED)
 
-Re-run `/ingest-docs docs/superpowers/specs/2026-04-21-chat-markdown-design.md`:
+Per user direction (2026-04-21), E2E validation against AutoService's `chat-markdown-design.md` is **deferred** until current AutoService M3 work settles. Synthetic fixtures under `skills/skill-0-ingest/tests/fixtures/design-spec-extraction/` + `skills/skill-3-task-gen/tests/fixtures/b2-degraded/` are sufficient for initial merge.
 
-- Before this change: produces only `task-hints.yaml`
-- After this change: produces `task-hints.yaml` + auto-synthesized `prd-structure.yaml`
+When reactivated, the acceptance criteria are:
 
-Diff the auto-synthesized `prd-structure.yaml` against the hand-written one we produced earlier (`docs/plans/feat-chat-markdown/2026-04-21-prd-structure.yaml`) as ground truth. Acceptance: auto version should match on `external_deps` (all 4), on `modules` count (4 ± 1), on `user_stories` shape (4 surfaces → 4-5 stories). Exact persona strings may differ (LLM vs human) but must come from §Scope verbatim.
+- Re-run `/ingest-docs docs/superpowers/specs/2026-04-21-chat-markdown-design.md --synthesize-user-stories`
+- Before: produces only `task-hints.yaml`
+- After: produces `task-hints.yaml` + auto-synthesized `prd-structure.yaml` with `external_deps` = 4 (from §8) + `user_stories` = 4-5 (from §2 Scope with flag on)
+- Diff auto vs hand-written `docs/plans/feat-chat-markdown/2026-04-21-prd-structure.yaml` — match on `external_deps` list, module count ±1, persona strings verbatim-in-§Scope
 
 ## 8. Implementation order
 
@@ -209,13 +217,13 @@ Diff the auto-synthesized `prd-structure.yaml` against the hand-written one we p
 | Risk | Mitigation |
 |------|-----------|
 | LLM synthesizes personas not in the spec | Prompt constrains persona to strings verbatim in §Scope; fixture test asserts persona membership |
-| Plugin fork drifts from upstream | Pin upstream SHA in fork README; PR back once stable |
+| Existing users unaware `--synthesize-user-stories` flag exists | Document in skill-0 SKILL.md §Inputs; `/ingest-docs --help` (if present) mentions it; default stays `user_stories: []` so surprise factor is low |
 | B2's synthesized module names are ugly (step descriptions are long) | 60-char truncation + defer to user to re-ingest for real prd-structure once they write one |
 | Regex false-positive on `§8 Dependencies` when spec's §8 is actually "Testing" | Match the section by *heading text* ("Dependencies" / "依赖") not by number |
-| LLM call cost / latency | Capped at ≤1 call per `/ingest-docs`; sonnet ≈ 1-2s |
+| LLM call cost / latency | Capped at ≤1 call per `/ingest-docs`; sonnet ≈ 1-2s; only when flag on |
 
 ## 10. Deferred to writing-plans
 
 - Exact LLM model (sonnet-4.6 vs haiku-4.5 — quality/cost bench)
-- Exact settings.json key for plugin source override (depends on Claude Code plugin loader version)
-- Whether fork pushes to public `github.com/<user>/prd2impl` or stays local during iteration
+- Flag name: `--synthesize-user-stories` assumed in this spec; confirm it doesn't clash with existing skill-0 flags during implementation
+- E2E timing — reactivate Task 11 after AutoService M3 quiescence
