@@ -715,6 +715,18 @@
       "related_ids": [
         "test-diff-011"
       ]
+    },
+    {
+      "id": "eval-doc-010",
+      "name": "batch-8 auth gating (T5B.5/T5B.6)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-batch-8",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-8-auth-gating.md",
+      "created_at": "2026-04-21T00:44:07Z",
+      "updated_at": "2026-04-21T00:44:07Z",
+      "related_ids": []
     }
   ]
 }
