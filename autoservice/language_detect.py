@@ -26,8 +26,13 @@ def detect_language(message: str) -> str:
     stripped = message.strip()
     if not stripped:
         return "unknown"
-    # Short-text guard: skip heuristics for very short non-CJK text (e.g. "hi").
-    # CJK chars carry enough signal at any length (even 1-2 chars).
+    # Spec §2.2 short-text guard: <3 chars → unknown. Relaxed for CJK because
+    # 2-char CJK (e.g. "你好") carries enough signal; but a *single* CJK/kana
+    # char is too weak — require len >= 2 for the CJK exemption.
+    # SPEC DEVIATION: original spec says <3 chars → unknown unconditionally;
+    # we allow 2-char CJK through but reject single-char CJK/kana inputs.
+    if len(stripped) < 2:
+        return "unknown"
     if len(stripped) < 3 and not _CJK_RE.search(stripped):
         return "unknown"
 

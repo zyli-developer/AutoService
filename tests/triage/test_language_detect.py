@@ -15,6 +15,7 @@ from autoservice.language_detect import detect_language
         ("What is the price?", "en"),
         ("こんにちは、お元気ですか", "ja"),
         ("hi", "unknown"),         # too short
+        ("あ", "unknown"),          # single kana — weak signal
     ],
 )
 def test_detect_language_happy_path(msg, expected):
