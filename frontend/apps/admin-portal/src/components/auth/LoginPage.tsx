@@ -9,11 +9,6 @@
  * at `.autoservice/logs/auth-devmail.jsonl` where the magic link is
  * logged when SMTP is not configured (spec §5.6).
  *
- * NOTE: this file coexists with the legacy `components/LoginPage.tsx`
- * (tenant-id-based login used by `MasterLayout`'s zustand `isLoggedIn`
- * flow). M2 will eventually remove the legacy one once `MasterLayout`
- * drops its internal gate and delegates to `<AuthGate>`.
- *
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.5, §5.2
  */
 import { useEffect, useState } from 'react';
