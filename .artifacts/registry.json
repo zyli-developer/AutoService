@@ -951,6 +951,18 @@
         "test-diff-016",
         "eval-doc-015"
       ]
+    },
+    {
+      "id": "eval-doc-016",
+      "name": "T7S.4 setup.sh mode-aware",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-t7s-4",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7s-4-setup.md",
+      "created_at": "2026-04-21T01:58:25Z",
+      "updated_at": "2026-04-21T01:58:25Z",
+      "related_ids": []
     }
   ]
 }
