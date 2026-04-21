@@ -204,17 +204,104 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 #
 # No authentication in M1 (will be added M2 with tenant-admin RBAC).
 
-@api_router.get("/session/mode")
-async def get_session_mode() -> dict[str, Any]:
-    """Return deployment mode for admin-portal layout switching.
+_PLATFORM_BRAND_NAME = "AutoService"
 
-    M1: always returns master/platform_admin.
-    M2 (tenant fork): will return {mode: "tenant", role: "tenant_admin",
-    tenant_id: "<id>"} — not implemented here.
+
+def _resolve_brand_name(mode: str, self_tid: str | None) -> str:
+    """Resolve the brand_name shown in the top bar (spec §4.5).
+
+    Lookup order:
+      1. Tenant-mode fork: ``plugins/<self_tid>/config.json["brand_name"]``
+         when present; otherwise fall back to the platform default.
+      2. Master mode: always the platform default ("AutoService").  Tenant
+         admins visiting the master host will see their brand surfaced by
+         the session-level tenant lookup in a later milestone (M3 scope).
     """
+    if mode == "tenant" and self_tid:
+        cfg_path = Path("plugins") / self_tid / "config.json"
+        if cfg_path.exists():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                brand = cfg.get("brand_name")
+                if isinstance(brand, str) and brand.strip():
+                    return brand.strip()
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning(
+                    "brand_name lookup failed for tenant %s: %s", self_tid, exc,
+                )
+    return _PLATFORM_BRAND_NAME
+
+
+@api_router.get("/session/mode")
+async def get_session_mode(request: Request) -> dict[str, Any]:
+    """Deployment mode + auth-state for the admin-portal AuthGate (spec §4.5).
+
+    Always 200.  The response discriminator is ``authenticated``:
+
+        {
+          "mode": "master" | "tenant",
+          "tenant_id": "<tid>" | null,
+          "authenticated": bool,
+          "authenticated_as": "<email>" | null,
+          "tier": 0 | 1 | null,
+          "brand_name": "<str>"
+        }
+
+    - Anonymous callers see ``authenticated=false``, ``tier=null``, the
+      mode-appropriate ``tenant_id``/``brand_name``.  No other tenants'
+      scope is leaked.
+    - Tier derivation: NULL session.tenant_id → 0 (``_master`` /
+      ``_local_admin`` internal admin, CON-05); non-NULL → 1.  M2 never
+      returns 2 (subtenant reserved).
+    """
+    # Deployment mode + self-tenant (fork's own id).  The bootstrap helper
+    # caches these, so each call is cheap.  A missing config.local.yaml
+    # degrades to master mode + null tenant — matches the lifespan
+    # ``_bootstrap_internal_tenants`` fallback in web_gateway.
+    try:
+        from autoservice import bootstrap
+        mode = bootstrap.get_deployment_mode()
+        self_tid = bootstrap.get_tenant_id()
+    except Exception:
+        mode = "master"
+        self_tid = None
+
+    # Auth state — optional; anon callers get authenticated=false without
+    # ever touching the DB when the cookie is absent.
+    session: dict | None = None
+    sid = request.cookies.get(AUTH_SESSION_COOKIE)
+    if sid:
+        try:
+            conn = _get_auth_db()
+            session = auth.lookup_session(conn, sid)
+        except Exception:
+            logger.warning("session lookup failed in /session/mode", exc_info=True)
+            session = None
+
+    if session is None:
+        return {
+            "mode": mode,
+            "tenant_id": self_tid,
+            "authenticated": False,
+            "authenticated_as": None,
+            "tier": None,
+            "brand_name": _resolve_brand_name(mode, self_tid),
+        }
+
+    session_tid = session.get("tenant_id")
+    tier = 0 if session_tid is None else 1
+    # When an authenticated admin has a session-level tenant scope (tier-1)
+    # the response exposes that tenant_id — the frontend's AuthGate uses it
+    # to decide which layout to render even on the master host.
+    response_tid = session_tid if session_tid is not None else self_tid
+
     return {
-        "mode": "master",
-        "role": "platform_admin",
+        "mode": mode,
+        "tenant_id": response_tid,
+        "authenticated": True,
+        "authenticated_as": session.get("admin_email"),
+        "tier": tier,
+        "brand_name": _resolve_brand_name(mode, self_tid),
     }
 
 

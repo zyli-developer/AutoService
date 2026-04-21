@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：21
+- **已完成**：23
 - **进行中**：0
 - **阻塞**：0
-- **待办**：17
-- **完成率**：55% (21/38)
+- **待办**：15
+- **完成率**：61% (23/38)
 - **最后更新**：2026-04-21
 
 ### 会话日志
@@ -27,6 +27,7 @@
 | 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `5d614bc` |
 | 2026-04-21 | Phase 1-4 artifact backfill (option B) | eval-doc-005/006/007/008, test-diff-004/005/006/007/008/009/010, e2e-report-003 |
 | 2026-04-21 | batch-7 P5 auth core (artifact-compliant: eval-doc-009, test-diff-011, e2e-report-004) | `442c02b` |
+| 2026-04-21 | batch-8 P5 auth gating (eval-doc-010, test-diff-012, e2e-report-005) | PENDING (filled on commit) |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -121,8 +122,8 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | T5B.2 | POST /api/auth/request-login | green | small | ✅ done | Subagent batch-7 | `442c02b` (5 tests) |
 | T5B.3 | GET /api/auth/verify → cookie + redirect | green | small | ✅ done | Subagent batch-7 | `442c02b` (5 tests) |
 | T5B.4 | POST /api/auth/logout | green | small | ✅ done | Subagent batch-7 | `442c02b` (3 tests) |
-| T5B.5 | require_tenant_access middleware | green | medium | ⏳ pending | — | — |
-| T5B.6 | /api/session/mode auth-state extension | green | small | ⏳ pending | — | — |
+| T5B.5 | require_tenant_access middleware | green | medium | ✅ done | Subagent batch-8 | PENDING (11 tests) |
+| T5B.6 | /api/session/mode auth-state extension | green | small | ✅ done | Subagent batch-8 | PENDING (5 tests) |
 
 **Gate**：request → verify → cookie → 跨 tenant 拒绝；logout 撤销。
 
@@ -176,7 +177,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-5 | P3 | ✅ 完成 | T3B.5 ✅ done (9 tests + 0 regression, yellow) / T3B.6 ✅ done (15 tests + 0 regression) |
 | batch-6 | P4 | ✅ 完成 | 3 tasks + 33 tests + 0 regression; inline reviewer APPROVED |
 | batch-7 | P5 | ✅ 完成 | T5B.1-T5B.4 · 20 new tests + 0 regression; artifact-compliant (eval-doc-009 / test-diff-011 / e2e-report-004) |
-| batch-8 | P5 | ⏳ pending | — |
+| batch-8 | P5 | ✅ 完成 | T5B.5-T5B.6 · 16 new tests + 0 regression; artifact-compliant (eval-doc-010 / test-diff-012 / e2e-report-005) |
 | batch-9 | P6 | ⏳ pending | — |
 | batch-10 | P6 | ⏳ pending | — |
 | batch-11 | P6 | ⏳ pending | — |
