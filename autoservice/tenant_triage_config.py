@@ -33,7 +33,10 @@ _OVERLAY_ALLOWED_CONFIDENCE = {"high", "medium", "low", "uncertain"}
 
 def _tenant_overlay_path(tenant_id: str) -> Path | None:
     """Return the first existing overlay path, or None."""
-    if not tenant_id or "/" in tenant_id or "\\" in tenant_id or ".." in tenant_id:
+    if not tenant_id:
+        return None
+    if "/" in tenant_id or "\\" in tenant_id or ".." in tenant_id:
+        log.warning("Rejecting suspicious tenant_id for overlay: %r", tenant_id)
         return None
     cwd = Path.cwd()
     for candidate in (
