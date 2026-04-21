@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ConversationFeed } from '../components/ConversationFeed';
+import { ConversationFeed, customerDisplayName } from '../components/ConversationFeed';
 import { useOperatorStore, initialState, type Conversation } from '../store/operatorStore';
 
 const makeConv = (overrides: Partial<Conversation> = {}): Conversation => ({
@@ -21,12 +21,20 @@ beforeEach(() => {
 });
 
 describe('ConversationFeed cards', () => {
-  it('TC-14: displays customer_id in im-card', () => {
+  it('TC-14: displays generated customer display name in im-card', () => {
     useOperatorStore.setState({
       conversations: { 'conv-001': makeConv() },
     });
     render(<ConversationFeed squadId="sq-A" />);
-    expect(screen.getByTestId('conv-customer-id')).toHaveTextContent('cust-alice');
+    expect(screen.getByTestId('conv-customer-id').textContent).toMatch(
+      /^\s*customer-[a-z]+-[a-z]+\s*$/,
+    );
+  });
+
+  it('customerDisplayName is deterministic per customerId', () => {
+    expect(customerDisplayName('cust-alice')).toBe(customerDisplayName('cust-alice'));
+    expect(customerDisplayName('cust-alice')).not.toBe(customerDisplayName('cust-bob'));
+    expect(customerDisplayName('cust-alice')).toMatch(/^customer-[a-z]+-[a-z]+$/);
   });
 
   it('TC-15: displays last message truncated at 40 chars', () => {

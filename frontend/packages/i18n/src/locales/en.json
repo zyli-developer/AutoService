@@ -411,7 +411,7 @@
   "customer.csat.label.5": "Excellent",
   "customer.chat.expand": "Expand chat",
   "customer.chat.collapse": "Collapse chat",
-  "operator.feed.customer_label": "Customer {{handle}}",
+  "operator.feed.customer_label": "{{handle}}",
   "operator.feed.handled_by": "Handled by {{squad}}",
   "operator.feed.time.now": "just now",
   "operator.feed.time.minutes_ago": "{{count}} min ago",
