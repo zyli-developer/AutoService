@@ -286,8 +286,8 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     # T7B.1 — TenantContext middleware (spec §3.2).
     #
     # Populates request.state.deployment_mode + request.state.tenant_id and
-    # — in tenant mode — rewrites /t/<self>/* to /* (URL-flat fork routing)
-    # while refusing cross-tenant paths /t/<other>/* with 403.
+    # — in tenant mode — rewrites /tenant/<self>/* to /* (URL-flat fork routing)
+    # while refusing cross-tenant paths /tenant/<other>/* with 403.
     #
     # Placement: registered AFTER the CORSMiddleware add_middleware call so
     # Starlette wraps it INSIDE CORS (Starlette chains in reverse registration
@@ -312,14 +312,14 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         if mode == "tenant":
             self_tid = request.state.tenant_id
             path = request.url.path
-            if self_tid and path.startswith(f"/t/{self_tid}/"):
-                # Strip the /t/<self> prefix so the fork's URL-flat routes
+            if self_tid and path.startswith(f"/tenant/{self_tid}/"):
+                # Strip the /tenant/<self> prefix so the fork's URL-flat routes
                 # receive the request (spec §3.2 "fork 模式 URL-flat").
-                request.scope["path"] = path[len(f"/t/{self_tid}"):] or "/"
-            elif self_tid and path == f"/t/{self_tid}":
+                request.scope["path"] = path[len(f"/tenant/{self_tid}"):] or "/"
+            elif self_tid and path == f"/tenant/{self_tid}":
                 # Trailing-slash-less variant.
                 request.scope["path"] = "/"
-            elif path.startswith("/t/"):
+            elif path.startswith("/tenant/"):
                 # Cross-tenant attempt in single-tenant fork → refuse.
                 return JSONResponse(
                     status_code=403,

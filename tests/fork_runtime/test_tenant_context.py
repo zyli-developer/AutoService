@@ -2,7 +2,7 @@
 
 Verifies:
   - master mode: passes URLs through unchanged, populates request.state
-  - tenant mode + self path: strips /t/<self>/ prefix (URL-flat routing)
+  - tenant mode + self path: strips /tenant/<self>/ prefix (URL-flat routing)
   - tenant mode + other path: 403 JSON (cross-tenant refused)
   - tenant mode + URL-flat path: pass-through
   - request.state.deployment_mode + tenant_id set on every request
@@ -78,10 +78,10 @@ def _attach_echo_routes(app):
 
     app.add_api_route("/chat", echo_root, methods=["GET"])
     app.add_api_route("/echo", echo_root, methods=["GET"])
-    # /t/{tid}/echo is present so master-mode pass-through still has a target
+    # /tenant/{tid}/echo is present so master-mode pass-through still has a target
     # to hit (rather than a 404 from missing route).
-    app.add_api_route("/t/{tid}/echo", echo_root, methods=["GET"])
-    app.add_api_route("/t/{tid}/chat", echo_root, methods=["GET"])
+    app.add_api_route("/tenant/{tid}/echo", echo_root, methods=["GET"])
+    app.add_api_route("/tenant/{tid}/chat", echo_root, methods=["GET"])
     return app
 
 
@@ -89,10 +89,10 @@ class TestMasterModePassThrough:
     def test_prefixed_path_is_not_rewritten(self, master_mode_cwd):
         app = _attach_echo_routes(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get("/t/acme/chat")
+            resp = client.get("/tenant/acme/chat")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["scope_path"] == "/t/acme/chat"
+        assert data["scope_path"] == "/tenant/acme/chat"
         assert data["deployment_mode"] == "master"
         # Master mode never pins a single tenant; tenant_id is None.
         assert data["tenant_id"] is None
@@ -110,10 +110,10 @@ class TestMasterModePassThrough:
 
 class TestTenantModeRewriting:
     def test_self_tenant_prefix_stripped(self, tenant_mode_cwd):
-        """/t/acme/chat → /chat in tenant mode (URL-flat fork)."""
+        """/tenant/acme/chat → /chat in tenant mode (URL-flat fork)."""
         app = _attach_echo_routes(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get("/t/acme/chat")
+            resp = client.get("/tenant/acme/chat")
         assert resp.status_code == 200
         data = resp.json()
         # Downstream echo_root sees the rewritten path.
@@ -122,10 +122,10 @@ class TestTenantModeRewriting:
         assert data["tenant_id"] == "acme"
 
     def test_cross_tenant_returns_403(self, tenant_mode_cwd):
-        """/t/bob/chat in a tenant-mode acme fork → 403 JSON."""
+        """/tenant/bob/chat in a tenant-mode acme fork → 403 JSON."""
         app = _attach_echo_routes(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get("/t/bob/chat")
+            resp = client.get("/tenant/bob/chat")
         assert resp.status_code == 403
         body = resp.json()
         assert "cross-tenant" in body["error"]
@@ -145,7 +145,7 @@ class TestTenantModeRewriting:
         """request.state.deployment_mode + tenant_id are set before handler runs."""
         app = _attach_echo_routes(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get("/t/acme/echo")
+            resp = client.get("/tenant/acme/echo")
         assert resp.status_code == 200
         data = resp.json()
         assert data["deployment_mode"] == "tenant"
@@ -154,13 +154,13 @@ class TestTenantModeRewriting:
         assert data["scope_path"] == "/echo"
 
     def test_bare_self_tenant_rewrites_to_root(self, tenant_mode_cwd):
-        """/t/acme (no trailing slash) → / in tenant mode."""
+        """/tenant/acme (no trailing slash) → / in tenant mode."""
         app = _attach_echo_routes(web_gateway.create_app())
         # Mount a handler at "/" so we can observe the rewrite.
         async def root_echo(request: Request):
             return {"scope_path": request.scope["path"]}
         app.add_api_route("/", root_echo, methods=["GET"])
         with TestClient(app) as client:
-            resp = client.get("/t/acme")
+            resp = client.get("/tenant/acme")
         assert resp.status_code == 200
         assert resp.json()["scope_path"] == "/"
