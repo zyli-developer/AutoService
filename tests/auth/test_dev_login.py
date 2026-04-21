@@ -93,3 +93,83 @@ auth:
     assert body == {"enabled": False}
     assert "personas" not in body
     assert "tenants" not in body
+
+
+# ── /auth/dev-mode — enabled path ─────────────────────────────────────────
+
+
+def test_dev_mode_personas_fallback_when_config_missing(
+    dev_mode_on, app_client
+):
+    """No config.local.yaml → single-element fallback persona list."""
+    r = app_client.get("/api/auth/dev-mode")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enabled"] is True
+    assert body["personas"] == ["admin@dev.local"]
+
+
+def test_dev_mode_personas_from_config(
+    dev_mode_on, app_client, write_config
+):
+    write_config(
+        """\
+auth:
+  dev:
+    personas:
+      - alice@dev.local
+      - bob@dev.local
+"""
+    )
+    r = app_client.get("/api/auth/dev-mode")
+    body = r.json()
+    assert body["personas"] == ["alice@dev.local", "bob@dev.local"]
+
+
+def test_dev_mode_tenants_include_master_and_scanned_plugins(
+    dev_mode_on, app_client, tmp_path, write_config
+):
+    """Scans plugins/*/config.json (or directory name) for tenant_id; prepends
+    _master; excludes _example by default."""
+    write_config("auth:\n  dev: {}\n")
+
+    plugins = tmp_path / "plugins"
+    (plugins / "_local_admin").mkdir(parents=True)
+    (plugins / "_local_admin" / "config.json").write_text(
+        json.dumps({"tenant_id": "_local_admin"}), encoding="utf-8"
+    )
+    (plugins / "acme").mkdir(parents=True)
+    (plugins / "acme" / "config.json").write_text(
+        json.dumps({"tenant_id": "acme"}), encoding="utf-8"
+    )
+    (plugins / "_example").mkdir(parents=True)
+    (plugins / "_example" / "config.json").write_text(
+        json.dumps({"tenant_id": "_example"}), encoding="utf-8"
+    )
+
+    r = app_client.get("/api/auth/dev-mode")
+    tenants = r.json()["tenants"]
+    assert tenants[0] == "_master"  # always first
+    assert "_local_admin" in tenants
+    assert "acme" in tenants
+    assert "_example" not in tenants  # excluded by default
+
+
+def test_dev_mode_tenants_include_examples_when_flag_set(
+    dev_mode_on, app_client, tmp_path, write_config
+):
+    write_config(
+        """\
+auth:
+  dev:
+    tenant_include_examples: true
+"""
+    )
+    plugins = tmp_path / "plugins"
+    (plugins / "_example").mkdir(parents=True)
+    (plugins / "_example" / "config.json").write_text(
+        json.dumps({"tenant_id": "_example"}), encoding="utf-8"
+    )
+
+    r = app_client.get("/api/auth/dev-mode")
+    assert "_example" in r.json()["tenants"]

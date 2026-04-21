@@ -1712,6 +1712,69 @@ def _smtp_host() -> str:
     return str(host).strip()
 
 
+def _load_dev_personas() -> list[str]:
+    """Read ``auth.dev.personas`` from config.local.yaml.
+
+    Returns ``["admin@dev.local"]`` when the file, the section, or the list is
+    missing so the frontend combobox always has at least one suggestion.
+    """
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        return ["admin@dev.local"]
+
+    dev_cfg = ((cfg.get("auth") or {}).get("dev") or {})
+    personas = dev_cfg.get("personas")
+    if not isinstance(personas, list) or not personas:
+        return ["admin@dev.local"]
+    return [str(p).strip() for p in personas if str(p).strip()]
+
+
+def _scan_dev_tenants() -> list[str]:
+    """Enumerate tenants for the dev-login dropdown.
+
+    Always starts with ``_master`` (the tier-0 built-in, not a plugin
+    directory). Then scans ``plugins/*/config.json`` and collects each
+    plugin's ``tenant_id`` (falling back to the directory name when
+    ``config.json`` is absent / unreadable / missing the field).
+
+    ``_example`` is filtered out unless ``auth.dev.tenant_include_examples``
+    is truthy in config.local.yaml.
+    """
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        cfg = {}
+    dev_cfg = ((cfg.get("auth") or {}).get("dev") or {})
+    include_examples = bool(dev_cfg.get("tenant_include_examples"))
+
+    tenants: list[str] = ["_master"]
+    plugins_dir = Path("plugins")
+    if plugins_dir.is_dir():
+        for child in sorted(plugins_dir.iterdir()):
+            if not child.is_dir():
+                continue
+            cfg_path = child / "config.json"
+            tid: str | None = None
+            if cfg_path.is_file():
+                try:
+                    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    raw = data.get("tenant_id")
+                    if isinstance(raw, str) and raw.strip():
+                        tid = raw.strip()
+                except (json.JSONDecodeError, OSError):
+                    tid = None
+            if tid is None:
+                tid = child.name
+            if tid == "_example" and not include_examples:
+                continue
+            if tid not in tenants:
+                tenants.append(tid)
+    return tenants
+
+
 def _dev_log_magic_link(
     email: str,
     tenant_id: str | None,
@@ -1972,6 +2035,8 @@ async def auth_dev_mode() -> Any:
     """
     if not DEV_MODE_ENABLED:
         return {"enabled": False}
-
-    # Enabled path implemented in Task 2.
-    return {"enabled": True, "personas": [], "tenants": []}
+    return {
+        "enabled": True,
+        "personas": _load_dev_personas(),
+        "tenants": _scan_dev_tenants(),
+    }
