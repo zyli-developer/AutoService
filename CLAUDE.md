@@ -14,6 +14,17 @@ AutoService is a three-layer fork-based framework for building AI-powered social
 - **Feishu IM** (primary) — MCP-based, runs as `channels/feishu/channel.py`
 - **Web chat** (secondary) — FastAPI app at `channels/web/app:app`
 
+## Glossary
+
+- **Admin** — 整个 Socialware 服务的管理者（目前就是我们自己）。
+- **Tenant** — 租户，开启/安装一个 Socialware 的商户（例如一个电商平台、CX）。租户不可以嵌套：租户的客户（例如 CX 服务的客户）在我们系统看起来是和上游租户平行的租户，即没有 `CX/Hotel` 的嵌套路径，只有 `CX/` 和 `Hotel/` 两个平行路径。
+- **Operator** — 会和一个或多个 Agent 进行 copilot 的人类操作员。
+- **EndUser** — 终端用户，例如访问电商平台的客户、酒店入住客户，是 Socialware 最终服务的用户。
+- **Mode**
+  - **Takeover** — Operator 完全替代 Agent 进行服务。
+  - **Copilot** — Operator 给 Agent 建议，Agent 进行服务，Operator 的信息对 EndUser 不可见；Copilot 也可以调整为 Agent 给 Operator 建议的模式，此时 Agent 信息对 EndUser 不可见。
+  - **Auto** — Agent 全自动服务 EndUser，Operator 只可以观察，不可以介入。
+
 ## Commands
 
 - `make setup` — Create symlinks (.claude/ dirs, plugin skills), init runtime dirs
@@ -125,6 +136,18 @@ Refinement direction: GitHub PR at every level.
 git fetch upstream
 git merge upstream/main
 ```
+
+## Dev Auth Bypass
+
+`AUTH_DEV_MODE=1` enables two dev-only endpoints (`GET /api/auth/dev-mode`,
+`POST /api/auth/dev-login`) that let developers mint an admin session without
+going through the magic-link flow. **This variable MUST NOT be set in
+production, staging, or any shared/networked environment** — it turns the
+admin portal into a no-password console for anyone who can reach it.
+
+- `make run-web` sets it automatically for local dev.
+- Production Docker/compose/k8s configs must leave it unset.
+- Spec: `docs/superpowers/specs/2026-04-21-dev-auto-login-design.md`.
 
 ## Credentials
 
