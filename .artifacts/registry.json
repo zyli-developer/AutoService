@@ -1175,6 +1175,18 @@
       "created_at": "2026-04-21T03:19:38Z",
       "updated_at": "2026-04-21T03:19:38Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-023",
+      "name": "batch-16 E2E acceptance tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-16.md",
+      "created_at": "2026-04-21T03:19:39Z",
+      "updated_at": "2026-04-21T03:19:39Z",
+      "related_ids": []
     }
   ]
 }
