@@ -649,18 +649,36 @@ async def _call_engine(
         return []
 
     if frame_type == "history_request":
+        conv_id = payload["conversation_id"]
         msgs = await engine.get_messages(
-            payload["conversation_id"],
+            conv_id,
             since_sequence=payload.get("since_sequence"),
             before_sequence=payload.get("before_sequence"),
             limit=payload.get("limit", 50),
         )
+        # Attach per-message source_display so replayed history carries the
+        # same role tag that live `message` frames set (see operator_message
+        # broadcast above). Without this, operator suggestions reload as
+        # "agent" because msg.source is an opaque participant id.
+        try:
+            conv = await engine.get_conversation(conv_id)
+            role_by_id = {p.id: p.role.value for p in conv.participants}
+        except Exception:
+            role_by_id = {}
+        serialized_msgs: list[dict[str, Any]] = []
+        for m in msgs:
+            s = _serialize_message(m)
+            s["source_display"] = {
+                "id": m.source,
+                "role": role_by_id.get(m.source, "agent"),
+            }
+            serialized_msgs.append(s)
         return [
             build_frame(
                 "history_snapshot",
                 {
-                    "conversation_id": payload["conversation_id"],
-                    "messages": [_serialize_message(m) for m in msgs],
+                    "conversation_id": conv_id,
+                    "messages": serialized_msgs,
                     "has_more": False,
                 },
             )

@@ -18,7 +18,21 @@ const VIEWS: Record<TabKey, React.ComponentType> = {
   billing: BillingTab,
 };
 
-export function AdminShell() {
+interface AdminShellProps {
+  children?: React.ReactNode;
+  viewTag?: string;
+  /** Hide the Master tenants nav section (used in TenantLayout). */
+  hideMasterSection?: boolean;
+  /** Override the store's tenantId for branding (topbar + rail). */
+  tenantIdOverride?: string;
+}
+
+export function AdminShell({
+  children,
+  viewTag,
+  hideMasterSection,
+  tenantIdOverride,
+}: AdminShellProps = {}) {
   const activeTab = useAdminStore((s) => s.activeTab) as TabKey;
   const [navOpen, setNavOpen] = useState(false);
   const View = VIEWS[activeTab];
@@ -26,17 +40,24 @@ export function AdminShell() {
   const openNav = () => setNavOpen(true);
   const closeNav = () => setNavOpen(false);
 
+  const dataView = viewTag ?? activeTab;
+
   return (
     <div className="cs-shell" data-testid="admin-workspace">
-      <AdminTopbar onToggleNav={openNav} />
-      <AdminRail open={navOpen} onClose={closeNav} />
+      <AdminTopbar onToggleNav={openNav} tenantIdOverride={tenantIdOverride} />
+      <AdminRail
+        open={navOpen}
+        onClose={closeNav}
+        hideMasterSection={hideMasterSection}
+        tenantIdOverride={tenantIdOverride}
+      />
       <div
         className={`cs-side-backdrop ${navOpen ? 'on' : ''}`}
         data-testid="cs-side-backdrop"
         onClick={closeNav}
       />
-      <main className="cs-canvas" data-view={activeTab} data-testid="admin-canvas">
-        <View />
+      <main className="cs-canvas" data-view={dataView} data-testid="admin-canvas">
+        {children ?? <View />}
       </main>
     </div>
   );

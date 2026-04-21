@@ -1826,6 +1826,28 @@ async def auth_request_login(
         # session goes to /t/<tid>/admin.  Caller can override via the
         # verify endpoint's ?redirect= query param.
         redirect = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+
+        # Dev UX: when vite (:5175) and uvicorn (:8000) run on different
+        # ports, the browser-built `redirect` (absolute URL on the frontend
+        # origin) lets the post-verify 302 land back on the admin-portal
+        # instead of the backend's bare /admin path.  Accept the override
+        # only when its origin equals the request's Origin header — prevents
+        # an attacker who can submit /request-login from turning the magic
+        # link into an open redirect for phishing.
+        override = payload.get("redirect") if isinstance(payload, dict) else None
+        if isinstance(override, str) and override.strip():
+            from urllib.parse import urlparse
+            cand = urlparse(override.strip())
+            origin_hdr = request.headers.get("origin") or ""
+            origin_parsed = urlparse(origin_hdr)
+            if (
+                cand.scheme in ("http", "https")
+                and origin_parsed.scheme
+                and cand.scheme == origin_parsed.scheme
+                and cand.netloc == origin_parsed.netloc
+            ):
+                redirect = override.strip()
+
         link = _build_magic_link(request, token, redirect)
 
         if smtp_host:

@@ -56,7 +56,7 @@ function ChatTop({
   );
 }
 
-function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: boolean }) {
+function StreamMessage({ msg }: { msg: CopilotMessage }) {
   const { t } = useTranslation();
 
   if (msg.sender === 'customer') {
@@ -74,8 +74,13 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
       </div>
     );
   }
+  // Tag is driven by the message's own visibility, not the current conv.mode.
+  // Otherwise historical messages flip labels when the operator hijacks/releases:
+  // a real SIDE suggestion would show as "driver" in takeover, and a PUBLIC
+  // hijack reply would show as "建议" after release.
+  const isSide = msg.visibility === 'side';
   if (msg.sender === 'operator') {
-    if (isTakeover) {
+    if (!isSide) {
       return (
         <div className="op-msg" data-testid={`copilot-message-${msg.id}`}>
           <div className="op-msg-av op">{t('operator.chat.avatar.operator')}</div>
@@ -111,7 +116,7 @@ function StreamMessage({ msg, isTakeover }: { msg: CopilotMessage; isTakeover: b
       <div className="op-msg-body">
         <div className="op-msg-meta">
           <b>agent</b>
-          <span className="op-msg-tag">{isTakeover ? 'side' : 'auto'}</span>
+          <span className="op-msg-tag">{isSide ? 'side' : 'auto'}</span>
           <span className="op-msg-time">{msg.ts}</span>
         </div>
         <div className="op-msg-text">{msg.text}</div>
@@ -220,7 +225,7 @@ export function CopilotView({ send }: CopilotViewProps) {
               </div>
             )}
             {allMessages.map((msg) => (
-              <StreamMessage key={msg.id} msg={msg} isTakeover={isTakeover} />
+              <StreamMessage key={msg.id} msg={msg} />
             ))}
           </div>
         </div>

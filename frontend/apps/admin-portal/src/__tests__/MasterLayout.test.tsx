@@ -7,6 +7,7 @@
  *  - any other path        → AdminWorkspace (tab shell)
  *  - unauthenticated       → LoginPage
  */
+import type { ReactNode } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useAdminStore, initialState } from '../store/adminStore';
@@ -19,6 +20,14 @@ vi.mock('../components/AdminWorkspace', () => ({
 }));
 vi.mock('../components/WizardTab', () => ({
   WizardTab: () => <div data-testid="wizard-tab-stub">wizard</div>,
+}));
+// AdminShell pulls in AdminTopbar/AdminRail which need i18n + the full
+// store tree. MasterLayout route dispatch is what we're testing here, so
+// replace the shell with a passthrough that still renders its children.
+vi.mock('../components/shell/AdminShell', () => ({
+  AdminShell: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="admin-shell-stub">{children}</div>
+  ),
 }));
 
 import { MasterLayout } from '../layouts/MasterLayout';
