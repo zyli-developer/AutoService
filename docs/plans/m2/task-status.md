@@ -25,6 +25,20 @@
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
 
+## 待办 · Artifact 回填（M2 闸门前）
+
+**决策 2026-04-21 · 选项 C**：M2 /autorun 全程用内联 TDD，不走 dev-loop pipeline 的 artifact 流程。
+到 batch-16 E2E 验收前**一次性回填** `.artifacts/`：
+
+- [ ] Phase 1–7 各产 1 个汇总 eval-doc（简要"预期 vs 实际"；不是每任务一份）→ `.artifacts/eval-docs/`
+- [ ] 从 `git log --all --grep="m2"` 抽 test-diff（每 batch 一份）→ `.artifacts/test-diffs/`
+- [ ] 跑 `dev-loop-skills:skill-4-test-runner` 对 M2 全量 pytest 套件产正式 e2e-report → `.artifacts/e2e-reports/`
+- [ ] `bash scripts/register.sh` 批量注册所有回填 artifact → `registry.json`
+- [ ] （可选）产 coverage-matrix 覆盖 M2 新增代码
+
+**触发点**：batch-15 完成后、batch-16 dispatch 前。
+**违反规则说明**：dev-loop-skills 规定"产出后立即注册"；C 方案明确接受此违反换取 autorun 吞吐率；M2 闸门前补齐。
+
 ## 更新规则
 
 - 任务开始时：状态改为 `in_progress`，填 `owner` 和 `started_at`
