@@ -873,7 +873,8 @@
       "created_at": "2026-04-21T01:38:57Z",
       "updated_at": "2026-04-21T01:38:57Z",
       "related_ids": [
-        "test-diff-015"
+        "test-diff-015",
+        "e2e-report-008"
       ]
     },
     {
@@ -887,7 +888,23 @@
       "created_at": "2026-04-21T01:42:47Z",
       "updated_at": "2026-04-21T01:42:47Z",
       "related_ids": [
-        "eval-doc-014"
+        "eval-doc-014",
+        "e2e-report-008"
+      ]
+    },
+    {
+      "id": "e2e-report-008",
+      "name": "batch-11 P6 TenantLayout + ChatTab focused e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "batch-11",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-11.md",
+      "created_at": "2026-04-21T01:43:28Z",
+      "updated_at": "2026-04-21T01:43:28Z",
+      "related_ids": [
+        "eval-doc-014",
+        "test-diff-015"
       ]
     }
   ]
