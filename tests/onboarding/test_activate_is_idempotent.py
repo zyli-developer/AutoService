@@ -8,7 +8,7 @@ Goals:
   2. A 2nd call to `/activate` doesn't clobber any data (all Step-0 fields +
      any user edits survive).
   3. Manually injected fields (e.g., `custom_field`) survive a 2nd `/activate`.
-  4. Returned URLs are in the new path form `/t/<tenant_id>/...` (chat,
+  4. Returned URLs are in the new path form `/tenant/<tenant_id>/...` (chat,
      operator, admin).
   5. The `channels` array passed in is persisted.
 
@@ -84,9 +84,9 @@ class TestBuildUrls:
         monkeypatch.delenv("DEMO_PORT", raising=False)
 
         urls = build_urls("tenant_abc", ["web"])
-        assert urls["chat"] == "http://localhost:8000/t/tenant_abc/chat"
-        assert urls["operator"] == "http://localhost:8000/t/tenant_abc/operator"
-        assert urls["admin"] == "http://localhost:8000/t/tenant_abc/admin"
+        assert urls["chat"] == "http://localhost:8000/tenant/tenant_abc/chat"
+        assert urls["operator"] == "http://localhost:8000/tenant/tenant_abc/operator"
+        assert urls["admin"] == "http://localhost:8000/tenant/tenant_abc/admin"
         # Must NOT use the old subdomain form
         for value in urls.values():
             assert "sandbox.localhost" not in value
@@ -99,9 +99,9 @@ class TestBuildUrls:
         monkeypatch.setenv("DEMO_PORT", "8443")
 
         urls = build_urls("tenant_xyz", ["web", "feishu"])
-        assert urls["chat"] == "https://demo.example.com:8443/t/tenant_xyz/chat"
-        assert urls["operator"] == "https://demo.example.com:8443/t/tenant_xyz/operator"
-        assert urls["admin"] == "https://demo.example.com:8443/t/tenant_xyz/admin"
+        assert urls["chat"] == "https://demo.example.com:8443/tenant/tenant_xyz/chat"
+        assert urls["operator"] == "https://demo.example.com:8443/tenant/tenant_xyz/operator"
+        assert urls["admin"] == "https://demo.example.com:8443/tenant/tenant_xyz/admin"
 
 
 # ---------------------------------------------------------------------------
@@ -124,9 +124,9 @@ class TestActivateIdempotentMerge:
 
         # URLs in path form
         urls = body["urls"]
-        assert urls["chat"].endswith(f"/t/{tenant_id}/chat")
-        assert urls["operator"].endswith(f"/t/{tenant_id}/operator")
-        assert urls["admin"].endswith(f"/t/{tenant_id}/admin")
+        assert urls["chat"].endswith(f"/tenant/{tenant_id}/chat")
+        assert urls["operator"].endswith(f"/tenant/{tenant_id}/operator")
+        assert urls["admin"].endswith(f"/tenant/{tenant_id}/admin")
 
         # Config is merged on disk
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
@@ -241,7 +241,7 @@ class TestActivateIdempotentMerge:
         assert cfg["channels"] == ["web", "feishu", "wecom"]
 
     def test_returned_urls_are_path_form(self, isolated_sandbox):
-        """Bug: response URL form should be /t/<tid>/... (spec §5.1)."""
+        """Bug: response URL form should be /tenant/<tid>/... (spec §5.1)."""
         sandbox_root = isolated_sandbox / ".autoservice" / "sandbox"
         tenant_id = "tenant_urls"
         _write_skeleton(sandbox_root, tenant_id)
@@ -253,9 +253,9 @@ class TestActivateIdempotentMerge:
         )
         assert resp.status_code == 200
         urls = resp.json()["urls"]
-        assert urls["chat"] == f"http://localhost:8000/t/{tenant_id}/chat"
-        assert urls["operator"] == f"http://localhost:8000/t/{tenant_id}/operator"
-        assert urls["admin"] == f"http://localhost:8000/t/{tenant_id}/admin"
+        assert urls["chat"] == f"http://localhost:8000/tenant/{tenant_id}/chat"
+        assert urls["operator"] == f"http://localhost:8000/tenant/{tenant_id}/operator"
+        assert urls["admin"] == f"http://localhost:8000/tenant/{tenant_id}/admin"
         # Old subdomain form must be gone
         for value in urls.values():
             assert "sandbox.localhost" not in value

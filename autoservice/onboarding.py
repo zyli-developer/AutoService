@@ -587,7 +587,7 @@ def _parse_channels(raw: str) -> list[str]:
 def build_urls(tenant_id: str, channels: list[str] | None = None) -> dict[str, str]:
     """Return the three sandbox URLs in path form (spec §5.1).
 
-    Shape: ``/t/<tenant_id>/{chat,operator,admin}``. The subdomain form
+    Shape: ``/tenant/<tenant_id>/{chat,operator,admin}``. The subdomain form
     ``<tid>.sandbox.localhost`` is no longer used. ``channels`` is accepted
     for future per-channel URL variants but currently unused — the sandbox
     URL set is identical regardless of which channels are enabled.
@@ -597,9 +597,9 @@ def build_urls(tenant_id: str, channels: list[str] | None = None) -> dict[str, s
     port = os.getenv("DEMO_PORT", "8000")
     base = f"{scheme}://{host}:{port}"
     return {
-        "chat": f"{base}/t/{tenant_id}/chat",
-        "operator": f"{base}/t/{tenant_id}/operator",
-        "admin": f"{base}/t/{tenant_id}/admin",
+        "chat": f"{base}/tenant/{tenant_id}/chat",
+        "operator": f"{base}/tenant/{tenant_id}/operator",
+        "admin": f"{base}/tenant/{tenant_id}/admin",
     }
 
 
