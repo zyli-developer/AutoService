@@ -94,7 +94,11 @@ export interface CanaryStateUI {
 export interface AdminState {
   tenantId: string | null;
   isLoggedIn: boolean;
-  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing';
+  // T6F.5 — widened to include tenant-variant `'chat'` key (spec §4.2).
+  // Master variant continues to use 'notifications'/'dashboard'/'wizard'/
+  // 'proposals'/'billing'; tenant variant adds 'chat'. The union is honest
+  // so AdminRail variant switching no longer needs a cast at the call site.
+  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing' | 'chat';
   notifications: Notification[];
 
   wizardStep: number;

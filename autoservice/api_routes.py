@@ -988,6 +988,43 @@ async def management_chat(message: str = "", tenant_id: str = "default") -> dict
     }
 
 
+# ---------------------------------------------------------------------------
+# Admin Chat (tenant-side `_local_admin` conversation — T6F.6)
+# ---------------------------------------------------------------------------
+
+@api_router.post("/admin/chat")
+async def admin_chat(body: dict = Body(...)) -> dict[str, Any]:
+    """M2 stub — tenant-side ChatTab → `_local_admin` agent (spec §4.4).
+
+    Accepts a JSON body ``{"message": <str>}`` and returns ``{"reply": <str>}``.
+
+    **M2 scope — stub**: full routing to the fork's ``_local_admin`` agent
+    via ``run_dream`` is deferred (tracked by T7B.6 `/api/management/chat →
+    _master routing` and the tenant-side symmetric task). The stub preserves
+    the wire contract so the frontend (batch-11) can be developed and tested
+    against a stable endpoint; the real routing swap is backend-only and
+    won't touch ``ChatTab.tsx``.
+
+    **Auth**: no ``Depends(auth.require_tenant_access)`` yet — the target
+    tenant id (`_local_admin` for tenant mode, `_master` for master mode)
+    isn't surfaced in the request body/path, and the spec §4.4 semantics
+    pin it at the server side. Adding a dep here would 401 every caller and
+    break the M2 smoke flow. Protection lands with the real routing batch.
+
+    See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.4
+    """
+    message = (body.get("message") if isinstance(body, dict) else None) or ""
+    text = message.strip() if isinstance(message, str) else ""
+    if not text:
+        return {"reply": "(empty message — nothing to send)"}
+    return {
+        "reply": (
+            f"(stub) Received: {text!r}. "
+            f"_local_admin agent integration pending (T7B.6 / run_dream wire-up)."
+        )
+    }
+
+
 @api_router.post("/canary/advance")
 async def canary_advance(force: bool = False) -> dict[str, Any]:
     """Advance canary to next stage.

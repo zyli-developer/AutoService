@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：27
+- **已完成**：29
 - **进行中**：0
 - **阻塞**：0
-- **待办**：13
-- **完成率**：71% (27/38)
+- **待办**：9
+- **完成率**：76% (29/38)
 - **最后更新**：2026-04-20
 
 ### 会话日志
@@ -30,6 +30,7 @@
 | 2026-04-21 | batch-8 P5 auth gating (eval-doc-010, test-diff-012, e2e-report-005) | `98b21ff` |
 | 2026-04-20 | batch-9 P6 frontend shell hooks — T6F.1 + T6F.2 (eval-doc-011, test-diff-013, e2e-report-006) | `ed4ec38` |
 | 2026-04-21 | batch-10 P6 shell components — T6F.3 + T6F.4 (eval-doc-012, eval-doc-013, test-diff-014, e2e-report-007; subagents timed out, main orchestrator finished) | pending commit |
+| 2026-04-20 | batch-11 P6 TenantLayout 4-tab + ChatTab → /api/admin/chat (eval-doc-014, test-diff-015, e2e-report-008; focused-scope vitest 4.2s — timeout mitigation effective) | pending commit |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -137,8 +138,8 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | T6F.2 | AuthGate + LoginPage | green | medium | ✅ done | Subagent batch-9 | `ed4ec38` (9 tests: 5 AuthGate + 4 LoginPage; App rewrite +1) |
 | T6F.3 | AdminRail variant prop | green | small | ✅ done | Subagent a68ca35d (timed out; code OK) + main orchestrator (tests + artifacts) | pending commit (10 tests, eval-doc-012, test-diff-014, e2e-report-007) |
 | T6F.4 | AdminTopbar + AvatarMenu extensions | green | small | ✅ done | Subagent a56018390 (timed out; code OK) + main orchestrator (tests + artifacts) | pending commit (7 tests, eval-doc-013, test-diff-014, e2e-report-007) |
-| T6F.5 | TenantLayout 4-tab component | green | medium | ⏳ pending | — | — |
-| T6F.6 | ChatTab → /api/admin/chat | green | medium | ⏳ pending | — | — |
+| T6F.5 | TenantLayout 4-tab component | green | medium | ✅ done | batch-11 | pending commit (7 tests, eval-doc-014, test-diff-015, e2e-report-008) |
+| T6F.6 | ChatTab → /api/admin/chat | green | medium | ✅ done | batch-11 | pending commit (7 tests + backend stub in api_routes.py; wire contract stable, real `_local_admin` routing deferred to T7B.6) |
 
 **Gate**：tenant 品牌 4 tabs 渲染；AuthGate 阻挡匿名；ChatTab 对接 /api/admin/chat。
 
@@ -182,7 +183,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-8 | P5 | ✅ 完成 | T5B.5-T5B.6 · 16 new tests + 0 regression; artifact-compliant (eval-doc-010 / test-diff-012 / e2e-report-005) |
 | batch-9 | P6 | ✅ 完成 | T6F.1 + T6F.2 · 22 new frontend tests + 0 regression; artifact-compliant (eval-doc-011 / test-diff-013 / e2e-report-006) |
 | batch-10 | P6 | ✅ 完成 | T6F.3 + T6F.4 shell components；subagents timed out mid-task, main orchestrator finished tests + artifacts；27 tests batch-scope (+17 net new) + 0 new regression |
-| batch-11 | P6 | ⏳ pending | — |
+| batch-11 | P6 | ✅ 完成 | T6F.5 + T6F.6 · 14 new frontend tests + backend stub /api/admin/chat; artifact-compliant (eval-doc-014 / test-diff-015 / e2e-report-008); focused-scope vitest 4.2s (timeout mitigation effective) |
 | batch-12 | P7 | ⏳ pending | — |
 | batch-13 | P7 | ⏳ pending | — |
 | batch-14 | P7 | ⏳ pending | — |
