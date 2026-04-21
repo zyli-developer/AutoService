@@ -102,6 +102,23 @@ async def test_operator_suggestions_preserved():
 
 
 @pytest.mark.asyncio
+async def test_section_order_suggestions_then_kb_then_customer():
+    """When both operator_suggestions and KB hits are present, the sections
+    must appear in order: operator_suggestions → <kb_context> → Customer message."""
+    hits = [{"content": "tenant fact", "source_name": "faq"}]
+    with patch("autoservice.dream_agent.kb_search", return_value=hits):
+        from autoservice.triage_dispatch import _build_customer_prompt
+        prompt = await _build_customer_prompt(
+            tenant_id="mystore",
+            customer_text="hi",
+            operator_suggestions="<operator_suggestions>\nbe terse\n</operator_suggestions>",
+        )
+
+    assert prompt.index("<operator_suggestions>") < prompt.index("<kb_context>")
+    assert prompt.index("<kb_context>") < prompt.index("Customer message:")
+
+
+@pytest.mark.asyncio
 async def test_kb_content_truncated_to_500_chars():
     """Each hit content is clipped at 500 chars to bound prompt size."""
     long_content = "x" * 800
