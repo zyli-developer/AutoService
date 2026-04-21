@@ -33,7 +33,8 @@
 | 2026-04-20 | batch-11 P6 TenantLayout 4-tab + ChatTab → /api/admin/chat (eval-doc-014, test-diff-015, e2e-report-008; focused-scope vitest 4.2s — timeout mitigation effective) | pending commit |
 | 2026-04-20 | batch-12 P7 TenantContext middleware + tenant_root helper (eval-doc-015, test-diff-016, e2e-report-009; 17 new tests, 0 new regression) | pending commit |
 | 2026-04-20 | batch-13 T7S.4 scripts/setup.sh mode-aware + Makefile delegation (eval-doc-016, test-diff-017; 8 subprocess tests green) | pending commit |
-| 2026-04-20 | batch-13 T7F.3 customer-chat + operator-console mode routing (eval-doc-017, test-diff-018; 10 frontend tests across both apps, 0 new regression) | pending commit |
+| 2026-04-20 | batch-13 T7F.3 customer-chat + operator-console mode routing (eval-doc-017, test-diff-018; 10 frontend tests across both apps, 0 new regression) | `90cfd69` |
+| 2026-04-21 | batch-13 combined e2e-report-010 + canonical T7S.4 audit commit `8bbe728`（修复 race 下的 commit subject） | e2e-report-010 registered |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -188,7 +189,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-10 | P6 | ✅ 完成 | T6F.3 + T6F.4 shell components；subagents timed out mid-task, main orchestrator finished tests + artifacts；27 tests batch-scope (+17 net new) + 0 new regression |
 | batch-11 | P6 | ✅ 完成 | T6F.5 + T6F.6 · 14 new frontend tests + backend stub /api/admin/chat; artifact-compliant (eval-doc-014 / test-diff-015 / e2e-report-008); focused-scope vitest 4.2s (timeout mitigation effective) |
 | batch-12 | P7 | ✅ 完成 | T7B.1 + T7B.2 · 17 new backend tests + 0 new regression; artifact-compliant (eval-doc-015 / test-diff-016 / e2e-report-009); 102 pass on fork_runtime+bootstrap+api+auth scope |
-| batch-13 | P7 | ⏳ partial | T7S.4 ✅ done (8 tests, eval-doc-016/test-diff-017); T7F.3 ✅ done (10 tests, eval-doc-017/test-diff-018); awaiting combined e2e-report to close |
+| batch-13 | P7 | ✅ 完成 | T7S.4 ✅ (8 tests) ∥ T7F.3 ✅ (10 tests); combined e2e-report-010 (18 new + 110 backend regression green, 0 new failures); artifacts linked |
 | batch-14 | P7 | ⏳ pending | — |
 | batch-15 | P8 | ⏳ pending | — |
 | batch-16 | P8 | ⏳ pending | — |
