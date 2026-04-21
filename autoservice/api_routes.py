@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1642,6 +1643,12 @@ AUTH_SESSION_COOKIE = "auth_session"
 # Path for dev-mode magic link log (spec §5.6). One JSONL line per send.
 _DEV_MAIL_LOG = Path(".autoservice") / "logs" / "auth-devmail.jsonl"
 
+# Dev auto-login gate (spec docs/superpowers/specs/2026-04-21-dev-auto-login-design.md).
+# Read ONCE at import — changing AUTH_DEV_MODE at runtime requires a process
+# restart (tests monkeypatch this attribute directly). Production images must
+# never set this variable.
+DEV_MODE_ENABLED = os.environ.get("AUTH_DEV_MODE") == "1"
+
 
 _auth_db_conn = None
 
@@ -1942,3 +1949,29 @@ async def auth_logout(request: Request) -> Response:
         path="/",
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# Dev auto-login endpoints (spec 2026-04-21-dev-auto-login-design.md)
+# ---------------------------------------------------------------------------
+#
+# Both endpoints are gated by DEV_MODE_ENABLED (env AUTH_DEV_MODE=1).
+# When disabled:
+#   • GET /auth/dev-mode  → {"enabled": false}   (200)
+#   • POST /auth/dev-login → 404 Not Found
+# When enabled, see tasks 2 and 4 in the plan for the full behaviour.
+
+
+@api_router.get("/auth/dev-mode")
+async def auth_dev_mode() -> Any:
+    """Public probe: tells the frontend whether dev-login is available.
+
+    When disabled, the response is intentionally minimal — no personas or
+    tenants are leaked. When enabled, returns personas (from config.local.yaml)
+    and tenants (scanned from plugins/).
+    """
+    if not DEV_MODE_ENABLED:
+        return {"enabled": False}
+
+    # Enabled path implemented in Task 2.
+    return {"enabled": True, "personas": [], "tenants": []}
