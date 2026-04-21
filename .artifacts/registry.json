@@ -828,7 +828,9 @@
       "path": ".artifacts/eval-docs/eval-t6f-4-topbar-avatar.md",
       "created_at": "2026-04-21T01:14:39Z",
       "updated_at": "2026-04-21T01:14:39Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-014"
+      ]
     },
     {
       "id": "test-diff-014",
@@ -841,7 +843,8 @@
       "created_at": "2026-04-21T01:32:43Z",
       "updated_at": "2026-04-21T01:32:43Z",
       "related_ids": [
-        "eval-doc-012"
+        "eval-doc-012",
+        "eval-doc-013"
       ]
     },
     {
