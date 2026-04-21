@@ -964,7 +964,9 @@
       "path": ".artifacts/eval-docs/eval-t7s-4-setup.md",
       "created_at": "2026-04-21T01:58:25Z",
       "updated_at": "2026-04-21T01:58:25Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-017"
+      ]
     },
     {
       "id": "eval-doc-017",
@@ -979,6 +981,20 @@
       "related_ids": [
         "eval-doc-011",
         "eval-doc-015"
+      ]
+    },
+    {
+      "id": "test-diff-017",
+      "name": "T7S.4 setup.sh tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "subagent-t7s-4",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7s-4.md",
+      "created_at": "2026-04-21T02:02:23Z",
+      "updated_at": "2026-04-21T02:02:23Z",
+      "related_ids": [
+        "eval-doc-016"
       ]
     }
   ]
