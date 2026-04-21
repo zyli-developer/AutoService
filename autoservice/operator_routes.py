@@ -389,8 +389,71 @@ async def delete_one_operator(
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Invites (T1S.5 — admin creates operator invite; new operator accepts)
+# Admin-to-admin invite accept (T3S.6 · E1.6)
 # ──────────────────────────────────────────────────────────────────────────
+
+
+@operator_router.get("/auth/admin/accept-invite")
+async def accept_admin_invite(
+    request: Request,
+    token: str | None = None,
+    redirect: str = "/admin",
+) -> Any:
+    """Consume a tenant_admin invite token; set auth_session cookie.
+
+    T3S.6 · E1.6: existing admin issued an invite via POST /admin/{tid}/invites
+    with role='tenant_admin' (T1S.5).  Invitee clicks link → this endpoint
+    burns the token (role-gated on 'tenant_admin') + creates a sessions row
+    + sets ``auth_session`` cookie.
+    """
+    if not token or not token.strip():
+        return JSONResponse(
+            status_code=422, content={"error": "token is required"}
+        )
+
+    conn = _get_op_db()
+    from datetime import datetime, timezone
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+
+    cur = conn.execute(
+        """UPDATE login_tokens
+              SET consumed_at = ?
+            WHERE token = ?
+              AND consumed_at IS NULL
+              AND expires_at > ?
+              AND role = 'tenant_admin'""",
+        (now_iso, token.strip(), now_iso),
+    )
+    if cur.rowcount == 0:
+        conn.commit()
+        return PlainTextResponse(
+            "Invalid or expired admin invite", status_code=401
+        )
+
+    row = conn.execute(
+        "SELECT admin_email, tenant_id FROM login_tokens WHERE token = ?",
+        (token.strip(),),
+    ).fetchone()
+    conn.commit()
+    if row is None:  # pragma: no cover
+        return PlainTextResponse("internal error", status_code=401)
+
+    admin_email = row["admin_email"]
+    tenant_id = row["tenant_id"]
+    session_id = auth.create_session(conn, admin_email, tenant_id=tenant_id)
+
+    response = RedirectResponse(url=redirect, status_code=302)
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=auth.AUTH_SESSION_COOKIE_NAME,
+        value=session_id,
+        max_age=auth.DEFAULT_SESSION_TTL_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -806,6 +869,101 @@ def _invalidate_classifier_cache(tenant_id: str) -> None:
             "classifier cache invalidation skipped (module not available)",
             exc_info=True,
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Apply proposal (T4S.3) — HTTP layer over T4S.1 apply_proposal
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@operator_router.post("/admin/proposals/{proposal_id}/apply")
+async def apply_proposal_endpoint(
+    proposal_id: str,
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    """🔒 Apply an accepted proposal (T4S.3).
+
+    Uses the T4S.1 ``proposal_apply.apply_proposal`` as the sole writer
+    of status='applied'.  HTTP-layer responsibilities:
+    * Derive ``is_platform_admin`` from tier-0 session (tenant_id is None).
+      Reviewer-mandated: tier-0 bit comes from the validated session,
+      NEVER from request body.
+    * Map exceptions to HTTP status codes per contract §2.6:
+        ProposalNotFound → 404
+        ProposalStateError → 409
+        PermissionError → 403
+        ValueError → 400
+    * Return ApplyResult serialized via dataclasses.asdict.
+    """
+    from dataclasses import asdict
+
+    from autoservice import proposal_apply
+    from autoservice.proposal_pipeline import (
+        ProposalNotFound,
+        ProposalPipeline,
+        ProposalStateError,
+    )
+
+    is_platform_admin = ctx.tier == 0  # derived from session, not client input
+
+    # Build a ProposalPipeline over the shared auth DB connection.  Lazy-import
+    # memory_pool to avoid circular costs in tests that don't use dream flow.
+    pipeline = _build_proposal_pipeline()
+
+    try:
+        result = proposal_apply.apply_proposal(
+            pipeline,
+            proposal_id=proposal_id,
+            admin_user_id=ctx.admin_email,
+            is_platform_admin=is_platform_admin,
+        )
+    except ProposalNotFound:
+        raise HTTPException(
+            status_code=404, detail={"error": "proposal_not_found"}
+        )
+    except ProposalStateError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "invalid_state", "message": str(e)},
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "permission_denied", "message": str(e)},
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail={"error": "bad_request", "message": str(e)}
+        )
+
+    return {"result": asdict(result)}
+
+
+def _build_proposal_pipeline():
+    """Build a :class:`ProposalPipeline`-like facade over the auth DB.
+
+    For M3, we bypass the MemoryPool dependency by using the same stub
+    pattern as the T4S.1 tests (_StubPipeline).  Keeps the HTTP layer
+    hermetic and avoids pulling in dream-agent modules.
+    """
+    from autoservice.proposal_pipeline import ProposalPipeline, apply_schema
+
+    conn = _get_op_db()
+    apply_schema(conn)  # idempotent — ensures proposals + proposal_audit ready
+
+    # Thin facade: mimics the minimum ProposalPipeline surface apply_proposal
+    # expects (_conn, get_proposal, _mark_applied_internal).  This is
+    # intentionally a local lightweight helper — not a registered singleton.
+    class _HttpPipeline(ProposalPipeline):
+        def __init__(self, conn_):
+            self._memory_pool = None
+            self._analyzer = None
+            self._compliance_engine = None
+            self._batch_size = 10
+            self._conn = conn_
+            self._conn.row_factory = __import__("sqlite3").Row
+
+    return _HttpPipeline(conn)
 
 
 def _operator_to_dict(op: operators.Operator | None) -> dict:
