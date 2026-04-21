@@ -3,7 +3,7 @@
  *
  * Rendered when:
  *   - `/api/session/mode` returns `mode === "tenant"` (fork deployment), OR
- *   - URL path matches `/t/<tid>/admin` (sandbox preview embedded in a
+ *   - URL path matches `/tenant/<tid>/admin` (sandbox preview embedded in a
  *     master admin-portal iframe — see App.tsx short-circuit)
  *
  * Shell structure (distinct from M1 placeholder which delegated to

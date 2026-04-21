@@ -3,7 +3,7 @@
  *
  * Dispatch order (top to bottom):
  *   1. `/login`                         → <LoginPage /> (public, no gate)
- *   2. `/t/<tid>/admin` path prefix     → <AuthGate> wrapping TenantLayout
+ *   2. `/tenant/<tid>/admin` path prefix     → <AuthGate> wrapping TenantLayout
  *   3. otherwise                         → <AuthGate> wrapping mode-dispatch
  *      → TenantLayout (session.mode=tenant) or MasterLayout (default)
  *
@@ -23,11 +23,11 @@ import { MasterLayout } from './layouts/MasterLayout';
 import { TenantLayout } from './layouts/TenantLayout';
 
 /**
- * Extract tenant id from a `/t/<tid>/admin` pathname. Returns null for any
+ * Extract tenant id from a `/tenant/<tid>/admin` pathname. Returns null for any
  * other shape.
  */
 function tenantIdFromAdminPath(pathname: string): string | null {
-  const match = pathname.match(/^\/t\/([^/]+)\/admin(?:\/|$)/);
+  const match = pathname.match(/^\/tenant\/([^/]+)\/admin(?:\/|$)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -52,7 +52,7 @@ export function App() {
     return <LoginPage />;
   }
 
-  // `/t/<tid>/admin` path-tenant short-circuit (preserved from M1). Must
+  // `/tenant/<tid>/admin` path-tenant short-circuit (preserved from M1). Must
   // still pass through AuthGate so anon visitors don't see the tenant
   // shell before the redirect.
   const pathTenantId = tenantIdFromAdminPath(pathname);

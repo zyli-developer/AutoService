@@ -8,7 +8,7 @@
  *  - Error state → AuthGate error splash (NOT MasterLayout — changed from
  *    M1: batch-9 no longer silently falls back because spec §9 says anon
  *    content must never flash)
- *  - /t/<tid>/admin path-prefix forces TenantLayout (still wrapped by
+ *  - /tenant/<tid>/admin path-prefix forces TenantLayout (still wrapped by
  *    AuthGate so anon callers get redirected)
  *  - Anonymous session (authenticated=false) triggers a redirect call
  *  - /login pathname short-circuits to the public LoginPage
@@ -115,7 +115,7 @@ describe('App dispatch (T6F.2 AuthGate + mode)', () => {
     expect(screen.queryByTestId('tenant-layout')).not.toBeInTheDocument();
   });
 
-  it('forces TenantLayout on /t/<tid>/admin (authenticated)', () => {
+  it('forces TenantLayout on /tenant/<tid>/admin (authenticated)', () => {
     useSessionModeMock.mockReturnValue({
       data: {
         mode: 'master',
@@ -129,7 +129,7 @@ describe('App dispatch (T6F.2 AuthGate + mode)', () => {
       error: null,
       refetch: () => {},
     });
-    setPath('/t/tenant_abc/admin');
+    setPath('/tenant/tenant_abc/admin');
     render(<App />);
     const tenantLayout = screen.getByTestId('tenant-layout');
     expect(tenantLayout).toBeInTheDocument();
@@ -137,14 +137,14 @@ describe('App dispatch (T6F.2 AuthGate + mode)', () => {
     expect(screen.queryByTestId('master-layout')).not.toBeInTheDocument();
   });
 
-  it('decodes percent-encoded tenant ids from /t/<tid>/admin', () => {
+  it('decodes percent-encoded tenant ids from /tenant/<tid>/admin', () => {
     useSessionModeMock.mockReturnValue({
       data: null,
       loading: true,
       error: null,
       refetch: () => {},
     });
-    setPath('/t/a%2Fb/admin');
+    setPath('/tenant/a%2Fb/admin');
     render(<App />);
     // Still in loading → AuthGate splash shows; but when data resolves the
     // wrapped TenantLayout would receive the decoded id.
