@@ -19,7 +19,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Outlet } from 'react-router-dom';
 import { useAdminStore } from '../store/adminStore';
-import { LoginPage } from '../components/LoginPage';
 import { AdminWorkspace } from '../components/AdminWorkspace';
 import { AdminShell } from '../components/shell/AdminShell';
 import { WizardTab } from '../components/WizardTab';
@@ -85,8 +84,6 @@ export function MasterRoutes() {
 }
 
 export function MasterLayout() {
-  const isLoggedIn = useAdminStore((s) => s.isLoggedIn);
-  if (!isLoggedIn) return <LoginPage />;
   return (
     <BrowserRouter>
       <MasterRoutes />
