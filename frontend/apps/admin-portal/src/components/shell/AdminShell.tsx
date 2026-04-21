@@ -8,14 +8,16 @@ import { DashboardTab } from '../DashboardTab';
 import { ManagementChat } from '../ManagementChat';
 import { ProposalsTab } from '../ProposalsTab';
 import { BillingTab } from '../BillingTab';
+import { DreamTab } from '../DreamTab';
 
-type TabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'billing';
+type TabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'dream' | 'billing';
 
 const VIEWS: Record<TabKey, React.ComponentType> = {
   notifications: ManagementChat,
   dashboard: DashboardTab,
   wizard: WizardTab,
   proposals: ProposalsTab,
+  dream: DreamTab,
   billing: BillingTab,
 };
 

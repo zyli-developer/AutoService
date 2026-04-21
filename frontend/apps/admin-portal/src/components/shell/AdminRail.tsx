@@ -14,8 +14,8 @@ import { useAdminStore } from '../../store/adminStore';
  */
 export type RailVariant = 'master' | 'tenant';
 
-type MasterTabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'billing';
-type TenantTabKey = 'chat' | 'dashboard' | 'proposals' | 'billing';
+type MasterTabKey = 'notifications' | 'dashboard' | 'wizard' | 'proposals' | 'dream' | 'billing';
+type TenantTabKey = 'chat' | 'dashboard' | 'proposals' | 'dream' | 'billing';
 type TabKey = MasterTabKey | TenantTabKey;
 
 interface RailItem {
@@ -62,6 +62,13 @@ const TenantsIcon = () => (
     <path d="M9 9v0M9 13v0M9 17v0" />
   </svg>
 );
+const DreamIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    <circle cx="17" cy="7" r="1" />
+    <circle cx="19.5" cy="10" r="0.6" />
+  </svg>
+);
 
 // Declarative variant → items map (spec §4.2 + key invariant from eval-doc-012).
 // Branching lives in this table, NOT in the JSX tree. Add/change a variant's
@@ -72,16 +79,18 @@ const TenantsIcon = () => (
 // ("Wizard") and row-6 ("Tenants 列表") are both spec §4.2 "去除".
 const RAIL_CONFIG: Record<RailVariant, RailItem[]> = {
   master: [
-    { key: 'notifications', icon: <ChatIcon />, labelKey: 'admin.nav.management_chat', group: 'ops',    to: '/admin/chat' },
-    { key: 'dashboard',     icon: <DashIcon />, labelKey: 'admin.nav.dashboard',       group: 'ops',    to: '/admin/dashboard' },
-    { key: 'proposals',     icon: <BulbIcon />, labelKey: 'admin.nav.proposals',       group: 'ops',    to: '/admin/proposals' },
-    { key: 'billing',       icon: <CardIcon />, labelKey: 'admin.nav.billing',         group: 'config', to: '/admin/billing' },
+    { key: 'notifications', icon: <ChatIcon />,  labelKey: 'admin.nav.management_chat', group: 'ops',    to: '/admin/chat' },
+    { key: 'dashboard',     icon: <DashIcon />,  labelKey: 'admin.nav.dashboard',       group: 'ops',    to: '/admin/dashboard' },
+    { key: 'proposals',     icon: <BulbIcon />,  labelKey: 'admin.nav.proposals',       group: 'ops',    to: '/admin/proposals' },
+    { key: 'dream',         icon: <DreamIcon />, labelKey: 'admin.nav.dream',           group: 'ops',    to: '/admin/dream' },
+    { key: 'billing',       icon: <CardIcon />,  labelKey: 'admin.nav.billing',         group: 'config', to: '/admin/billing' },
   ],
   tenant: [
-    { key: 'chat',       icon: <ChatIcon />, labelKey: 'admin.nav.tenant.chat',      group: 'ops',    to: '/admin/chat' },
-    { key: 'dashboard',  icon: <DashIcon />, labelKey: 'admin.nav.tenant.dashboard', group: 'ops',    to: '/admin/dashboard' },
-    { key: 'proposals',  icon: <BulbIcon />, labelKey: 'admin.nav.tenant.proposals', group: 'ops',    to: '/admin/proposals' },
-    { key: 'billing',    icon: <CardIcon />, labelKey: 'admin.nav.tenant.billing',   group: 'config', to: '/admin/billing' },
+    { key: 'chat',       icon: <ChatIcon />,  labelKey: 'admin.nav.tenant.chat',      group: 'ops',    to: '/admin/chat' },
+    { key: 'dashboard',  icon: <DashIcon />,  labelKey: 'admin.nav.tenant.dashboard', group: 'ops',    to: '/admin/dashboard' },
+    { key: 'proposals',  icon: <BulbIcon />,  labelKey: 'admin.nav.tenant.proposals', group: 'ops',    to: '/admin/proposals' },
+    { key: 'dream',      icon: <DreamIcon />, labelKey: 'admin.nav.dream',            group: 'ops',    to: '/admin/dream' },
+    { key: 'billing',    icon: <CardIcon />,  labelKey: 'admin.nav.tenant.billing',   group: 'config', to: '/admin/billing' },
   ],
 };
 
