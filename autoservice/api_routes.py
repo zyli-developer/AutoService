@@ -2031,9 +2031,9 @@ async def auth_request_login(
         token = auth.issue_login_token(conn, email, tenant_id=tenant_id)
 
         # Default redirect target: _master tier-0 goes to /admin, a tenant
-        # session goes to /t/<tid>/admin.  Caller can override via the
+        # session goes to /tenant/<tid>/admin.  Caller can override via the
         # verify endpoint's ?redirect= query param.
-        redirect = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+        redirect = f"/tenant/{tenant_id}/admin" if tenant_id else "/admin"
 
         # Dev UX: when vite (:5175) and uvicorn (:8000) run on different
         # ports, the browser-built `redirect` (absolute URL on the frontend
@@ -2196,7 +2196,7 @@ async def auth_dev_login(
 
     Response (200)::
 
-        {"ok": true, "redirect": "/admin" | "/t/<tid>/admin"}
+        {"ok": true, "redirect": "/admin" | "/tenant/<tid>/admin"}
 
     Side effects on success:
       • Row inserted into the ``sessions`` table.
@@ -2239,7 +2239,7 @@ async def auth_dev_login(
     with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(audit_record, ensure_ascii=False) + "\n")
 
-    redirect_target = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+    redirect_target = f"/tenant/{tenant_id}/admin" if tenant_id else "/admin"
 
     response = JSONResponse(content={"ok": True, "redirect": redirect_target})
     secure_flag = request.url.scheme == "https"
