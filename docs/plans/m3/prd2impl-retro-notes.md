@@ -312,4 +312,44 @@ Rolling up observations:
 | batch-2 | 2 (2G) | 6 | ~50min | 0 | — |
 | batch-3 | 2 (1Y/1G) | 6 | ~70min | 1 (T1S.3 v1→v2) | 3 Critical |
 | **M3-1** | **9** | **19** | **~180min (3h)** | **2** | **7 Critical across T0S.4+T1S.3** |
-| **M3-1** | **9** | **19** | — | — | — |
+| batch-4 | 4 (1Y+3G) | 7 | ~50min | 1 (T2S.1 v1→v2) | 3 total (2 C, 1 minor) |
+| batch-5 | 3 (3G) | 5 | ~35min | 0 | — |
+| batch-6 | 1 (1Y) | 2 | ~25min | 1 (T2S.5 v1→v2) | 3 Critical |
+| **M3-2** | **8** | **14** | **~110min (1.8h)** | **2** | **6 Critical** |
+| batch-7 | 3 (2Y/1G) | 7 | ~40min | 0 | — |
+| batch-8 | 4 (3Y/1G 🔒) | 8 | ~55min | 0 (T4S.1 APPROVED first pass thanks to v1.1 contract) | — |
+| batch-9 | 4 (2Y/2G 🔒) | 5 | ~35min | 0 | — |
+| batch-10 | 3 (1Y/2G) | 5 | ~30min | 0 | — |
+| batch-10.5 | 3 (carve-out T3S.7-hotfix + T4S.3b) | 2 | ~25min | 1 (A2 path revert for invariant clash) | — |
+| **M3-3** | **14+3** | **27** | **~185min (3h)** | **1** | **0 CON-04 escapes** |
+| batch-carry-M3-1 | 2 (T1S.6 ✅ / T1S.7 pending) | 3 | ~40min (parallel line) | 0 | — |
+| batch-13 | 1 (T6S.1) | 2 | ~40min | 1 (parallel-line reconcile) | — |
+| batch-14 T6S.2 | 1 smoke | 2 | ~20min | 0 | — |
+| **M3 gate** | **3** | **6** | **~100min (1.7h)** | **1** | — |
+| **Dream UI carve-in** | 4 fixes (UI + master-route + layout) | — | ~50min post-gate | 3 live-debug iterations (white-screen / 404 / wrong tab) | — |
+| **M3 TOTAL** | **39 tasks (original) + 3 M3-3.5 carry + 4 UI wins** | **67** | **~10h AI** vs human est. **~40h** | **6 rework loops** | **13 Critical caught in review (0 CON-04 escapes)** |
+
+## Headline learnings (M3-gate close)
+
+### L-A: Contract-first paid compounding interest
+- M3-3 batch-8 `T4S.1 🔒 apply_proposal` (the highest-risk CON-04 task) was APPROVED on first reviewer pass because the v1.1 contract (from M3-0) had already folded in C1-C4 from the v1.0 review. Raising the specification bar once saved 3-5 rework loops downstream.
+- Contrast with M3-0 itself: v1.0 contract missed 4 Critical, including "implemented→applied" naming drift that would have poisoned the state machine if caught at code-review time instead of contract-review time. The extra 1-2h at contract phase saved a day of downstream rework.
+
+### L-B: "Parallel-line" work needs a reconcile dance
+- While my autorun was closing M3 gate, another line (the user's local "other developer") shipped T1S.6 operator dev-login + re-implemented T4S.4 inline in master_dream_agent.py. The inline T4S.4 collided with my canonical autoservice/platform_signals.py module (which was already committed). The reconcile took ~15 min to detect, 15 min to resolve (re-export shim), and the contract tests (ParticipantRole.TRIAGE, list_conversations_in_takeover_by) surfaced 3 more parallel-line debt items the autorun hadn't touched.
+- **Takeaway**: autorun should start each batch with `git log --since=last-autorun` to sniff parallel-line adds before planning.
+
+### L-C: UI carve-forward beats UI deferral
+- CON-13 originally deferred ALL frontend work to M3.5. When the user explicitly asked for a Dream Engine display surface, the D1 + D4 pieces shipped in ~50min post-gate — the exact scope I had estimated at 4h in the M3.5 plan (so ~4-5× AI speedup confirmed on UI work too).
+- **3 live debug iterations** (white-screen on envelope shape, 404 on tenant placeholder, wrong tab on TenantLayout whitelist) revealed that "frontend frozen for M3.5" carries a cost the user felt immediately. The M3.5 plan still covers the broader Playwright + full UI surfaces, but the specific "we need to *see* dream agent working" use case justified pulling D1+D4 forward.
+- **Takeaway**: re-classify "UI needed for demo vs UI needed for end-users" separately in the next CON-13-style gate decision.
+
+### L-D: The trigger endpoint's pre-open "bookkeeping row" was a latent M3 bug
+- M2 design had trigger endpoint create a "trigger-row" (pre-open for 202 response) + run_dream internally creates an "agent-row" = 2 rows per click (documented trade-off).
+- M3 T2S.8 added `_master` routing in the scheduler but **did not** update the trigger endpoint. `_master` routed to run_dream directly → RuntimeError (no LLM). Plus the finally block unconditionally wrote `status='completed'` on the trigger-row regardless of agent outcome → misleading UX.
+- **Neither was caught by unit or integration tests** because `_spawn_dream_run_with_run_id` is monkey-patched to no-op in test harness. Only the user's live click surfaced it.
+- **Takeaway**: add one non-mocked integration test that covers trigger endpoint → real agent → dream_runs row outcome for both `_master` and a regular tenant. M3.5 scope.
+
+### L-E: "Contract tests" are canaries, not shields
+- 3 pre-existing contract-drift tests (`test_participant_role_values` / `test_no_extra_protocol_methods` / `test_every_protocol_method_is_referenced`) failed because the parallel line added `ParticipantRole.TRIAGE` and `list_conversations_in_takeover_by()` without updating the doc tables. These tests caught the drift — but only at M3-gate time, days after the drift landed.
+- Canary: good. Detection latency: bad. Should run on every commit touching `conversation_engine/`.
