@@ -43,13 +43,15 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 import sqlite3
+import subprocess
 import tarfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 log = logging.getLogger("autoservice.publish")
 
@@ -159,6 +161,243 @@ class LocalTarballForkCreator:
             runbook_path=runbook_path,
             repo_url=None,
         )
+
+
+# ---------------------------------------------------------------------------
+# GitHubApiForkCreator (T8B.1, spec §3.4)
+# ---------------------------------------------------------------------------
+
+
+class ForkCreationError(Exception):
+    """Raised when :class:`GitHubApiForkCreator` fails.
+
+    Carries enough context (``phase`` + ``fork_name`` + underlying error)
+    for a human to decide whether manual cleanup is needed.
+
+    Per spec §9 red line, the creator NEVER runs a destructive cleanup
+    command on failure — removal of a fork requires human confirmation.
+    When ``fork_name`` is populated, the admin is expected to either
+    verify the fork never came into existence, or remove it manually via
+    their own tooling.
+
+    Attributes:
+        phase: Which step failed — ``"gh-check"`` (subprocess launch /
+            FileNotFoundError), ``"gh-repo-fork"`` (gh returned non-zero
+            or timed out).
+        fork_name: Best-effort name of the fork GitHub MAY have created.
+            ``None`` iff we failed before invoking ``gh repo fork`` at
+            all (e.g. gh binary not found).  Otherwise a string like
+            ``"AutoService-<tenant_id>"`` that the admin can pass to
+            ``gh repo view`` / ``gh repo <manual-remove>``.
+        original_error: The underlying ``subprocess`` / ``OSError`` —
+            preserved so callers can rebuild the traceback if needed.
+        stderr: Captured ``stderr`` from the gh invocation when applicable
+            (CalledProcessError).  Always also logged at WARNING level.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        phase: str,
+        fork_name: Optional[str] = None,
+        original_error: Optional[BaseException] = None,
+        stderr: Optional[str] = None,
+    ) -> None:
+        self.phase = phase
+        self.fork_name = fork_name
+        self.original_error = original_error
+        self.stderr = stderr
+        # Single-line diagnostic — grep-friendly in logs
+        parts = [f"phase={phase!r}"]
+        if fork_name is not None:
+            parts.append(f"fork_name={fork_name!r}")
+        if stderr:
+            # Truncate stderr to keep the message bounded
+            snippet = stderr.strip()
+            if len(snippet) > 300:
+                snippet = snippet[:297] + "..."
+            parts.append(f"stderr={snippet!r}")
+        if original_error is not None:
+            parts.append(f"original_error={type(original_error).__name__}")
+        super().__init__(f"{message} ({', '.join(parts)})")
+
+
+# Module-level regex (pre-compiled) — validates tenant_id as a safe
+# filesystem + yaml + git repo identifier (letters, digits, _ and -).
+_VALID_TENANT_ID_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_\-]*$")
+
+
+class GitHubApiForkCreator:
+    """gh CLI wrapper that creates a GitHub fork of the platform repo.
+
+    **Scope (T8B.1 — batch-15)**: this class only performs the *fork
+    creation* step.  The tarball-extract / commit / push steps in spec
+    §3.4's example are intentionally NOT implemented here; they either
+    remain the job of :class:`LocalTarballForkCreator`'s runbook (human
+    copy-paste) or land in a follow-up task once server-side git
+    credential management is settled.
+
+    **Failure handling (spec §9)**:
+
+    - ``gh`` CLI not installed → :class:`ForkCreationError` with
+      ``phase="gh-check"`` and an actionable install hint.
+    - ``gh repo fork`` non-zero / timeout → :class:`ForkCreationError`
+      with ``phase="gh-repo-fork"`` and ``fork_name`` populated so the
+      admin knows which fork (if any) to clean up.
+    - **NEVER** issues a destructive cleanup command automatically —
+      spec §9 mandates human confirmation.  Callers / the admin must
+      remove any residual fork themselves using the ``fork_name`` on
+      the exception.
+
+    Every subprocess invocation uses an explicit ``timeout`` + captures
+    ``stderr``; stderr is WARNING-logged on failure so it is never silently
+    swallowed.
+    """
+
+    _AUTH_CHECK_TIMEOUT_SEC = 30
+    _FORK_CREATE_TIMEOUT_SEC = 60
+
+    def __init__(
+        self,
+        *,
+        gh_bin: str = "gh",
+        source_repo: str = "ezagent42/AutoService",
+        org: Optional[str] = None,
+    ) -> None:
+        self.gh_bin = gh_bin
+        self.source_repo = source_repo
+        self.org = org
+
+    # -- probes --------------------------------------------------------
+
+    def available(self) -> bool:
+        """Return True iff ``gh`` is installed AND authenticated.
+
+        Safe to call defensively — never raises.  Callers typically use
+        this to decide between :class:`GitHubApiForkCreator` and
+        :class:`LocalTarballForkCreator` (spec §3.4 selector).
+        """
+        try:
+            subprocess.run(
+                [self.gh_bin, "auth", "status"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=self._AUTH_CHECK_TIMEOUT_SEC,
+            )
+            return True
+        except FileNotFoundError:
+            return False
+        except subprocess.CalledProcessError:
+            return False
+        except subprocess.TimeoutExpired:
+            return False
+
+    # -- actions -------------------------------------------------------
+
+    def create_fork(self, tenant_id: str) -> str:
+        """Create a GitHub fork named after ``tenant_id``.
+
+        Returns:
+            The fork URL as reported by ``gh`` on stdout.
+
+        Raises:
+            ForkCreationError: on any failure.  Inspect ``.phase`` and
+                ``.fork_name`` to decide on cleanup.
+        """
+        if not tenant_id or not tenant_id.strip():
+            raise ValueError("tenant_id must be a non-empty string")
+        tenant_id = tenant_id.strip()
+
+        fork_name = f"AutoService-{tenant_id}"
+        # Target: org-qualified when org set; else bare fork name (user
+        # namespace).  gh's --fork-name flag accepts either form.
+        target = f"{self.org}/{fork_name}" if self.org else fork_name
+
+        argv = [
+            self.gh_bin,
+            "repo",
+            "fork",
+            self.source_repo,
+            f"--fork-name={target}",
+            "--clone=false",
+        ]
+
+        try:
+            completed = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=self._FORK_CREATE_TIMEOUT_SEC,
+            )
+        except FileNotFoundError as exc:
+            # gh binary itself is missing — no fork was created.
+            raise ForkCreationError(
+                "gh CLI not found — install from https://cli.github.com "
+                "or use LocalTarballForkCreator",
+                phase="gh-check",
+                fork_name=None,
+                original_error=exc,
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            # Subprocess may have started the fork before timing out —
+            # admin must verify + clean up manually.
+            log.warning(
+                "gh repo fork timed out after %ss for tenant %s (fork %s)",
+                self._FORK_CREATE_TIMEOUT_SEC,
+                tenant_id,
+                fork_name,
+            )
+            raise ForkCreationError(
+                f"gh repo fork timed out after "
+                f"{self._FORK_CREATE_TIMEOUT_SEC}s — fork MAY exist, check "
+                f"manually",
+                phase="gh-repo-fork",
+                fork_name=fork_name,
+                original_error=exc,
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            stderr_text = exc.stderr or ""
+            # WARNING — never silently swallow stderr (spec §9 Yellow note).
+            log.warning(
+                "gh repo fork failed for tenant %s (fork %s): exit=%s stderr=%s",
+                tenant_id,
+                fork_name,
+                exc.returncode,
+                stderr_text.strip() or "<empty>",
+            )
+            raise ForkCreationError(
+                f"gh repo fork failed with exit={exc.returncode}",
+                phase="gh-repo-fork",
+                fork_name=fork_name,
+                original_error=exc,
+                stderr=stderr_text,
+            ) from exc
+
+        stdout = (completed.stdout or "").strip()
+        # `gh repo fork` typically prints a single URL on success; if the
+        # user already has the fork, gh may print nothing / a notice.
+        # Extract the first https URL we find; fall back to the computed
+        # URL when gh was quiet.
+        url = _extract_first_url(stdout)
+        if url:
+            return url
+        # Fallback — synthesize the most likely URL so callers always
+        # have a usable return value.
+        owner = self.org or "<user>"
+        return f"https://github.com/{owner}/{fork_name}"
+
+
+def _extract_first_url(text: str) -> Optional[str]:
+    """Return the first http(s) URL substring in ``text``, else None."""
+    if not text:
+        return None
+    m = re.search(r"https?://\S+", text)
+    if not m:
+        return None
+    return m.group(0).rstrip(".,;)")
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +604,37 @@ def _plugin_yaml_text(tenant_id: str, brand_name: str, industry: str) -> str:
     )
 
 
+def _fork_local_config_yaml_text(tenant_id: str) -> str:
+    """Render the exact ``.autoservice/config.local.yaml`` body that a
+    tenant fork must carry (T8B.2, spec §3.4).
+
+    Two required keys:
+
+    - ``deployment_mode: tenant`` — flips ``get_deployment_mode()`` at
+      startup to the tenant-mode branch (spec §3.1).
+    - ``tenant_id: <tid>`` — resolves ``tenant_root()`` and scopes
+      middleware routing (spec §3.2/§3.3).
+
+    Without both, the fork refuses to boot (assert in ``bootstrap``).
+
+    ``tenant_id`` is validated against a conservative identifier regex
+    (``[A-Za-z0-9_][A-Za-z0-9_\\-]*``) — prevents yaml-injection and
+    matches the fork repo naming constraint.
+    """
+    if not tenant_id or not tenant_id.strip():
+        raise ValueError("tenant_id must be a non-empty string")
+    stripped = tenant_id.strip()
+    if not _VALID_TENANT_ID_RE.match(stripped):
+        raise ValueError(
+            f"tenant_id {stripped!r} is not a valid identifier — "
+            f"must match {_VALID_TENANT_ID_RE.pattern}"
+        )
+    return (
+        "deployment_mode: tenant\n"
+        f"tenant_id: {stripped}\n"
+    )
+
+
 def _readme_text(tenant_id: str, cfg: dict) -> str:
     """Render the plugin README shipped inside the tarball."""
     brand = cfg.get("brand_name") or tenant_id
@@ -520,17 +790,27 @@ def write_publish_record(
 
 
 def write_runbook(tenant_id: str, archive_path: Path) -> Path:
-    """Emit the manual fork-and-deploy runbook (§6.5)."""
+    """Emit the manual fork-and-deploy runbook (§6.5 + spec §3.4 fix).
+
+    Step ordering matters — the fork refuses to boot without
+    ``.autoservice/config.local.yaml``, so the "Write config.local.yaml"
+    step MUST appear between "Extract content" and "Verify".  Tests
+    pin this ordering explicitly (``test_runbook_config_step_ordering``).
+    """
     PUBLISHED_ROOT.mkdir(parents=True, exist_ok=True)
     runbook_path = PUBLISHED_ROOT / f"{tenant_id}_PUBLISH_RUNBOOK.md"
     timestamp = _now_iso()
+    # Hand-rolled yaml body (T8B.2) — same source as what
+    # `_fork_local_config_yaml_text` returns, so tests can assert the
+    # runbook snippet matches the helper output line-for-line.
+    config_yaml = _fork_local_config_yaml_text(tenant_id)
     body = f"""# Tenant {tenant_id} Publish Runbook
 
 Generated by /api/onboard/publish on {timestamp}.
 
 Artifact: `{archive_path}`
 
-## Manual steps (M1)
+## Manual steps
 
 1. **Fork main repo**:
 
@@ -553,19 +833,40 @@ Artifact: `{archive_path}`
 
    This drops the plugin under `plugins/{tenant_id}/`.
 
-4. **Verify**:
+4. **Write `.autoservice/config.local.yaml`** (required — fork boot asserts
+   `deployment_mode` + `tenant_id`, spec §3.1 / §3.4):
+
+   ```bash
+   mkdir -p .autoservice
+   cat > .autoservice/config.local.yaml <<'EOF'
+{config_yaml.rstrip()}
+EOF
+   ```
+
+   ⚠️ **Overwrite warning**: `cat > ...` replaces any existing
+   `.autoservice/config.local.yaml`. If you have already customized it
+   (e.g. cc_pool tuning, Claude endpoints), merge manually — copy the two
+   lines above into the existing file instead of overwriting.
+
+5. **Verify**:
 
    ```bash
    make check
    make run-web
    ```
 
-5. **Smoke test**:
+6. **Smoke test**:
 
    Visit `http://localhost:8000/chat` (fork is single-tenant — **no**
    `/t/<tenant_id>/` prefix).
 
-6. **Deploy** per infra docs.
+7. **Deploy** per infra docs.
+
+   ⚠️ **HTTPS required**: production deployments MUST terminate TLS.
+   Magic-link auth tokens transit as cookies; plain HTTP leaks them to
+   any network observer (spec §5.5 / §9 risk row). Configure your
+   reverse proxy / load balancer to redirect HTTP → HTTPS and set
+   `Secure; HttpOnly` on the session cookie.
 
 ---
 
