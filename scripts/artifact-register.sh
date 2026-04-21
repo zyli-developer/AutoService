@@ -84,12 +84,16 @@ fi
 # 生成唯一 ID：找当前类型的最大序号 +1
 MAX_SEQ=$(python3 -c "
 import json, sys
-with open('$REGISTRY') as f:
+with open('$REGISTRY', encoding='utf-8') as f:
     data = json.load(f)
 max_seq = 0
 for a in data['artifacts']:
     if a['type'] == '$TYPE':
-        seq = int(a['id'].split('-')[-1])
+        tail = a['id'].split('-')[-1]
+        try:
+            seq = int(tail)
+        except ValueError:
+            continue
         if seq > max_seq:
             max_seq = seq
 print(max_seq)
@@ -123,7 +127,7 @@ fi
 # 写入 registry.json
 python3 -c "
 import json
-with open('$REGISTRY') as f:
+with open('$REGISTRY', encoding='utf-8') as f:
     data = json.load(f)
 data['artifacts'].append({
     'id': '$ARTIFACT_ID',
@@ -137,7 +141,7 @@ data['artifacts'].append({
     'updated_at': '$NOW',
     'related_ids': $RELATED_JSON
 })
-with open('$REGISTRY', 'w') as f:
+with open('$REGISTRY', 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 "
 
@@ -147,12 +151,12 @@ if [[ -n "$RELATED" ]]; then
     for rel_id in "${REL_IDS[@]}"; do
         python3 -c "
 import json
-with open('$REGISTRY') as f:
+with open('$REGISTRY', encoding='utf-8') as f:
     data = json.load(f)
 for a in data['artifacts']:
     if a['id'] == '$rel_id' and '$ARTIFACT_ID' not in a.get('related_ids', []):
         a.setdefault('related_ids', []).append('$ARTIFACT_ID')
-with open('$REGISTRY', 'w') as f:
+with open('$REGISTRY', 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 "
     done

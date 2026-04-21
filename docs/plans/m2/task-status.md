@@ -25,6 +25,7 @@
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
 | 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `5d614bc` |
+| 2026-04-21 | Phase 1-4 artifact backfill (option B) | eval-doc-005/006/007/008, test-diff-004/005/006/007/008/009/010, e2e-report-003 |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -41,6 +42,21 @@
 3. 更新 [cc-prompt-templates.md §6](cc-prompt-templates.md#6-) 把 artifact 要求 inline 到 subagent dispatch 模板
 
 **触发点**：batch-6 subagent 完成通知 → 立即启动 Phase 1-3 回填 + 改模板 → 再 dispatch batch-7
+
+### Backfill 完成记录 (2026-04-21)
+
+Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册到 `.artifacts/registry.json`**：
+
+| 类别 | IDs | 覆盖范围 |
+|------|-----|---------|
+| eval-doc (4) | `eval-doc-005`, `eval-doc-006`, `eval-doc-007`, `eval-doc-008` | 每 Phase 一份 summary (P1/P2/P3/P4) |
+| test-diff (7) | `test-diff-004`..`test-diff-010` | 每 batch 一份 (batch-0..batch-6) |
+| e2e-report (1) | `e2e-report-003` | Phase 1-4 整体回归 (207 pass / 0 fail) |
+
+**双向关联**：每个 eval-doc 关联对应 batch 的 test-diff；e2e-report-003 关联 4 个 eval-doc。
+**E2E 结果**：`207 passed, 0 failed` (见 `.artifacts/e2e-reports/e2e-m2-phase1-4.md`)。
+**扩展**：Phase 4 (batch-6, 33 tests) 也纳入回填范围，与 batch-6 backfill 合并一次性产出。
+**前向合规**：batch-7 起每个 subagent dispatch prompt 强制 inline `.artifacts/` 产出 + 注册（已在 [cc-prompt-templates.md §6.2](cc-prompt-templates.md#62-artifact-产出约束dev-loop-skills-兼容) 落实）。
 
 ## 更新规则
 
