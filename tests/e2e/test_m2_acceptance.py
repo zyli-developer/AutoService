@@ -293,7 +293,7 @@ def test_step_3_fork_make_setup_and_run_web(fork_base_url):
 
 # ── Step 4: Browser /chat responds ──────────────────────────────────────
 def test_step_4_browser_chat_endpoint_responds(fork_base_url):
-    """Spec §8 step 4 — GET /chat on fork responds (no /t/<tid>/ prefix)."""
+    """Spec §8 step 4 — GET /chat on fork responds (no /tenant/<tid>/ prefix)."""
     import httpx as requests
 
     try:
