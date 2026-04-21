@@ -336,6 +336,7 @@ class ModelRouter:
         )
 
     _TRIAGE_AGENT_TIMEOUT = 2.0
+    _POOL_ACQUIRE_TIMEOUT = 0.5
 
     async def _triage_agent_one_shot(self, message: str, tenant_id: str | None) -> str:
         """One-shot triage agent call returning the raw [分流] line."""
@@ -343,7 +344,7 @@ class ModelRouter:
         pool = await get_pool()
         prompt = self._render_triage_prompt(message)
         async with pool.acquire(role="triage", tenant_id=tenant_id,
-                                 timeout=self._TRIAGE_AGENT_TIMEOUT) as inst:
+                                 timeout=self._POOL_ACQUIRE_TIMEOUT) as inst:
             await inst.client.query(prompt, session_id=f"triage-{id(inst)}")
             parts: list[str] = []
             from claude_agent_sdk.types import AssistantMessage, ResultMessage
