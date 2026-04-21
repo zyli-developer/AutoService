@@ -15,6 +15,7 @@
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.4
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 
 interface ChatEntry {
   id: string;
@@ -44,6 +45,7 @@ export function ChatTab({
   fetcher = typeof window !== 'undefined' ? window.fetch.bind(window) : fetch,
   endpoint = '/api/admin/chat',
 }: ChatTabProps = {}) {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<ChatEntry[]>([]);
@@ -111,10 +113,11 @@ export function ChatTab({
         style={{ flexShrink: 0, padding: '12px 20px', borderBottom: '1px solid var(--color-border, #eee)' }}
       >
         <div className="im-main-title" style={{ fontWeight: 600 }}>
-          Chat
+          {t('admin.tenant.chat.title')}
         </div>
         <div className="im-main-subtitle" style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)' }}>
-          {/* Spec §4.4 — tenant admin talks to `_local_admin` */}
+          {/* Spec §4.4 — tenant admin talks to `_local_admin`. The agent
+              identifier is a system handle, not a localized label. */}
           _local_admin
         </div>
       </div>
@@ -132,7 +135,7 @@ export function ChatTab({
             data-testid="chat-empty-state"
             style={{ color: 'var(--color-text-secondary, #888)', fontSize: 13 }}
           >
-            Ask _local_admin anything…
+            {t('admin.tenant.chat.placeholder')}
           </div>
         ) : (
           history.map((entry) => (
@@ -186,7 +189,7 @@ export function ChatTab({
           type="text"
           data-testid="chat-input"
           aria-label="chat message"
-          placeholder="Ask _local_admin anything…"
+          placeholder={t('admin.tenant.chat.placeholder')}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}

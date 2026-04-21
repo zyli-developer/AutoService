@@ -49,7 +49,7 @@ export function LeaderboardTable() {
         <div className="im-empty" data-testid="leaderboard-empty">{t('admin.dashboard.leaderboard.empty')}</div>
       )}
       {!loading && !error && rows.length > 0 && (
-        <div className="cs-table-wrap">
+        <div className="cs-table-wrap as-cards">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--color-border)', textAlign: 'left' }}>

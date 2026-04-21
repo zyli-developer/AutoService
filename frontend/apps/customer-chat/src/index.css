@@ -395,8 +395,12 @@ html, body, #root {
   bottom: 24px;
   width: 52px;
   height: 52px;
+  border: none;
   border-radius: 50%;
   background: var(--indigo-500);
+  color: #fff;
+  font: inherit;
+  font-size: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -979,7 +983,7 @@ html, body, #root {
     justify-content: center;
     align-items: center;
     padding: 10px 0 6px;
-    background: #F7F4EE;
+    background: var(--color-bg-surface-tinted);
     border-radius: 18px 18px 0 0;
     position: relative;
     z-index: 2;

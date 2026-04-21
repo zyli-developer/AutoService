@@ -7,7 +7,6 @@ import { IMTitlebar } from './IMTitlebar';
 import { IMSidebar } from './IMSidebar';
 import { ConversationFeed } from './ConversationFeed';
 import { CopilotView } from './CopilotView';
-import { IMInput } from './IMInput';
 import { NoTenantFallback } from './NoTenantFallback';
 
 /**
@@ -195,10 +194,13 @@ export function WorkspacePage() {
         </div>
       )}
       <div className="im-body">
-        <div
+        <button
+          type="button"
           className={`im-side-backdrop ${navOpen ? 'on' : ''}`}
           data-testid="im-side-backdrop"
+          aria-label={t('operator.topbar.close_menu')}
           onClick={() => setNavOpen(false)}
+          tabIndex={navOpen ? 0 : -1}
         />
         <IMSidebar onLogout={logout} open={navOpen} onPick={() => setNavOpen(false)} />
         <main
@@ -214,26 +216,31 @@ export function WorkspacePage() {
           </section>
           <div className="op-chat-wrap">
             {activeCopilotConvId ? (
-              <>
-                <CopilotView
-                  send={send}
-                  panelOpen={panelOpen}
-                  onTogglePanel={() => setPanelOpen((v) => !v)}
-                  onOpenSheet={() => setSheetOpen(true)}
-                  onCloseSheet={() => setSheetOpen(false)}
-                  onBackToList={backToList}
-                />
-                <IMInput send={send} />
-              </>
+              <CopilotView
+                send={send}
+                panelOpen={panelOpen}
+                onTogglePanel={() => setPanelOpen((v) => !v)}
+                onOpenSheet={() => setSheetOpen(true)}
+                onCloseSheet={() => setSheetOpen(false)}
+                onBackToList={backToList}
+              />
             ) : (
               <ChatEmpty />
             )}
+            {/* Sheet backdrop must live INSIDE .op-chat-wrap so it shares
+                the stacking context that the wrap's `transform` creates.
+                Otherwise the wrap stacks at z:auto in .im-main while the
+                backdrop sits at z:55 in the outer context — pushing the
+                whole chat-wrap (including the sheet) underneath the blur. */}
+            <button
+              type="button"
+              className={`im-sheet-backdrop ${sheetOpen ? 'on' : ''}`}
+              data-testid="im-sheet-backdrop"
+              aria-label={t('operator.chat.close_detail')}
+              onClick={() => setSheetOpen(false)}
+              tabIndex={sheetOpen ? 0 : -1}
+            />
           </div>
-          <div
-            className={`im-sheet-backdrop ${sheetOpen ? 'on' : ''}`}
-            data-testid="im-sheet-backdrop"
-            onClick={() => setSheetOpen(false)}
-          />
         </main>
       </div>
     </div>

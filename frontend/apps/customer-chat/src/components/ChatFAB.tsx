@@ -10,14 +10,14 @@ export function ChatFAB({ onClick, highlight = false }: ChatFABProps) {
   return (
     <>
       <div className="web-fab-call">📞</div>
-      <div
+      <button
+        type="button"
         className={`web-fab ${highlight ? 'highlight' : ''}`}
         onClick={onClick}
-        role="button"
         aria-label={t('customer.chat.open')}
       >
         💬
-      </div>
+      </button>
     </>
   );
 }

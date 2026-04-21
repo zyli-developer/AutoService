@@ -169,7 +169,7 @@ export function AdminRail({
   const tenant = tenantId ?? 'mystore';
 
   return (
-    <aside className={`cs-rail ${open ? 'open' : ''}`} data-testid="admin-rail" aria-label="Admin navigation">
+    <aside className={`cs-rail ${open ? 'open' : ''}`} data-testid="admin-rail" aria-label={t('admin.nav.aria_label')}>
       <div className="cs-brand">
         <div className="cs-brand-wm">{'OneSyn · autoservice'}</div>
         <div className="cs-brand-sub">{'admin / v1.1'}</div>

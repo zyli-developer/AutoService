@@ -28,6 +28,7 @@
  */
 import { useEffect, type ReactNode } from 'react';
 import { useSessionMode } from '@autoservice/shared';
+import { useTranslation } from '@autoservice/i18n';
 
 interface AuthGateProps {
   children: ReactNode;
@@ -50,6 +51,7 @@ function Splash({
   message?: string;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="auth-splash"
@@ -62,11 +64,10 @@ function Splash({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 16,
-        color: '#24292f',
+        color: 'var(--color-text)',
         background:
-          'radial-gradient(ellipse at top, #f0f6ff 0%, #ffffff 60%)',
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          'radial-gradient(ellipse at top, var(--indigo-50) 0%, var(--color-bg) 60%)',
+        fontFamily: 'var(--font-sans)',
       }}
     >
       <div
@@ -75,17 +76,17 @@ function Splash({
           width: 48,
           height: 48,
           borderRadius: '50%',
-          border: '3px solid #d0d7de',
-          borderTopColor: variant === 'error' ? '#cf222e' : '#0969da',
+          border: '3px solid var(--color-border)',
+          borderTopColor: variant === 'error' ? 'var(--color-danger)' : 'var(--color-primary)',
           animation:
             variant === 'loading'
               ? 'authgate-spin 0.9s linear infinite'
               : 'none',
         }}
       />
-      <div style={{ fontWeight: 600, fontSize: 18 }}>AutoService</div>
+      <div style={{ fontWeight: 600, fontSize: 18 }}>{t('admin.splash.brand')}</div>
       {message ? (
-        <div style={{ color: '#57606a', fontSize: 13 }}>{message}</div>
+        <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>{message}</div>
       ) : null}
       {variant === 'error' && onRetry ? (
         <button
@@ -95,14 +96,14 @@ function Splash({
           style={{
             marginTop: 4,
             padding: '6px 14px',
-            borderRadius: 6,
-            border: '1px solid #d0d7de',
-            background: '#ffffff',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-bg-surface)',
             cursor: 'pointer',
             fontSize: 13,
           }}
         >
-          Retry
+          {t('admin.splash.retry')}
         </button>
       ) : null}
       <style>{'@keyframes authgate-spin{to{transform:rotate(360deg)}}'}</style>
@@ -111,6 +112,7 @@ function Splash({
 }
 
 export function AuthGate({ children, redirector }: AuthGateProps) {
+  const { t } = useTranslation();
   const { data, loading, error, refetch } = useSessionMode();
   const shouldRedirect = !loading && !error && (!data || !data.authenticated);
 
@@ -133,7 +135,7 @@ export function AuthGate({ children, redirector }: AuthGateProps) {
     return (
       <Splash
         variant="error"
-        message="Session check failed — retry to continue."
+        message={t('admin.splash.session_error')}
         onRetry={refetch}
       />
     );
@@ -142,7 +144,7 @@ export function AuthGate({ children, redirector }: AuthGateProps) {
   if (!data || !data.authenticated) {
     // While the useEffect fires, keep showing Splash so anon content never
     // flashes (spec §9).
-    return <Splash variant="loading" message="Redirecting to sign-in…" />;
+    return <Splash variant="loading" message={t('admin.splash.redirecting')} />;
   }
 
   return <>{children}</>;

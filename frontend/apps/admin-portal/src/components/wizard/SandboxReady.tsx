@@ -119,7 +119,7 @@ export function SandboxReady() {
         </div>
         <div className="cs-row">
           <span>{t('admin.wizard.sandbox.team')}</span>
-          <span style={{ color: '#000' }}>
+          <span style={{ color: 'var(--color-text-ink)' }}>
             {t('admin.wizard.sandbox.team_count', { count: 5 })}
           </span>
         </div>

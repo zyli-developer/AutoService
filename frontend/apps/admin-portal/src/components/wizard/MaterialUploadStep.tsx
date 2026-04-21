@@ -53,7 +53,7 @@ export function MaterialUploadStep({ tenantId, onGenerated }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '12px 0' }}>
           <div>
             <label style={{ fontSize: 11, color: 'var(--silver)', marginBottom: 4, display: 'block' }}>{t('admin.wizard.upload.brand')}</label>
-            <input data-testid="input-brand" value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="MyAwesomeStore"
+            <input data-testid="input-brand" value={brandName} onChange={e => setBrandName(e.target.value)} placeholder={t('admin.wizard.upload.brand_placeholder')}
               style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--oat)', borderRadius: 9, fontSize: 13, fontFamily: 'var(--font-sans)', outline: 'none' }} />
           </div>
           <div>

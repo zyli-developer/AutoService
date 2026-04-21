@@ -28,6 +28,64 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
+/**
+ * Turn a backend `customerId` into a friendlier display label.
+ * - `cust_90375191`     → `#90375191`
+ * - `alice@mystore.com` → `alice@mystore.com` (looks like email already)
+ * - `user-abc123`       → `user-abc123` (passes through)
+ * The translation provides the surrounding noun (e.g. "客户" / "Customer")
+ * via `customerLabel` so the noun is i18n'd while the id stays raw.
+ */
+function customerHandle(customerId: string | undefined): string {
+  if (!customerId) return '—';
+  // Standard backend `cust_` / `customer_` prefix → strip and # it.
+  const stripped = customerId.replace(/^(cust|customer)_/i, '');
+  if (stripped !== customerId) return `#${stripped}`;
+  return customerId;
+}
+
+/**
+ * Pick a 1-character avatar initial that's useful for humans.
+ * Skips `cust_`-style prefixes so the badge shows the meaningful ID character
+ * (e.g. `cust_9037…` → `9`, not `c`). Email-shaped IDs use the local-part's
+ * first letter.
+ */
+function avatarInitial(conv: Conversation): string {
+  const cid = conv.customerId ?? conv.id;
+  const stripped = cid.replace(/^(cust|customer)_/i, '');
+  const localPart = stripped.split('@')[0] || stripped;
+  return (localPart[0] || '?').toUpperCase();
+}
+
+/**
+ * Render an ISO timestamp as a short, human-friendly relative time —
+ * "刚刚 / 5 分钟前 / 2 小时前 / 3 天前 / 04-15"-style.
+ * Falls back to the raw value if the input can't be parsed (defensive: we
+ * don't want a date parse error to blank the entire card meta row).
+ */
+function formatRelativeTime(
+  iso: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (!iso) return '—';
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return iso;
+  const diff = Date.now() - ts;
+  const sec = Math.round(diff / 1000);
+  if (sec < 45) return t('operator.feed.time.now');
+  const min = Math.round(diff / 60000);
+  if (min < 60) return t('operator.feed.time.minutes_ago', { count: min });
+  const hr = Math.round(diff / 3600000);
+  if (hr < 24) return t('operator.feed.time.hours_ago', { count: hr });
+  const day = Math.round(diff / 86400000);
+  if (day < 7) return t('operator.feed.time.days_ago', { count: day });
+  // Older than a week — show the date as MM-DD (locale-neutral).
+  const d = new Date(ts);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}-${dd}`;
+}
+
 interface ConversationFeedProps {
   squadId: string | null;
   onCardClick?: (conversationId: string) => void;
@@ -36,6 +94,7 @@ interface ConversationFeedProps {
 export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps) {
   const { t } = useTranslation();
   const conversations = useOperatorStore((s) => s.conversations);
+  const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
 
   const sorted = useMemo(() => {
     return Object.values(conversations)
@@ -47,7 +106,7 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
 
   function avatarText(conv: Conversation): string {
     if (conv.mode === 'takeover') return avatarHumanLabel;
-    return (conv.customerId || conv.id).slice(0, 1).toUpperCase();
+    return avatarInitial(conv);
   }
 
   if (sorted.length === 0) {
@@ -76,10 +135,11 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
           const slaPct = status === 'escalation-pending' ? 42 : status === 'human-takeover' ? 58 : 88;
           const slaKind = slaPct < 50 ? 'danger' : slaPct < 75 ? 'warn' : 'ok';
 
+          const isActive = conv.id === activeCopilotConvId;
           return (
             <div
               key={conv.id}
-              className={`op-card ${isUrgent ? 'urgent' : ''}`}
+              className={`op-card ${isActive ? 'active' : ''} ${isUrgent ? 'urgent' : ''}`}
               data-testid={`conv-card-${conv.id}`}
               onClick={() => onCardClick?.(conv.id)}
               style={{ opacity: status === 'closed' ? 0.6 : 1 }}
@@ -87,12 +147,12 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
               <div className="op-card-hd">
                 <div className={`op-av ${avatarKind(conv)}`}>{avatarText(conv)}</div>
                 <div className="op-card-who">
-                  <div className="op-agent-nm">
+                  <div className="op-agent-nm" data-testid="conv-customer-id">
                     <span className="op-dot" />
-                    {conv.squadId || 'agent'}
+                    {t('operator.feed.customer_label', { handle: customerHandle(conv.customerId) })}
                   </div>
-                  <div className="op-cust" data-testid="conv-customer-id">
-                    #{conv.id.slice(0, 6)} · {conv.customerId}
+                  <div className="op-cust">
+                    {t('operator.feed.handled_by', { squad: conv.squadId || 'agent' })}
                   </div>
                 </div>
                 <span className={`op-status st-${statusKind}`} data-testid="conv-status-tag">
@@ -108,7 +168,9 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
               )}
               <div className="op-card-foot">
                 <div className="op-stats">
-                  <span data-testid="conv-timestamp">{conv.lastActivityTs}</span>
+                  <span data-testid="conv-timestamp" title={conv.lastActivityTs}>
+                    {formatRelativeTime(conv.lastActivityTs, t)}
+                  </span>
                 </div>
                 <div className="op-sla">
                   <span style={{ fontSize: 10.5 }}>SLA</span>

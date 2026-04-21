@@ -4,6 +4,7 @@ import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
 import { HijackButton } from './HijackButton';
 import { TakeoverIndicator } from './TakeoverIndicator';
+import { IMInput } from './IMInput';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
@@ -194,10 +195,10 @@ function SidePanel({ conv, onCloseSheet }: { conv: any; onCloseSheet?: () => voi
 
   return (
     <aside className="op-side-panel">
-      <div
+      <button
+        type="button"
         className="op-sheet-handle"
         onClick={onCloseSheet}
-        role="button"
         aria-label={t('operator.chat.close_detail')}
         data-testid="op-sheet-handle"
       />
@@ -307,6 +308,7 @@ export function CopilotView({
               <StreamMessage key={msg.id} msg={msg} />
             ))}
           </div>
+          <IMInput send={send} />
         </div>
         <SidePanel conv={conv} onCloseSheet={onCloseSheet} />
       </div>
