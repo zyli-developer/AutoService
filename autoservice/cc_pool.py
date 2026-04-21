@@ -331,6 +331,15 @@ async def create_cc_client(
 # CCPool — thin subclass with query() convenience
 # ---------------------------------------------------------------------------
 
+class StickyTenantMismatch(RuntimeError):
+    """Raised when acquire_sticky is called with a tenant_id that differs
+    from the one already sticky-bound to the same chat_id.
+
+    Signals a logic bug upstream (conversation's tenant ownership mutated
+    mid-flight). Callers should log + degrade, not retry.
+    """
+
+
 #: Set of roles :meth:`CCPool.acquire` accepts. "customer" is the default
 #: M1 path (preserved for back-compat); "dream" routes through the
 #: module-level :data:`_dream_pool` (spec §2.5 + CON-06). Extending this set
@@ -396,6 +405,74 @@ class CCPool(AsyncPool[CCClient]):
         self._role_pool_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task | None = None
         self._closed = False
+
+    async def acquire_sticky(
+        self, key: str, *, tenant_id: str | None = None,
+        timeout: float | None = None,
+    ) -> PooledInstance[CCClient]:
+        """Acquire a sticky-bound instance for (chat_id, tenant_id).
+
+        Extends :meth:`AsyncPool.acquire_sticky` with tenant-aware soul
+        injection:
+
+          * Already bound + tenant matches → return as-is (parent handles
+            access-counter/last-access bookkeeping).
+          * Already bound + tenant differs → :class:`StickyTenantMismatch`.
+          * Not bound → delegate to ``super()`` for the bind, then recycle
+            the instance so it carries the tenant's customer soul + KB
+            tool. If recycle swaps the instance, update the sticky binding
+            to point at the new one so subsequent acquires return it.
+          * ``tenant_id=None`` → delegate to ``super()`` unchanged (no
+            recycle, preserves pre-existing M1 semantics).
+
+        Recycle failures are caught and logged; the uncycled warm instance
+        is still returned so the caller can degrade rather than crash. The
+        instance is stamped with ``_pool_tenant_id = None`` in that case so
+        a subsequent same-tenant acquire won't mistakenly skip recycle.
+        """
+        existing = self._sticky_bindings.get(key)  # noqa: SLF001
+        if existing is not None and existing.instance.is_healthy:
+            bound = getattr(existing.instance, "_pool_tenant_id", None)
+            if bound == tenant_id:
+                return await super().acquire_sticky(key, timeout=timeout)
+            raise StickyTenantMismatch(
+                f"conv {key!r} already sticky-bound to tenant={bound!r}, "
+                f"refusing rebind to tenant={tenant_id!r}"
+            )
+
+        # Fresh bind — let parent do its locking + checkout + binding.
+        instance = await super().acquire_sticky(key, timeout=timeout)
+
+        if tenant_id is None:
+            return instance
+
+        try:
+            instance = await _recycle_instance_for_tenant(
+                self, instance,
+                role="customer", tenant_id=tenant_id,
+            )
+            # Belt-and-suspenders: the helper stamps on the rebuild path,
+            # but the noop path (same tenant already stamped) returns the
+            # instance unchanged. An explicit override-level stamp makes
+            # the post-condition unconditional.
+            instance._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
+            # If recycle swapped the instance, update the sticky binding
+            # so future acquires see the new one.
+            async with self._sticky_lock:  # noqa: SLF001
+                binding = self._sticky_bindings.get(key)  # noqa: SLF001
+                if binding is not None and binding.instance is not instance:
+                    binding.instance = instance
+        except Exception:
+            log.exception(
+                "acquire_sticky: recycle failed for key=%s tenant=%s; "
+                "returning uncycled instance (degraded)",
+                key, tenant_id,
+            )
+            # Best-effort stamp so future same-tenant acquires don't
+            # mistakenly skip recycle on a degraded instance.
+            instance._pool_tenant_id = None  # type: ignore[attr-defined]
+
+        return instance
 
     async def query(self, prompt: str, **kwargs: Any) -> AsyncIterator[Message]:
         """Convenience: checkout, query, yield messages, checkin."""
