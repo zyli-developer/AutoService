@@ -554,7 +554,8 @@
       "created_at": "2026-04-21T00:23:08Z",
       "updated_at": "2026-04-21T00:23:08Z",
       "related_ids": [
-        "test-diff-010"
+        "test-diff-010",
+        "e2e-report-003"
       ]
     },
     {
@@ -668,7 +669,8 @@
       "related_ids": [
         "eval-doc-005",
         "eval-doc-006",
-        "eval-doc-007"
+        "eval-doc-007",
+        "eval-doc-008"
       ]
     }
   ]
