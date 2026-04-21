@@ -717,6 +717,113 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     asyncio.create_task(_run_and_mark())
 
 
+@api_router.get("/dream/status")
+async def dream_status(tenant_id: str) -> Any:
+    """Return this tenant's current Dream scheduler status (M3 T4S.3b).
+
+    Consumed by admin-portal's Dream status band (M3.5 D1 UI).  Exposes
+    the ``should_trigger`` reason_code vocabulary so the UI can render
+    idle / cool_down / running / never_active / scheduled / manual_off
+    states without scraping logs.
+
+    Query params:
+        tenant_id: required, non-empty.
+
+    Response::
+
+        {
+          "tenant_id": "<tid>",
+          "running": bool,
+          "reason_code": "<snake_case>",
+          "last_run_summary": {
+              "run_id": "<id>",
+              "started_at": "<iso>",
+              "ended_at": "<iso|null>",
+              "status": "<running|completed|failed>",
+              "proposals_emitted": int,
+              "tool_calls": int,
+          } | null,
+          "next_eligible_at": "<iso|null>"
+        }
+
+    An unknown tenant / no-config returns reason_code='never_active' with
+    200 OK — the UI treats it as "waiting for first dream tick".
+    """
+    from fastapi.responses import JSONResponse
+    if not tenant_id or not tenant_id.strip():
+        return JSONResponse(
+            status_code=422, content={"error": "tenant_id required"},
+        )
+
+    tid = tenant_id.strip()
+
+    # Pull last run summary (may be empty — return null gracefully)
+    runs_conn = _get_dream_runs_db()
+    last_runs = dream_runs.list_runs(runs_conn, tid, limit=1)
+    last_run_summary = None
+    if last_runs:
+        r = last_runs[0]
+        last_run_summary = {
+            "run_id": r.get("id"),
+            "started_at": r.get("started_at"),
+            "ended_at": r.get("ended_at"),
+            "status": r.get("status"),
+            "proposals_emitted": r.get("proposals_emitted"),
+            "tool_calls": r.get("tool_calls"),
+        }
+
+    # Compute reason_code via should_trigger — reuse scheduler's tenant config
+    # reader + memory_pool to avoid duplicating config-parsing logic.
+    from autoservice import dream_scheduler as _ds
+    from autoservice.memory_pool import MemoryPool
+
+    # Lightweight tenant_dream_cfg read (inlined — scheduler's reader is a
+    # bound method; we only need the 'dream' sub-dict).
+    tenant_dream_cfg: dict = {}
+    try:
+        from pathlib import Path
+        import json as _json
+        cfg_path = (
+            Path(".autoservice/sandbox") / tid / "config.json"
+        )
+        if cfg_path.exists():
+            with cfg_path.open(encoding="utf-8") as f:
+                full_cfg = _json.load(f)
+            tenant_dream_cfg = full_cfg.get("dream") or {}
+    except Exception:  # noqa: BLE001
+        tenant_dream_cfg = {}
+
+    mempool = MemoryPool()
+    try:
+        _is_running, reason = _ds.should_trigger(
+            tid, tenant_dream_cfg, mempool, runs_conn,
+        )
+    except Exception:  # noqa: BLE001
+        # Defensive: any scheduler-side error → treat as never_active so UI
+        # shows a sane default instead of a 500.
+        reason = "never_active"
+        _is_running = False
+
+    # "running" is distinct from is_running-eligible — check the DB directly
+    # for an in-flight row.
+    running_now = False
+    try:
+        for r in dream_runs.list_runs(runs_conn, tid, limit=5):
+            if r.get("status") == "running":
+                running_now = True
+                break
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "tenant_id": tid,
+        "running": running_now,
+        "reason_code": reason,
+        "last_run_summary": last_run_summary,
+        "next_eligible_at": None,  # reserved for M3.5 — compute from cool_down window
+    }
+
+
 @api_router.get("/dream/runs")
 async def dream_runs_list(tenant_id: str, limit: int = 20) -> dict[str, Any]:
     """Return this tenant's Dream run history, newest first (spec §2.6).
@@ -916,30 +1023,122 @@ def _persist_dream_config(tenant_id: str, params: dict[str, Any]) -> bool:
 
 
 @api_router.post("/management/chat")
-async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
-    """M2 — route management chat to ``_master`` customer agent via cc_pool.
+async def management_chat(
+    request: Request,
+    message: str | None = None,
+    tenant_id: str | None = None,
+) -> Any:
+    """M2 — route management chat to ``_master`` customer agent OR dialog handler.
 
-    Spec §2.7: the platform admin A talks to the ``_master`` tenant's
-    customer agent. Admin tool set (``list_tenants``, ``read_proposals``,
-    ``approve_proposal`` …) is deferred to M3 per eval-doc-019; M2 just
-    routes text through on plain customer soul.
+    T3S.7-hotfix (2026-04-21 · dream-ui-augmentation §4 P2 backend carve-out):
+    * Accept input via BOTH JSON body ``{message, tenant_id}`` AND query params
+      (backward-compat with legacy tests).
+    * Route dialog commands (``/dream-config``, ``/rules``, ``/status``,
+      ``/approve``, ``/reject``, ``/rollback``, ``@Dream Engine``) to the
+      legacy dialog handler; this preserves the stateful DreamConfigSession
+      that the dream-ui P2 im-block renderer consumes.
+    * Non-command messages continue to route to ``_master`` customer agent
+      via cc_pool (M2 behaviour, spec §2.7).
+    * Response schema unified: ``{role, content, reply?, blocks?}`` — dialog
+      commands return role+content; cc_pool path returns reply; optional
+      ``blocks[]`` populates ManagementChat im-block renderer (M3.5 D3 UI).
 
-    Request body::
-
-        {"message": "<str>"}
+    Fixes ``tests/dream_scheduler/test_refresh.py`` 2 failing tests
+    (``/dream-config`` confirm → scheduler.refresh) that were stuck on
+    422 because dialog commands hit the cc_pool-only endpoint.
 
     Responses:
-        * 200  ``{"reply": "<text>"}``
-        * 422  ``{"error": "message required"}`` for missing/empty/non-str
-        * 503  ``{"error": "cc_pool unavailable (POOL_MODE disabled?)"}``
+        * 200 ``{role, content, reply?, blocks?}``
+        * 422 ``{"error": "message required"}``
+        * 503 ``{"error": "cc_pool unavailable ..."}``
     """
-    message = body.get("message") if isinstance(body, dict) else None
+    # Accept from body OR query params
+    body_json = None
+    if message is None:
+        try:
+            body_json = await request.json()
+        except Exception:  # noqa: BLE001
+            body_json = None
+        if isinstance(body_json, dict):
+            message = body_json.get("message")
+            tenant_id = tenant_id or body_json.get("tenant_id")
+
     if not isinstance(message, str) or not message.strip():
         return JSONResponse(
             status_code=422,
             content={"error": "message required"},
         )
 
+    text = message.strip()
+    tid = tenant_id if isinstance(tenant_id, str) else "default"
+
+    # ── Dialog routing: dream-config session + slash commands ──
+    # (preserves M1 legacy behaviour for active dialogs; dream-ui P2 expands
+    # this layer to return im-block structured responses)
+    dream_session = _get_dream_session()
+    if dream_session.is_active():
+        response, done = dream_session.process_input(text)
+        if done:
+            from autoservice.dream_config_dialog import (
+                DreamConfigStep,
+                on_config_confirmed,
+            )
+            if dream_session.step == DreamConfigStep.DONE:
+                _persist_dream_config(tid, dream_session.get_config())
+                on_config_confirmed(tid)
+        return {"role": "dream_engine", "content": response}
+
+    from autoservice.dream_config_dialog import is_dream_config_trigger
+    if is_dream_config_trigger(text):
+        prompt = dream_session.start()
+        return {"role": "dream_engine", "content": prompt}
+
+    # Slash commands — delegate to legacy dispatcher for now;
+    # M3.5 P2 UI will extend individual handlers to return blocks[].
+    if text.startswith("/rules"):
+        try:
+            from autoservice.rules import handle_rules_command
+            args = text[len("/rules"):].strip().split() or ["show"]
+            result = handle_rules_command(args)
+            return {"role": "dream_engine", "content": f"📋 规则配置:\n{result}"}
+        except Exception as exc:  # noqa: BLE001
+            return {"role": "dream_engine", "content": f"规则查询失败: {exc}"}
+
+    if text.startswith("/status"):
+        try:
+            from autoservice.sla_aggregator import MetricType, WindowSize
+            agg = _get_sla()
+            lines = ["📊 系统状态:"]
+            for metric in MetricType:
+                p = agg.get_percentiles(metric, WindowSize.FIVE_MIN)
+                val = f"P50={p.p50:.1f}" if p.p50 is not None else "无数据"
+                lines.append(f"  · {metric.value}: {val} (n={p.count})")
+            router, monitor = _get_canary()
+            status = router.status()
+            lines.append(f"  · 灰度: {status['percentage']}%")
+            check = monitor.check()
+            lines.append(f"  · 监控: {check['status']}")
+            return {"role": "dream_engine", "content": "\n".join(lines)}
+        except Exception as exc:  # noqa: BLE001
+            return {"role": "dream_engine", "content": f"状态查询失败: {exc}"}
+
+    if text.startswith("/approve"):
+        return _handle_approve_command(text)
+    if text.startswith("/reject"):
+        return _handle_reject_command(text)
+
+    if text.startswith("/rollback"):
+        try:
+            router, _ = _get_canary()
+            router.rollback()
+            return {
+                "role": "dream_engine",
+                "content": f"⏪ 已回滚灰度发布，当前阶段: {router.status()['percentage']}%",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {"role": "dream_engine", "content": f"回滚失败: {exc}"}
+
+    # ── Non-command message: cc_pool _master customer routing (M2 §2.7) ──
     from autoservice.cc_pool import get_pool
 
     pool = await get_pool()
@@ -949,27 +1148,27 @@ async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
             content={"error": "cc_pool unavailable (POOL_MODE disabled?)"},
         )
 
-    # Spec §2.7 — ManagementChat routes to _master.
-    # tenant_id is passed verbatim even though the current customer path in
-    # cc_pool.acquire ignores it (see cc_pool.py:440-444); the kwarg pins
-    # the spec contract at the call site for the soul-injection PR.
     reply_parts: list[str] = []
     async with pool.acquire(role="customer", tenant_id="_master") as instance:
-        await instance.client.query(message)
+        await instance.client.query(text)
         async for msg in instance.client.receive_response():
-            # Extract text blocks from the SDK Message envelope. The SDK
-            # returns a Message with a ``.content`` list of blocks that
-            # have a ``.text`` attribute for text blocks; we join them.
             content = getattr(msg, "content", None)
             if isinstance(content, str):
                 reply_parts.append(content)
             elif isinstance(content, list):
                 for block in content:
-                    text = getattr(block, "text", None)
-                    if isinstance(text, str):
-                        reply_parts.append(text)
+                    bt = getattr(block, "text", None)
+                    if isinstance(bt, str):
+                        reply_parts.append(bt)
 
-    return {"reply": "".join(reply_parts)}
+    # Unified response shape: reply (default) + optional blocks.
+    # M3.5 D3 UI will consume blocks when non-empty.
+    return {
+        "role": "dream_engine",
+        "content": "".join(reply_parts),  # default content (same as reply)
+        "reply": "".join(reply_parts),
+        "blocks": [],  # empty in M3; extended per handler in M3.5
+    }
 
 
 @api_router.post("/management/chat-legacy")
