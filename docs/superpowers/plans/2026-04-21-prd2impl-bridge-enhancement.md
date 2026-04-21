@@ -420,7 +420,11 @@ Baseline error pre-change:
 
 ---
 
-### Task 5: B2 — verify degraded run produces expected tasks
+### Task 5: B2 — verify degraded run produces expected tasks (DEFERRED)
+
+**Status:** Deferred per user direction (2026-04-21). Claude Code loads skill from plugin cache, not from the source repo — in-session runtime validation requires either a sync step or a plugin release. To keep the feature branch unblocked, Task 5 merges with Task 11 into a single real-execution validation batch to run after AutoService M3 quiescence.
+
+B2 logic lives in `skill-3-task-gen/SKILL.md` §Step 1.5 as of commit `dee3fbc` (and §Step 1 bridge at `a7d861b`); expected output shapes live in `tests/expected/b2-degraded/`. When reactivated, follow the original steps below.
 
 **Files:** None modified; validation only.
 
@@ -1142,9 +1146,9 @@ Only populated for role=design-spec. Expected fixtures updated to match."
 
 ---
 
-### Task 11: E2E — chat-markdown spec against ground truth (DEFERRED)
+### Task 11: E2E — chat-markdown spec against ground truth (DEFERRED, batched with Task 5)
 
-**Status:** Deferred per user direction (2026-04-21). E2E runs in AutoService repo would risk mixing prd2impl validation with ongoing M3 work. Execute this task only after AutoService M3 line is quiescent.
+**Status:** Deferred per user direction (2026-04-21). Merges with Task 5 into a single real-execution validation batch. E2E runs in AutoService repo would risk mixing prd2impl validation with ongoing M3 work. Execute this batch only after AutoService M3 line is quiescent AND plugin cache has been synced (or a new prd2impl version released) so Claude Code actually loads the modified skill.
 
 When reactivated, the steps are:
 
