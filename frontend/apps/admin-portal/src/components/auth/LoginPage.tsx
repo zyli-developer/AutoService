@@ -16,7 +16,7 @@
  *
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §4.5, §5.2
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 
 interface LoginPageProps {
@@ -31,11 +31,52 @@ interface LoginPageProps {
 
 type Status = 'idle' | 'submitting' | 'sent' | 'error';
 
+interface DevMode {
+  enabled: boolean;
+  personas: string[];
+  tenants: string[];
+}
+
 export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [devMode, setDevMode] = useState<DevMode>({
+    enabled: false,
+    personas: [],
+    tenants: [],
+  });
+  const [devEmail, setDevEmail] = useState('');
+  const [devTenantChoice, setDevTenantChoice] = useState<string>('');
+  const [devTenantCustom, setDevTenantCustom] = useState('');
+  const [devStatus, setDevStatus] = useState<
+    'idle' | 'submitting' | 'error'
+  >('idle');
+  const [devError, setDevError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/dev-mode')
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((data) => {
+        if (cancelled) return;
+        if (data && data.enabled) {
+          setDevMode({
+            enabled: true,
+            personas: Array.isArray(data.personas) ? data.personas : [],
+            tenants: Array.isArray(data.tenants) ? data.tenants : [],
+          });
+        }
+      })
+      .catch(() => {
+        // Probe failure is non-fatal — just keep the dev panel hidden.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isLocalhost =
     typeof window !== 'undefined' &&
@@ -206,6 +247,140 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
             </button>
           </form>
         )}
+
+        {devMode.enabled ? (
+          <div
+            data-testid="dev-login-panel"
+            style={{
+              marginTop: 24,
+              paddingTop: 16,
+              borderTop: '1px dashed #d0d7de',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: '#8c959f',
+                textTransform: 'uppercase',
+                letterSpacing: 0.6,
+                marginBottom: 10,
+              }}
+            >
+              Developer quick login
+            </div>
+
+            <label
+              htmlFor="dev-login-email"
+              style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}
+            >
+              Persona email
+            </label>
+            <input
+              id="dev-login-email"
+              list="dev-login-personas"
+              type="email"
+              data-testid="dev-login-email"
+              value={devEmail}
+              onChange={(e) => setDevEmail(e.target.value)}
+              disabled={devStatus === 'submitting'}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                fontSize: 13,
+                border: '1px solid #d0d7de',
+                borderRadius: 6,
+                boxSizing: 'border-box',
+              }}
+            />
+            <datalist id="dev-login-personas">
+              {devMode.personas.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+
+            <label
+              htmlFor="dev-login-tenant-select"
+              style={{ display: 'block', fontSize: 12, fontWeight: 600, marginTop: 10, marginBottom: 4 }}
+            >
+              Tenant scope
+            </label>
+            <select
+              id="dev-login-tenant-select"
+              data-testid="dev-login-tenant-select"
+              value={devTenantChoice}
+              onChange={(e) => setDevTenantChoice(e.target.value)}
+              disabled={devStatus === 'submitting'}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                fontSize: 13,
+                border: '1px solid #d0d7de',
+                borderRadius: 6,
+                boxSizing: 'border-box',
+                background: '#ffffff',
+              }}
+            >
+              <option value="">None (tier-0 master)</option>
+              {devMode.tenants.map((tid) => (
+                <option key={tid} value={tid}>{tid}</option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+
+            {devTenantChoice === '__custom__' ? (
+              <input
+                data-testid="dev-login-tenant-custom"
+                type="text"
+                placeholder="tenant_id"
+                value={devTenantCustom}
+                onChange={(e) => setDevTenantCustom(e.target.value)}
+                disabled={devStatus === 'submitting'}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: 13,
+                  border: '1px solid #d0d7de',
+                  borderRadius: 6,
+                  boxSizing: 'border-box',
+                  marginTop: 6,
+                }}
+              />
+            ) : null}
+
+            {devError ? (
+              <div
+                data-testid="dev-login-error"
+                role="alert"
+                style={{ marginTop: 10, color: '#cf222e', fontSize: 12 }}
+              >
+                {devError}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              data-testid="dev-login-submit"
+              disabled={devStatus === 'submitting'}
+              onClick={() => {
+                // Submit logic arrives in Task 7.
+              }}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #6639ba',
+                borderRadius: 6,
+                background: devStatus === 'submitting' ? '#c5b0e5' : '#6639ba',
+                color: '#ffffff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: devStatus === 'submitting' ? 'wait' : 'pointer',
+              }}
+            >
+              {devStatus === 'submitting' ? 'Signing in…' : 'Dev login →'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
