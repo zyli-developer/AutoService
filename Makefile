@@ -15,7 +15,7 @@ run-channel:
 
 run-web:
 	@mkdir -p .autoservice/logs
-	uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
+	AUTH_DEV_MODE=1 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
 # Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
 run-gateway:

@@ -28,33 +28,39 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
-/**
- * Turn a backend `customerId` into a friendlier display label.
- * - `cust_90375191`     → `#90375191`
- * - `alice@mystore.com` → `alice@mystore.com` (looks like email already)
- * - `user-abc123`       → `user-abc123` (passes through)
- * The translation provides the surrounding noun (e.g. "客户" / "Customer")
- * via `customerLabel` so the noun is i18n'd while the id stays raw.
- */
-function customerHandle(customerId: string | undefined): string {
-  if (!customerId) return '—';
-  // Standard backend `cust_` / `customer_` prefix → strip and # it.
-  const stripped = customerId.replace(/^(cust|customer)_/i, '');
-  if (stripped !== customerId) return `#${stripped}`;
-  return customerId;
+const CUSTOMER_ANIMALS = [
+  'tiger', 'otter', 'fox', 'panda', 'owl', 'wolf', 'koala', 'lynx',
+  'heron', 'dolphin', 'rabbit', 'falcon', 'badger', 'seal', 'ibex', 'stork',
+  'raven', 'marten', 'gecko', 'puma',
+];
+
+const CUSTOMER_TRAITS = [
+  'curious', 'bold', 'calm', 'quirky', 'wise', 'gentle', 'clever', 'witty',
+  'cheerful', 'humble', 'swift', 'steady', 'keen', 'merry', 'mellow', 'bright',
+  'nimble', 'earnest', 'candid', 'sunny',
+];
+
+function hash32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
 }
 
-/**
- * Pick a 1-character avatar initial that's useful for humans.
- * Skips `cust_`-style prefixes so the badge shows the meaningful ID character
- * (e.g. `cust_9037…` → `9`, not `c`). Email-shaped IDs use the local-part's
- * first letter.
- */
+export function customerDisplayName(customerId: string | undefined): string {
+  if (!customerId) return '—';
+  const h = hash32(customerId);
+  const animal = CUSTOMER_ANIMALS[h % CUSTOMER_ANIMALS.length];
+  const trait = CUSTOMER_TRAITS[Math.floor(h / CUSTOMER_ANIMALS.length) % CUSTOMER_TRAITS.length];
+  return `customer-${animal}-${trait}`;
+}
+
 function avatarInitial(conv: Conversation): string {
-  const cid = conv.customerId ?? conv.id;
-  const stripped = cid.replace(/^(cust|customer)_/i, '');
-  const localPart = stripped.split('@')[0] || stripped;
-  return (localPart[0] || '?').toUpperCase();
+  const name = customerDisplayName(conv.customerId ?? conv.id);
+  const animal = name.split('-')[1] || '?';
+  return animal[0].toUpperCase();
 }
 
 /**
@@ -149,7 +155,7 @@ export function ConversationFeed({ squadId, onCardClick }: ConversationFeedProps
                 <div className="op-card-who">
                   <div className="op-agent-nm" data-testid="conv-customer-id">
                     <span className="op-dot" />
-                    {t('operator.feed.customer_label', { handle: customerHandle(conv.customerId) })}
+                    {t('operator.feed.customer_label', { handle: customerDisplayName(conv.customerId) })}
                   </div>
                   <div className="op-cust">
                     {t('operator.feed.handled_by', { squad: conv.squadId || 'agent' })}

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1642,6 +1643,12 @@ AUTH_SESSION_COOKIE = "auth_session"
 # Path for dev-mode magic link log (spec §5.6). One JSONL line per send.
 _DEV_MAIL_LOG = Path(".autoservice") / "logs" / "auth-devmail.jsonl"
 
+# Dev auto-login gate (spec docs/superpowers/specs/2026-04-21-dev-auto-login-design.md).
+# Read ONCE at import — changing AUTH_DEV_MODE at runtime requires a process
+# restart (tests monkeypatch this attribute directly). Production images must
+# never set this variable.
+DEV_MODE_ENABLED = os.environ.get("AUTH_DEV_MODE") == "1"
+
 
 _auth_db_conn = None
 
@@ -1703,6 +1710,69 @@ def _smtp_host() -> str:
     smtp_cfg = auth_cfg.get("smtp") or {}
     host = smtp_cfg.get("host") or ""
     return str(host).strip()
+
+
+def _load_dev_personas() -> list[str]:
+    """Read ``auth.dev.personas`` from config.local.yaml.
+
+    Returns ``["admin@dev.local"]`` when the file, the section, or the list is
+    missing so the frontend combobox always has at least one suggestion.
+    """
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        return ["admin@dev.local"]
+
+    dev_cfg = ((cfg.get("auth") or {}).get("dev") or {})
+    personas = dev_cfg.get("personas")
+    if not isinstance(personas, list) or not personas:
+        return ["admin@dev.local"]
+    return [str(p).strip() for p in personas if str(p).strip()]
+
+
+def _scan_dev_tenants() -> list[str]:
+    """Enumerate tenants for the dev-login dropdown.
+
+    Always starts with ``_master`` (the tier-0 built-in, not a plugin
+    directory). Then scans ``plugins/*/config.json`` and collects each
+    plugin's ``tenant_id`` (falling back to the directory name when
+    ``config.json`` is absent / unreadable / missing the field).
+
+    ``_example`` is filtered out unless ``auth.dev.tenant_include_examples``
+    is truthy in config.local.yaml.
+    """
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        cfg = {}
+    dev_cfg = ((cfg.get("auth") or {}).get("dev") or {})
+    include_examples = bool(dev_cfg.get("tenant_include_examples"))
+
+    tenants: list[str] = ["_master"]
+    plugins_dir = Path("plugins")
+    if plugins_dir.is_dir():
+        for child in sorted(plugins_dir.iterdir()):
+            if not child.is_dir():
+                continue
+            cfg_path = child / "config.json"
+            tid: str | None = None
+            if cfg_path.is_file():
+                try:
+                    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    raw = data.get("tenant_id")
+                    if isinstance(raw, str) and raw.strip():
+                        tid = raw.strip()
+                except (json.JSONDecodeError, OSError):
+                    tid = None
+            if tid is None:
+                tid = child.name
+            if tid == "_example" and not include_examples:
+                continue
+            if tid not in tenants:
+                tenants.append(tid)
+    return tenants
 
 
 def _dev_log_magic_link(
@@ -1936,6 +2006,109 @@ async def auth_logout(request: Request) -> Response:
         key=AUTH_SESSION_COOKIE,
         value="",
         max_age=0,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Dev auto-login endpoints (spec 2026-04-21-dev-auto-login-design.md)
+# ---------------------------------------------------------------------------
+#
+# Both endpoints are gated by DEV_MODE_ENABLED (env AUTH_DEV_MODE=1).
+# When disabled:
+#   • GET /auth/dev-mode  → {"enabled": false}   (200)
+#   • POST /auth/dev-login → 404 Not Found
+# When enabled, see tasks 2 and 4 in the plan for the full behaviour.
+
+
+@api_router.get("/auth/dev-mode")
+async def auth_dev_mode() -> Any:
+    """Public probe: tells the frontend whether dev-login is available.
+
+    When disabled, the response is intentionally minimal — no personas or
+    tenants are leaked. When enabled, returns personas (from config.local.yaml)
+    and tenants (scanned from plugins/).
+    """
+    if not DEV_MODE_ENABLED:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "personas": _load_dev_personas(),
+        "tenants": _scan_dev_tenants(),
+    }
+
+
+@api_router.post("/auth/dev-login")
+async def auth_dev_login(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> Any:
+    """Dev-only: mint a session cookie directly, bypassing magic-link.
+
+    Gated by AUTH_DEV_MODE=1. When disabled, returns 404 to avoid advertising
+    the endpoint's existence in production.
+
+    Request body::
+
+        {"email": "<admin@dev.local>", "tenant_id": "<tid>" | null}
+
+    Response (200)::
+
+        {"ok": true, "redirect": "/admin" | "/t/<tid>/admin"}
+
+    Side effects on success:
+      • Row inserted into the ``sessions`` table.
+      • ``auth_session`` cookie set (HttpOnly, SameSite=Lax, Max-Age = session TTL).
+      • WARNING log line + JSONL audit entry.
+    """
+    if not DEV_MODE_ENABLED:
+        return JSONResponse(status_code=404, content={"error": "not found"})
+
+    email_raw = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(email_raw, str) or not email_raw.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "email is required"},
+        )
+    email = email_raw.strip().lower()
+
+    tenant_raw = payload.get("tenant_id") if isinstance(payload, dict) else None
+    if isinstance(tenant_raw, str):
+        tenant_id = tenant_raw.strip() or None
+    else:
+        tenant_id = None
+
+    conn = _get_auth_db()
+    session_id = auth.create_session(conn, email, tenant_id=tenant_id)
+
+    sid_prefix = session_id[:8]
+    logger.warning(
+        "[dev-login] minted session for %s (tenant=%s, sid=%s…)",
+        email, tenant_id or "_master", sid_prefix,
+    )
+    _DEV_MAIL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    audit_record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "kind": "dev_login",
+        "email": email,
+        "tenant_id": tenant_id,
+        "session_id_prefix": sid_prefix,
+    }
+    with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(audit_record, ensure_ascii=False) + "\n")
+
+    redirect_target = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+
+    response = JSONResponse(content={"ok": True, "redirect": redirect_target})
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=AUTH_SESSION_COOKIE,
+        value=session_id,
+        max_age=auth.DEFAULT_SESSION_TTL_DAYS * 24 * 60 * 60,
         httponly=True,
         samesite="lax",
         secure=secure_flag,

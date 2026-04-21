@@ -411,7 +411,7 @@
   "customer.csat.label.5": "非常好",
   "customer.chat.expand": "展开聊天",
   "customer.chat.collapse": "收起聊天",
-  "operator.feed.customer_label": "客户 {{handle}}",
+  "operator.feed.customer_label": "{{handle}}",
   "operator.feed.handled_by": "由 {{squad}} 处理",
   "operator.feed.time.now": "刚刚",
   "operator.feed.time.minutes_ago": "{{count}} 分钟前",

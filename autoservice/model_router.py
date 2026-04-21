@@ -7,11 +7,50 @@ Routes incoming messages to the appropriate agent pool (fast/slow model)
 based on intent classification and confidence scoring.
 """
 
+import asyncio
+import re
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Literal, Optional, Protocol
+
+
+_TRIAGE_OUTPUT_RE = re.compile(
+    r"\[分流\]\s*"
+    r"意图\s*:\s*(?P<intent>\w+)\s*\|\s*"
+    r"信心\s*:\s*(?P<confidence>[\w.]+)\s*\|\s*"
+    r"路由\s*:\s*(?P<route_to>\w+)\s*\|\s*"
+    r"原因\s*:\s*(?P<reason>[^|]+?)"
+    r"(?:\s*\|\s*摘要\s*:\s*\"(?P<summary>[^\"]+)\")?"
+    r"\s*$"
+)
+
+_TRIAGE_ROLE_WHITELIST = {"customer", "lead", "translate"}
+
+
+def _parse_triage_output(raw: str) -> dict | None:
+    """Parse a triage agent [分流] line. Returns dict or None on hard failure."""
+    if not raw:
+        return None
+    for line in raw.splitlines():
+        m = _TRIAGE_OUTPUT_RE.match(line.strip())
+        if m:
+            try:
+                conf = float(m.group("confidence"))
+            except (TypeError, ValueError):
+                conf = 0.5
+            role = m.group("route_to")
+            if role not in _TRIAGE_ROLE_WHITELIST:
+                role = "customer"
+            return {
+                "intent": m.group("intent"),
+                "confidence": max(0.0, min(1.0, conf)),
+                "route_to": role,
+                "reason": m.group("reason").strip(),
+                "summary": m.group("summary"),
+            }
+    return None
 
 
 class Intent(str, Enum):
@@ -53,6 +92,24 @@ class RoutingDecision:
     needs_operator_notice: bool = False  # 中/低信心时通知 operator
 
 
+@dataclass
+class TriageDecision:
+    """Triage-and-route decision consumed by triage_and_route()."""
+    role: str                          # customer | lead | translate
+    confidence: float
+    source: Literal["fastpath", "triage_agent", "fallback"]
+    intent: str
+    detected_language: Optional[str]
+    summary: Optional[str] = None
+    needs_operator_notice: bool = False
+    previous_role: Optional[str] = None
+
+
+class _TenantConfigLike(Protocol):
+    supported_languages: list[str]
+    tenant_id: str
+
+
 # ---------------------------------------------------------------------------
 # Config loader
 # ---------------------------------------------------------------------------
@@ -88,10 +145,30 @@ class FastClassifier:
     augmented by the triage agent (haiku) for semantic understanding.
     """
 
+    _tenant_cache: dict[str | None, "FastClassifier"] = {}
+
     def __init__(self):
         config = _load_config()
         self._intents = config["intents"]
         self._thresholds = config["confidence"]
+
+    @classmethod
+    def for_tenant(cls, tenant_id: str | None) -> "FastClassifier":
+        """Return a tenant-scoped classifier (cached per tenant_id)."""
+        if tenant_id in cls._tenant_cache:
+            return cls._tenant_cache[tenant_id]
+        from autoservice.tenant_triage_config import load_classify_intent_config
+        cfg = load_classify_intent_config(tenant_id)
+        inst = cls.__new__(cls)
+        inst._intents = cfg["intents"]
+        inst._thresholds = cfg["confidence"]
+        cls._tenant_cache[tenant_id] = inst
+        return inst
+
+    @classmethod
+    def clear_tenant_cache(cls) -> None:
+        """Test hook — drop cached per-tenant classifiers."""
+        cls._tenant_cache.clear()
 
     def classify(self, message: str, detected_language: Optional[str] = None) -> ClassificationResult:
         """Classify a message into an intent with confidence score."""
@@ -184,6 +261,155 @@ class ModelRouter:
             priority=result.priority,
             classification=result,
             needs_operator_notice=needs_notice,
+        )
+
+    async def route_message(
+        self,
+        message: str,
+        *,
+        tenant_config: "_TenantConfigLike",
+        conv_id: Optional[str] = None,
+        engine: Any = None,
+    ) -> TriageDecision:
+        """Full triage-and-route decision (async).
+
+        Steps:
+          1. detect language (heuristic + langdetect)
+          2. if language NOT IN tenant.supported_languages → translate
+          3. FastClassifier with tenant overlay
+          4. drift probe (engine.incr_drift / reset_drift)
+          5. decide fastpath vs fallback (Task 8 will replace the fallback branch
+             with a real triage-agent call)
+        """
+        from autoservice.language_detect import detect_language
+
+        tenant_id = getattr(tenant_config, "tenant_id", None)
+        supported = set(getattr(tenant_config, "supported_languages", []) or ["zh", "en"])
+
+        lang = detect_language(message)
+        if lang != "unknown" and lang not in supported:
+            return TriageDecision(
+                role="translate",
+                confidence=0.9,
+                source="fastpath",
+                intent="language_barrier",
+                detected_language=lang,
+                needs_operator_notice=False,
+            )
+
+        clf = FastClassifier.for_tenant(tenant_id)
+        fast = clf.classify(message, detected_language=lang if lang != "unknown" else None)
+
+        previous_role: Optional[str] = None
+        drift_count = 0
+        if conv_id is not None and engine is not None:
+            state = await engine.get_triage_state(conv_id)
+            previous_role = state.get("active_role")
+            if previous_role and previous_role != fast.route_to.value:
+                drift_count = await engine.incr_drift(conv_id)
+            else:
+                await engine.reset_drift(conv_id)
+
+        threshold = self._thresholds["medium"]
+        can_fastpath = (
+            fast.confidence >= threshold
+            and (previous_role is None or drift_count < 2 or fast.confidence < threshold)
+        )
+        if can_fastpath:
+            return TriageDecision(
+                role=fast.route_to.value,
+                confidence=fast.confidence,
+                source="fastpath",
+                intent=fast.intent.value,
+                detected_language=lang if lang != "unknown" else None,
+                summary=fast.summary,
+                needs_operator_notice=fast.confidence < self._thresholds["high"],
+                previous_role=previous_role,
+            )
+
+        return await self._invoke_triage_agent(
+            message=message,
+            tenant_id=tenant_id,
+            fast_result=fast,
+            detected_language=lang if lang != "unknown" else None,
+            previous_role=previous_role,
+        )
+
+    _TRIAGE_AGENT_TIMEOUT = 2.0
+    _POOL_ACQUIRE_TIMEOUT = 0.5
+
+    async def _triage_agent_one_shot(self, message: str, tenant_id: str | None) -> str:
+        """One-shot triage agent call returning the raw [分流] line."""
+        from autoservice.cc_pool import get_pool
+        pool = await get_pool()
+        prompt = self._render_triage_prompt(message)
+        async with pool.acquire(role="triage", tenant_id=tenant_id,
+                                 timeout=self._POOL_ACQUIRE_TIMEOUT) as inst:
+            await inst.client.query(prompt, session_id=f"triage-{id(inst)}")
+            parts: list[str] = []
+            from claude_agent_sdk.types import AssistantMessage, ResultMessage
+            async for msg in inst.client.receive_response():
+                if isinstance(msg, AssistantMessage) and msg.content:
+                    for b in msg.content:
+                        if hasattr(b, "text"):
+                            parts.append(b.text)
+                elif isinstance(msg, ResultMessage) and msg.result:
+                    parts.append(msg.result)
+            return "".join(parts).strip()
+
+    def _render_triage_prompt(self, message: str) -> str:
+        return (
+            "按 soul 指定格式输出单行 [分流] 判断。只回一行,不要多余说明。\n\n"
+            f"客户消息: {message}"
+        )
+
+    async def _invoke_triage_agent(
+        self,
+        message: str,
+        tenant_id: str | None,
+        fast_result: "ClassificationResult",
+        detected_language: str | None,
+        previous_role: str | None,
+    ) -> TriageDecision:
+        # asyncio.CancelledError is a BaseException (not Exception) and will
+        # propagate naturally through this try/except block — intentional.
+        try:
+            raw = await asyncio.wait_for(
+                self._triage_agent_one_shot(message, tenant_id),
+                timeout=self._TRIAGE_AGENT_TIMEOUT,
+            )
+        except (asyncio.TimeoutError, Exception):
+            return TriageDecision(
+                role=fast_result.route_to.value,
+                confidence=fast_result.confidence,
+                source="fallback",
+                intent=fast_result.intent.value,
+                detected_language=detected_language,
+                summary=(fast_result.summary or message[:100]),
+                needs_operator_notice=True,
+                previous_role=previous_role,
+            )
+        parsed = _parse_triage_output(raw)
+        if parsed is None:
+            return TriageDecision(
+                role=fast_result.route_to.value,
+                confidence=fast_result.confidence,
+                source="fallback",
+                intent=fast_result.intent.value,
+                detected_language=detected_language,
+                summary=(fast_result.summary or message[:100]),
+                needs_operator_notice=True,
+                previous_role=previous_role,
+            )
+        return TriageDecision(
+            role=parsed["route_to"],
+            confidence=parsed["confidence"],
+            source="triage_agent",
+            intent=parsed["intent"],
+            detected_language=detected_language,
+            summary=parsed.get("summary"),
+            needs_operator_notice=parsed["confidence"] < self._thresholds["medium"],
+            previous_role=previous_role,
         )
 
     def should_use_placeholder(self, decision: RoutingDecision) -> bool:

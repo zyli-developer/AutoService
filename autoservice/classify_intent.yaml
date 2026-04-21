@@ -5,21 +5,21 @@
 intents:
   product_inquiry:
     description: "产品/服务咨询、功能问题、使用方法"
-    keywords: ["怎么用", "功能", "支持", "how to", "feature", "support", "价格", "price"]
+    keywords: ["怎么用", "使用", "功能", "支持", "how to", "feature", "support", "user guide"]
     route_to: customer
     model_tier: slow    # 需要知识库检索
     priority: normal
 
   complaint:
     description: "投诉、不满、问题报告、退款"
-    keywords: ["投诉", "不满", "退款", "refund", "complaint", "问题", "bug", "坏了"]
+    keywords: ["投诉", "不满", "退款", "refund", "complaint", "故障", "坏了", "crash", "broken", "refuse"]
     route_to: customer
     model_tier: slow    # 需要理解上下文 + 安抚
     priority: high      # 投诉优先处理
 
   purchase_intent:
     description: "购买意向、报价、合作、试用"
-    keywords: ["买", "购买", "价格", "报价", "合作", "试用", "buy", "pricing", "demo", "trial"]
+    keywords: ["买", "购买", "价格", "报价", "合作", "试用", "buy", "pricing", "demo", "trial", "quote", "采购", "订购"]
     route_to: lead
     model_tier: slow    # 需要理解需求
     priority: high      # 商机优先

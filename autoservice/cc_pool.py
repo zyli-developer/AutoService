@@ -327,7 +327,22 @@ async def create_cc_client(
 #: is the intended extension path — add the role here, wire up pool
 #: selection in ``acquire``/``_pool_for_role``, and keep the single-source
 #: NotImplementedError message in sync.
-_KNOWN_ROLES: frozenset[str] = frozenset({"customer", "dream"})
+_KNOWN_ROLES: frozenset[str] = frozenset({"customer", "dream", "lead", "translate", "triage"})
+
+#: Per-role default sub-pool sizes for the lazy (role, tenant) sub-pools
+#: used by the triage-dispatch path (spec §2.3). Stateful roles (lead,
+#: translate) get a small warm pool; stateless triage uses size=1 since
+#: each request is independent.
+_ROLE_POOL_SIZES: dict[str, int] = {
+    "lead": 2,
+    "translate": 2,
+    "triage": 1,
+}
+
+#: Idle-timeout (seconds) after which a per-(role, tenant) sub-pool is
+#: reaped by the background reaper loop. Must be referenced as a module
+#: attribute so tests can ``monkeypatch.setattr`` it.
+_REAP_IDLE_SEC: float = 600.0
 
 
 class CCPool(AsyncPool[CCClient]):
@@ -355,6 +370,16 @@ class CCPool(AsyncPool[CCClient]):
             logger=log,
             on_sticky_release=on_sticky_release,
         )
+        # Lazy per-(role, tenant_id) sub-pools for the lead/translate/triage
+        # dispatch path (spec §2.3). Created on first acquire, reaped after
+        # ``_REAP_IDLE_SEC`` seconds of idle. Kept as instance state so each
+        # CCPool (including test-local pools) has its own isolated sub-pool
+        # table and reaper task.
+        self._role_pools: dict[tuple[str, str | None], AsyncPool[CCClient]] = {}
+        self._role_pool_last_used: dict[tuple[str, str | None], float] = {}
+        self._role_pool_lock = asyncio.Lock()
+        self._reaper_task: asyncio.Task | None = None
+        self._closed = False
 
     async def query(self, prompt: str, **kwargs: Any) -> AsyncIterator[Message]:
         """Convenience: checkout, query, yield messages, checkin."""
@@ -446,12 +471,162 @@ class CCPool(AsyncPool[CCClient]):
         if role == "dream":
             return _acquire_dream(tenant_id=tenant_id, timeout=timeout)
 
+        if role in ("lead", "translate", "triage"):
+            # Lazy per-(role, tenant_id) sub-pools. Stateful roles (lead,
+            # translate) size=2; stateless triage size=1. See spec §2.3.
+            return self._acquire_role_pool(role, tenant_id, timeout)
+
         raise NotImplementedError(
             f"cc_pool.acquire: role={role!r} is not implemented. "
-            f"Known roles: {sorted(_KNOWN_ROLES)}. "
-            "Add new roles via autoservice.cc_pool._KNOWN_ROLES and "
-            "wire a pool selector; see T3B.5 / T4B.* for examples."
+            f"Known roles: {sorted(_KNOWN_ROLES)}."
         )
+
+    # ------------------------------------------------------------------
+    # Per-(role, tenant_id) sub-pool machinery (T2 — spec §2.3)
+    # ------------------------------------------------------------------
+
+    @asynccontextmanager
+    async def _acquire_role_pool(
+        self, role: str, tenant_id: str | None, timeout: float | None,
+    ) -> AsyncIterator[PooledInstance[CCClient]]:
+        """Dispatch to a lazy ``(role, tenant_id)`` sub-pool.
+
+        Creates the sub-pool on first call, reuses it on subsequent calls,
+        and kicks off the background reaper on the very first call. The
+        sub-pool itself is an ordinary :class:`AsyncPool`; we only hold
+        the (role, tenant) → sub-pool map + a last-used timestamp for the
+        reaper.
+        """
+        # Fix 3 (defense-in-depth): refuse to spin up new sub-pools after shutdown.
+        if self._closed:
+            raise RuntimeError("CCPool is shut down")
+
+        key = (role, tenant_id)
+        async with self._role_pool_lock:
+            sub_pool = self._role_pools.get(key)
+            if sub_pool is None:
+                sub_pool = await self._create_role_pool(role, tenant_id)
+                self._role_pools[key] = sub_pool
+                if self._reaper_task is None or self._reaper_task.done():
+                    self._reaper_task = asyncio.create_task(
+                        self._reaper_loop(), name="cc-pool-role-reaper",
+                    )
+            # Fix 1: update last-used INSIDE the lock so the reaper can never
+            # observe a stale timestamp while this acquirer holds the lock.
+            self._role_pool_last_used[key] = time.monotonic()
+
+        async with sub_pool.acquire(timeout=timeout) as inst:
+            inst._pool_role = role  # type: ignore[attr-defined]
+            inst._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
+            try:
+                yield inst
+            finally:
+                # Fix 2: refresh last-used on release so a long-running acquire
+                # does not leave the timestamp frozen at checkout time, which
+                # would allow the reaper to close an in-flight sub-pool.
+                self._role_pool_last_used[key] = time.monotonic()
+
+    async def _create_role_pool(
+        self, role: str, tenant_id: str | None,
+    ) -> AsyncPool[CCClient]:
+        """Construct + start a fresh sub-pool for ``(role, tenant_id)``.
+
+        Clones the base pool config with role-specific sizing so the
+        sub-pool picks up the same CLI binary / model / permission_mode
+        as the customer pool. The factory injects the per-(role, tenant)
+        soul via :func:`create_cc_client`.
+        """
+        size = _ROLE_POOL_SIZES[role]
+        base = load_pool_config(self._config.cwd)
+        sub_cfg = replace(base, min_size=0, max_size=size, warmup_count=0)
+
+        async def _factory() -> CCClient:
+            return await create_cc_client(sub_cfg, role=role, tenant_id=tenant_id)
+
+        pool = AsyncPool[CCClient](
+            config=sub_cfg,
+            factory=_factory,
+            instance_prefix=f"cc-{role}",
+            logger=log,
+        )
+        await pool.start()
+        log.info("cc_pool: opened sub-pool role=%s tenant=%s size=%d",
+                 role, tenant_id, size)
+        return pool
+
+    async def _reaper_loop(self) -> None:
+        """Background loop that reaps idle role sub-pools.
+
+        Polls at roughly 1/10th the idle window (capped at 60 s, min 10 ms
+        so monkeypatch-shrunk windows in tests still tick in reasonable
+        time). Cancellation during :meth:`shutdown` is expected.
+        """
+        try:
+            while True:
+                await asyncio.sleep(min(60.0, max(_REAP_IDLE_SEC / 10, 0.01)))
+                await self._reap_idle_role_pools_once()
+        except asyncio.CancelledError:
+            pass
+
+    async def _reap_idle_role_pools_once(self) -> None:
+        """One sweep: close sub-pools idle longer than ``_REAP_IDLE_SEC``.
+
+        Public-ish (prefixed with underscore but directly called by the
+        test suite) so reaper behaviour can be exercised deterministically.
+        References ``_REAP_IDLE_SEC`` via the module namespace so tests can
+        ``monkeypatch.setattr`` the threshold without restarting the loop.
+        """
+        now = time.monotonic()
+        # Fix 1 (continued): Candidate scan is outside the lock (cheap read),
+        # but the actual pop + shutdown decision is retaken INSIDE the lock so
+        # a concurrent _acquire_role_pool that just refreshed the timestamp
+        # (also under the lock) cannot be evicted mid-checkout.
+        candidate_keys: list[tuple[str, str | None]] = [
+            key for key, last in list(self._role_pool_last_used.items())
+            if now - last > _REAP_IDLE_SEC
+        ]
+        for key in candidate_keys:
+            async with self._role_pool_lock:
+                # Re-check the timestamp now that we hold the lock; the
+                # acquirer may have refreshed it while we were waiting.
+                last = self._role_pool_last_used.get(key)
+                if last is None or now - last <= _REAP_IDLE_SEC:
+                    continue
+                sub_pool = self._role_pools.pop(key, None)
+                self._role_pool_last_used.pop(key, None)
+            if sub_pool is not None:
+                try:
+                    await sub_pool.shutdown()
+                    log.info("cc_pool: reaped idle sub-pool role=%s tenant=%s",
+                             key[0], key[1])
+                except Exception:
+                    log.exception("cc_pool: reaper shutdown failed for %s", key)
+
+    async def shutdown(self) -> None:
+        """Cancel the reaper, close all role sub-pools, then shut down self.
+
+        Order matters: the reaper must stop BEFORE we iterate ``_role_pools``
+        so we don't race its own shutdown of a sub-pool. After sub-pools are
+        closed we delegate to ``AsyncPool.shutdown`` for the main pool.
+        """
+        # Fix 3: mark as closed before tearing down so _acquire_role_pool
+        # refuses to recreate sub-pools after shutdown starts.
+        self._closed = True
+        if self._reaper_task is not None and not self._reaper_task.done():
+            self._reaper_task.cancel()
+            try:
+                await self._reaper_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._reaper_task = None
+        for key, sub_pool in list(self._role_pools.items()):
+            try:
+                await sub_pool.shutdown()
+            except Exception:
+                log.exception("cc_pool: sub-pool shutdown failed for %s", key)
+        self._role_pools.clear()
+        self._role_pool_last_used.clear()
+        await super().shutdown()
 
 
 # ---------------------------------------------------------------------------

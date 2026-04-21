@@ -50,6 +50,16 @@ _GATE_DOWNGRADE: frozenset[tuple[ConversationMode, ParticipantRole]] = frozenset
     }
 )
 
+# Triage state defaults (spec §3.1)
+_TRIAGE_DEFAULTS: dict[str, Any] = {
+    "active_role": None,
+    "cc_instance_id": None,
+    "detected_language": None,
+    "drift_counter": 0,
+    "triage_mode": "drift",
+}
+_TRIAGE_KEY = "triage"
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -171,6 +181,48 @@ class LocalEngine:
         new = dataclasses.replace(old, updated_at=_now(), **kwargs)
         self._conversations[conv_id] = new
         return new
+
+    # ---------- Triage state (spec §3.1) ----------
+
+    async def get_triage_state(self, conversation_id: str) -> dict[str, Any]:
+        """Return the conversation's triage state with defaults filled in."""
+        conv = self._get_conv(conversation_id)
+        stored = dict(conv.metadata.get(_TRIAGE_KEY, {}))
+        out = dict(_TRIAGE_DEFAULTS)
+        out.update(stored)
+        return out
+
+    def _patch_triage_state_unlocked(self, conversation_id: str, **fields: Any) -> None:
+        """Apply triage field updates without acquiring the per-conv lock.
+
+        Callers MUST already hold ``self._get_lock(conversation_id)`` before
+        invoking this method.  Raises ``KeyError`` for unknown fields.
+        """
+        unknown = set(fields) - set(_TRIAGE_DEFAULTS)
+        if unknown:
+            raise KeyError(f"Unknown triage field(s): {sorted(unknown)}")
+        conv = self._get_conv(conversation_id)
+        new_meta = dict(conv.metadata)
+        triage = dict(new_meta.get(_TRIAGE_KEY, {}))
+        triage.update(fields)
+        new_meta[_TRIAGE_KEY] = triage
+        self._update_conv(conversation_id, metadata=new_meta)
+
+    async def update_triage_state(self, conversation_id: str, **fields: Any) -> None:
+        """Patch-update triage state fields. Unknown fields raise KeyError."""
+        async with self._get_lock(conversation_id):
+            self._patch_triage_state_unlocked(conversation_id, **fields)
+
+    async def incr_drift(self, conversation_id: str) -> int:
+        """Increment drift_counter and return the new value (serialized per conv)."""
+        async with self._get_lock(conversation_id):
+            state = await self.get_triage_state(conversation_id)
+            new_value = state["drift_counter"] + 1
+            self._patch_triage_state_unlocked(conversation_id, drift_counter=new_value)
+        return new_value
+
+    async def reset_drift(self, conversation_id: str) -> None:
+        await self.update_triage_state(conversation_id, drift_counter=0)
 
     def _next_seq(self, conv_id: str) -> int:
         self._seq[conv_id] = self._seq.get(conv_id, 0) + 1
