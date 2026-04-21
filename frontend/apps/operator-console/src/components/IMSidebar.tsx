@@ -3,6 +3,8 @@ import { useOperatorStore } from '../store/operatorStore';
 
 interface IMSidebarProps {
   onLogout: () => void;
+  open?: boolean;
+  onPick?: () => void;
 }
 
 const InboxIcon = () => (
@@ -31,7 +33,7 @@ const BellIcon = () => (
   </svg>
 );
 
-export function IMSidebar({ onLogout }: IMSidebarProps) {
+export function IMSidebar({ onLogout, open, onPick }: IMSidebarProps) {
   const { t } = useTranslation();
   const operatorId = useOperatorStore((s) => s.operatorId);
   const squads = useOperatorStore((s) => s.squads);
@@ -45,8 +47,13 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
   const totalConvs = Object.keys(conversations).length;
   const operatorDisplay = operatorId ?? t('operator.sidebar.default_operator');
 
+  const pickSquad = (id: string | null) => {
+    setActiveSquad(id as any);
+    onPick?.();
+  };
+
   return (
-    <aside className="im-sidebar" data-testid="im-sidebar">
+    <aside className={`im-sidebar ${open ? 'open' : ''}`} data-testid="im-sidebar">
       <div className="im-brand">
         <div className="im-brand-wm">{'OneSyn · autoservice'}</div>
         <div className="im-brand-sub">{'operator / v1.1'}</div>
@@ -67,7 +74,7 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
         <li
           className={`im-nav-item ${!activeSquadId ? 'active' : ''}`}
           data-testid="channel-all"
-          onClick={() => setActiveSquad(null as any)}
+          onClick={() => pickSquad(null)}
         >
           <InboxIcon />
           <span>{t('operator.sidebar.all_conversations')}</span>
@@ -80,7 +87,7 @@ export function IMSidebar({ onLogout }: IMSidebarProps) {
               key={squadId}
               className={`im-nav-item ${activeSquadId === squadId ? 'active' : ''}`}
               data-testid={`channel-${squadId}`}
-              onClick={() => setActiveSquad(squadId)}
+              onClick={() => pickSquad(squadId)}
             >
               <SquadIcon />
               <span>{squadId}</span>

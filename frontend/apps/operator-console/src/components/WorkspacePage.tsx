@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useTenantId } from '@autoservice/shared';
 import { useOperatorStore } from '../store/operatorStore';
@@ -102,6 +102,9 @@ function useNotificationSound() {
   }, [count, playSound]);
 }
 
+const isMobile = () =>
+  typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
+
 export function WorkspacePage() {
   const { t } = useTranslation();
   const tenantId = useTenantId();
@@ -109,8 +112,39 @@ export function WorkspacePage() {
   const wsStatus = useOperatorStore((s) => s.wsStatus);
   const logout = useOperatorStore((s) => s.logout);
   const openCopilot = useOperatorStore((s) => s.openCopilot);
+  const closeCopilot = useOperatorStore((s) => s.closeCopilot);
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const operatorId = useOperatorStore((s) => s.operatorId);
+
+  const [navOpen, setNavOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'chat'>(
+    activeCopilotConvId ? 'chat' : 'list',
+  );
+  const [panelOpen, setPanelOpen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('as-op-panel');
+      if (saved === 'on') return true;
+      if (saved === 'off') return false;
+    } catch {
+      /* noop */
+    }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('as-op-panel', panelOpen ? 'on' : 'off');
+    } catch {
+      /* noop */
+    }
+  }, [panelOpen]);
+
+  // If the store opens/closes a conv externally, keep the mobile view in sync.
+  useEffect(() => {
+    if (activeCopilotConvId && isMobile()) setView('chat');
+    if (!activeCopilotConvId) setView('list');
+  }, [activeCopilotConvId]);
 
   // Build the WS URL with tenant context. If no tenant is present we fall
   // back to an empty string and skip the connection — see NoTenantFallback.
@@ -137,11 +171,18 @@ export function WorkspacePage() {
       ts: new Date().toISOString(),
       payload: { conversation_id: convId, operator_id: operatorId || 'operator' },
     } as any);
+    if (isMobile()) setView('chat');
+  };
+
+  const backToList = () => {
+    setView('list');
+    setSheetOpen(false);
+    closeCopilot();
   };
 
   return (
     <div className="im-w" data-testid="workspace-page">
-      <IMTitlebar />
+      <IMTitlebar onHamburger={() => setNavOpen(true)} />
       <ConcurrencyWarning />
       {wsStatus !== 'open' && wsStatus !== 'idle' && (
         <div
@@ -154,22 +195,45 @@ export function WorkspacePage() {
         </div>
       )}
       <div className="im-body">
-        <IMSidebar onLogout={logout} />
-        <main className={`im-main ${activeCopilotConvId ? 'with-chat' : ''}`}>
+        <div
+          className={`im-side-backdrop ${navOpen ? 'on' : ''}`}
+          data-testid="im-side-backdrop"
+          onClick={() => setNavOpen(false)}
+        />
+        <IMSidebar onLogout={logout} open={navOpen} onPick={() => setNavOpen(false)} />
+        <main
+          className={`im-main ${activeCopilotConvId ? 'with-chat' : ''}`}
+          data-view={view}
+          data-sheet={sheetOpen ? 'on' : 'off'}
+        >
           <section className="op-cards-col">
             <ConversationFeed
               squadId={activeSquadId}
               onCardClick={handleOpenCopilot}
             />
           </section>
-          {activeCopilotConvId ? (
-            <>
-              <CopilotView send={send} />
-              <IMInput send={send} />
-            </>
-          ) : (
-            <ChatEmpty />
-          )}
+          <div className="op-chat-wrap">
+            {activeCopilotConvId ? (
+              <>
+                <CopilotView
+                  send={send}
+                  panelOpen={panelOpen}
+                  onTogglePanel={() => setPanelOpen((v) => !v)}
+                  onOpenSheet={() => setSheetOpen(true)}
+                  onCloseSheet={() => setSheetOpen(false)}
+                  onBackToList={backToList}
+                />
+                <IMInput send={send} />
+              </>
+            ) : (
+              <ChatEmpty />
+            )}
+          </div>
+          <div
+            className={`im-sheet-backdrop ${sheetOpen ? 'on' : ''}`}
+            data-testid="im-sheet-backdrop"
+            onClick={() => setSheetOpen(false)}
+          />
         </main>
       </div>
     </div>

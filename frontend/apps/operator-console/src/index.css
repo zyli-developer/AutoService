@@ -271,68 +271,26 @@ html, body, #root {
   cursor: not-allowed;
 }
 
-/* ===== Desktop-only block (≤900px) ===== */
-.op-mobile-block {
+/* ===== Hamburger, drawer backdrop, sheet handle (hidden above mobile breakpoint) ===== */
+.im-hamburger,
+.op-mobi-back,
+.op-mobi-detail-btn {
   display: none;
-  flex-direction: column;
-  height: 100vh;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 28px;
-  text-align: center;
-  background: var(--color-bg);
 }
 
-.op-mobile-badge {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.4px;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  margin-bottom: 16px;
+.im-side-backdrop,
+.im-sheet-backdrop {
+  display: none;
 }
 
-.op-mobile-h2 {
-  font-family: var(--font-serif);
-  font-size: 26px;
-  font-weight: 500;
-  color: var(--color-text-ink);
-  letter-spacing: -0.01em;
-  margin: 0 0 12px;
-  line-height: 1.25;
+.op-sheet-handle {
+  display: none;
 }
 
-.op-mobile-p {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.1px;
-  max-width: 360px;
-  margin: 0 0 20px;
-}
-
-.op-mobile-minw {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.1px;
-}
-
-.op-mobile-minw b {
-  color: var(--color-text);
-  font-weight: 500;
-}
-
-@media (max-width: 900px) {
-  .op-desktop-only { display: none; }
-  .op-mobile-block { display: flex; }
+/* Desktop: wrapper for the chat + composer participates transparently in the grid.
+   Mobile overrides convert it into a sliding flex column (push-nav). */
+.op-chat-wrap {
+  display: contents;
 }
 
 /* ===== Conversation card row hover ===== */
@@ -460,7 +418,8 @@ html, body, #root {
 .op-chat-av.a3 { background: var(--sand-600); }
 .op-chat-av.a4 { background: var(--mountain-600); }
 
-.op-chat-info {
+.op-chat-info,
+.op-chat-title {
   flex: 1;
   min-width: 0;
 }
@@ -533,9 +492,68 @@ html, body, #root {
 .op-chat-split {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 260px;
+  grid-template-columns: 1fr 0;
   min-height: 0;
   overflow: hidden;
+  transition: grid-template-columns 280ms var(--ease-ink-bloom);
+}
+
+.op-chat-split.panel-open {
+  grid-template-columns: 1fr 280px;
+}
+
+.op-chat-split .op-side-panel {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.op-chat-split:not(.panel-open) .op-side-panel {
+  border-left: none;
+}
+
+.op-chat-split:not(.panel-open) .op-side-panel > *:not(.op-sheet-handle) {
+  opacity: 0;
+  transition: opacity 160ms var(--ease-daily);
+}
+
+.op-chat-split.panel-open .op-side-panel > *:not(.op-sheet-handle) {
+  opacity: 1;
+  transition: opacity 260ms var(--ease-daily) 120ms;
+}
+
+/* Detail toggle in chat-top (desktop + tablet) */
+.op-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.1px;
+  transition: border-color 140ms var(--ease-daily),
+    color 140ms var(--ease-daily),
+    background 140ms var(--ease-daily);
+}
+
+.op-detail-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.op-detail-toggle.on {
+  background: var(--indigo-50);
+  border-color: var(--indigo-500);
+  color: var(--indigo-700);
+}
+
+.op-detail-toggle svg {
+  width: 14px;
+  height: 14px;
 }
 
 .op-chat-col {
@@ -1357,4 +1375,325 @@ html, body, #root {
 .im-side-logout:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* ============================================================
+   Mobile (≤900px) — push-stack navigation
+     cards list → chat pane → (detail bottom sheet)
+   Desktop layout above is untouched.
+   ============================================================ */
+@media (max-width: 900px) {
+  .im-w {
+    position: relative;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* Sidebar becomes a left drawer */
+  .im-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 276px;
+    z-index: 60;
+    transform: translateX(-105%);
+    transition: transform 340ms var(--ease-ink-bloom);
+    box-shadow: 6px 0 20px rgba(26, 26, 26, 0.08),
+      1px 0 0 rgba(26, 26, 26, 0.03);
+    will-change: transform;
+  }
+  .im-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .im-side-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.38);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 55;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms var(--ease-daily);
+  }
+  .im-side-backdrop.on {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Staggered cascade of nav items when drawer opens */
+  .im-sidebar .im-brand,
+  .im-sidebar .im-me,
+  .im-sidebar .im-nav-sec,
+  .im-sidebar .im-nav-item,
+  .im-sidebar .im-side-foot {
+    opacity: 0;
+    transform: translateX(-14px);
+    transition: opacity 260ms var(--ease-daily),
+      transform 360ms var(--ease-ink-bloom);
+  }
+  .im-sidebar.open .im-brand         { opacity: 1; transform: none; transition-delay: 60ms; }
+  .im-sidebar.open .im-me            { opacity: 1; transform: none; transition-delay: 90ms; }
+  .im-sidebar.open .im-nav-sec       { opacity: 1; transform: none; transition-delay: 110ms; }
+  .im-sidebar.open .im-nav-item      { opacity: 1; transform: none; }
+  .im-sidebar.open .im-nav-item:nth-child(1) { transition-delay: 130ms; }
+  .im-sidebar.open .im-nav-item:nth-child(2) { transition-delay: 150ms; }
+  .im-sidebar.open .im-nav-item:nth-child(3) { transition-delay: 170ms; }
+  .im-sidebar.open .im-nav-item:nth-child(4) { transition-delay: 190ms; }
+  .im-sidebar.open .im-nav-item:nth-child(5) { transition-delay: 210ms; }
+  .im-sidebar.open .im-nav-item:nth-child(6) { transition-delay: 230ms; }
+  .im-sidebar.open .im-side-foot     { opacity: 1; transform: none; transition-delay: 290ms; }
+
+  /* Topbar with hamburger */
+  .im-hamburger {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    margin-right: 10px;
+    flex-shrink: 0;
+    transition: background 140ms var(--ease-daily),
+      transform 140ms var(--ease-daily);
+  }
+  .im-hamburger:active {
+    background: var(--ink-50);
+    transform: scale(0.96);
+  }
+  .im-hamburger svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .im-topbar {
+    padding: 12px 14px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .im-topbar-left {
+    flex: 1;
+    min-width: 0;
+  }
+  .im-crumb { display: none; }
+  .im-page-title {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .im-page-cnt { display: none; }
+
+  /* Push-stack layers: cards list ↔ chat pane */
+  .im-main {
+    display: block;
+    position: relative;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: none;
+    grid-template-rows: none;
+    grid-template-areas: none;
+  }
+  .op-chat-empty { display: none; }
+
+  .op-cards-col {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    background: var(--color-bg);
+    transition: transform 300ms var(--ease-ink-bloom),
+      filter 300ms var(--ease-daily);
+    will-change: transform;
+  }
+
+  .op-chat-wrap {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    inset: 0;
+    background: var(--color-bg-surface);
+    transform: translateX(100%);
+    transition: transform 300ms var(--ease-ink-bloom);
+    will-change: transform;
+    min-height: 0;
+  }
+
+  .im-main[data-view="chat"] .op-cards-col {
+    transform: translateX(-16%);
+    filter: brightness(0.94);
+  }
+  .im-main[data-view="chat"] .op-chat-wrap {
+    transform: translateX(0);
+  }
+
+  /* Chat pane internals — back + detail buttons */
+  .op-chat-pane {
+    border-left: none;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .op-mobi-back {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    margin-right: 4px;
+    color: var(--color-text);
+    flex-shrink: 0;
+    transition: transform 140ms var(--ease-daily);
+  }
+  .op-mobi-back:active { transform: scale(0.94); }
+  .op-mobi-back svg { width: 22px; height: 22px; }
+
+  .op-mobi-detail-btn {
+    display: inline-flex;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-surface);
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--color-text);
+    cursor: pointer;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .op-mobi-detail-btn:active { background: var(--ink-50); }
+
+  .op-chat-top {
+    padding: 10px 12px;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .op-chat-title h3 {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+  }
+  .op-chat-sub {
+    font-size: 11px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .op-chat-actions { display: none; }
+
+  /* Split becomes stream-only; side-panel becomes bottom sheet */
+  .op-chat-split {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    grid-template-columns: none;
+  }
+  .op-chat-col {
+    width: 100%;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .op-stream-lbl { padding: 8px 14px; font-size: 10.5px; }
+  .op-stream { padding: 12px 14px; }
+
+  /* Detail bottom sheet (CRM + Copilot draft + KB) */
+  .op-side-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    max-height: 82vh;
+    border: none;
+    border-radius: 18px 18px 0 0;
+    background: var(--color-bg-surface);
+    z-index: 60;
+    padding: 0;
+    width: auto;
+    box-shadow: 0 -18px 48px rgba(26, 26, 26, 0.24),
+      0 -2px 0 rgba(26, 26, 26, 0.04);
+    transform: translateY(105%);
+    transition: transform 340ms var(--ease-ink-bloom);
+    will-change: transform;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .im-main[data-sheet="on"] .op-side-panel {
+    transform: translateY(0);
+  }
+
+  /* Override desktop panel-open rules on mobile — sheet is always "open"
+     from a layout standpoint; visibility is driven by data-sheet. */
+  .op-chat-split:not(.panel-open) .op-side-panel > *:not(.op-sheet-handle) {
+    opacity: 1;
+  }
+
+  .im-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.42);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 55;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms var(--ease-daily);
+  }
+  .im-sheet-backdrop.on {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .op-sheet-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 0 6px;
+    cursor: pointer;
+    background: var(--color-bg-surface);
+    border-radius: 18px 18px 0 0;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .op-sheet-handle::before {
+    content: '';
+    width: 44px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--ink-400);
+    opacity: 0.42;
+    transition: opacity 180ms var(--ease-daily),
+      width 220ms var(--ease-ink-bloom);
+  }
+  .op-sheet-handle:active::before {
+    opacity: 0.7;
+    width: 56px;
+  }
+  .op-side-panel { overflow-y: auto; }
+  .op-sp-sec { padding: 14px 16px; }
 }
