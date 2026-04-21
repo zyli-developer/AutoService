@@ -1146,7 +1146,8 @@
       "created_at": "2026-04-21T02:43:52Z",
       "updated_at": "2026-04-21T02:43:52Z",
       "related_ids": [
-        "eval-doc-020"
+        "eval-doc-020",
+        "e2e-report-012"
       ]
     },
     {
@@ -1159,7 +1160,9 @@
       "path": ".artifacts/e2e-reports/e2e-batch-15.md",
       "created_at": "2026-04-21T02:43:52Z",
       "updated_at": "2026-04-21T02:43:52Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-022"
+      ]
     }
   ]
 }
