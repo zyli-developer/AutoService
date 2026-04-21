@@ -116,28 +116,94 @@ Yellow 任务与 Green 唯一差别：**Closing 前必须 code-reviewer self-rev
 
 ## 6. 🔀 Subagent Dispatch（autorun 下）
 
-当 dispatch 一个 subagent 执行 batch 时，**prompt 必须包含**以下 closing 约束：
+**适用范围**：从 batch-7（P5 起）每个 subagent dispatch 必须 inline 以下约束。
+**历史例外**（B 决策记录）：batch-0 ~ batch-6（17 任务）用内联 TDD 产出，未产 artifact，统一在 batch-7 dispatch 前一次性回填到 `.artifacts/`。
+
+### 6.1 Closing 约束（task-status + commit）
 
 ```
 ===== Closing 约束（MUST DO）=====
 完成所有任务后，**commit 前**：
 1. Edit docs/plans/m2/task-status.md：
-   - Phase 表中你的任务行：⏳/🔄 → ✅ done，填 owner = "Subagent <agentId>"，artifact = commit hash（你做完才知道；可先填 PENDING，commit 后再改）
+   - Phase 表中你的任务行：⏳/🔄 → ✅ done，填 owner = "Subagent <agentId>"，artifact = commit hash（你做完才知道；可先填 PENDING，commit 后再 amend / 分两个 commit）
    - Batch 进度表：该 batch 行 → ✅ 完成 + gate 结果简述
    - 进度汇总：done 计数 +N（N = 你完成的任务数）
    - 会话日志：追加一行
 2. git add 代码文件 + docs/plans/m2/task-status.md（同一 commit）
 3. commit 消息按 §3 格式
-
-返回报告必须包含：
-- 修改的文件列表
-- 测试计数（新增 / 总数 / 回归）
-- task-status.md 的具体改动（行号或段落）
-- commit hash
-- 遇到的 spec 歧义和决策理由
 ```
 
-**主控（非 subagent）执行 batch 时** — 自己就是 executor，照 §3 走；不要跳过 task-status 更新直接 dispatch 下一批。
+### 6.2 Artifact 产出约束（dev-loop-skills 兼容）
+
+**每个 batch subagent 必须产出以下 artifact 并注册到 `.artifacts/registry.json`**：
+
+| 阶段 | Artifact 类型 | 何时产 | 放在哪 |
+|------|--------------|--------|--------|
+| 任务开始前 | `eval-doc`（simulate 模式）| 读 spec + tasks.yaml，写"预期行为 + 验收标准" | `.artifacts/eval-docs/eval-<batch-id>-<brief>.md` |
+| 测试全绿后 | `test-diff` | 从 `git diff HEAD -- tests/` 提取，markdown 摘要 | `.artifacts/test-diffs/test-diff-<batch-id>.md` |
+| batch commit 后 | `e2e-report` | 跑 `python -m pytest` 对本 batch scope + regression，产结构化报告 | `.artifacts/e2e-reports/e2e-<batch-id>.md` |
+
+**注册命令**（produce 后立即调用）：
+```bash
+bash scripts/artifact-register.sh \
+  --project-root . \
+  --type <eval-doc|test-diff|e2e-report> \
+  --name "<brief>" \
+  --producer "subagent-<agentId>" \
+  --path .artifacts/<subdir>/<file>.md \
+  --status confirmed
+```
+
+注册脚本会：生成唯一 ID（如 `eval-doc-042`）、写入 `.artifacts/registry.json`、`git add .artifacts/ && git commit -m "artifact: register <id> (<type>)"`。stdout 输出生成的 ID，记下来在 subagent 报告里。
+
+### 6.3 Artifact 最小规范
+
+**eval-doc** 格式（~50 行以内）:
+```markdown
+# Eval: <batch-id> <任务名>
+## 预期行为
+- 列表：spec §X.Y 说应该发生什么
+## 验收标准
+- 列表：测试要覆盖的场景（含 red-line）
+## 关键 invariant
+- 列表：不能违反的约束（CON-X 条目）
+```
+
+**test-diff** 格式：
+```markdown
+# Test diff: <batch-id>
+新增 {N} tests across {K} files.
+## 新增文件
+- list
+## 覆盖的场景
+- list from eval-doc
+## 已修 regression bug
+- (if any)
+```
+
+**e2e-report** 格式：
+```markdown
+# E2E report: <batch-id>
+Total: {N} pass / {M} fail
+## New tests (from this batch)
+- green: {list}
+- red: {list}
+## Regression (preexisting tests)
+- green: {count}
+- red: {list with root cause}
+```
+
+### 6.4 Subagent 报告要求
+
+返回报告必须包含：
+- 修改的代码文件列表
+- **产出的 artifact 列表 + 在 registry.json 里的 id**
+- 测试计数（新增 / 总数 / 回归）
+- task-status.md 的具体改动（行号或段落）
+- commit hash（代码 + artifact + task-status）
+- 遇到的 spec 歧义和决策理由
+
+**主控（非 subagent）执行 batch 时** — 自己就是 executor，同样要产 artifact + 注册 + 更 task-status；不要跳过直接 dispatch 下一批。
 
 ---
 
