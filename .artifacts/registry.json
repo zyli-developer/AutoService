@@ -875,7 +875,8 @@
       "updated_at": "2026-04-21T01:38:57Z",
       "related_ids": [
         "test-diff-015",
-        "e2e-report-008"
+        "e2e-report-008",
+        "eval-doc-019"
       ]
     },
     {
@@ -921,7 +922,8 @@
       "related_ids": [
         "test-diff-016",
         "e2e-report-009",
-        "eval-doc-017"
+        "eval-doc-017",
+        "eval-doc-019"
       ]
     },
     {
@@ -1040,6 +1042,21 @@
       "created_at": "2026-04-21T02:12:11Z",
       "updated_at": "2026-04-21T02:12:11Z",
       "related_ids": []
+    },
+    {
+      "id": "eval-doc-019",
+      "name": "T7B.6 /api/management/chat -> _master routing",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "main orchestrator",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7b-6-management-chat.md",
+      "created_at": "2026-04-21T02:12:37Z",
+      "updated_at": "2026-04-21T02:12:37Z",
+      "related_ids": [
+        "eval-doc-015",
+        "eval-doc-014"
+      ]
     }
   ]
 }
