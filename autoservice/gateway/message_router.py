@@ -1123,15 +1123,26 @@ async def _generate_agent_reply(
                     role=target_role, tenant_id=tenant_id, timeout=2.0,
                 ) as inst:
                     inst._sticky_conv_id = conv_id  # type: ignore[attr-defined]
-                    await engine.update_triage_state(conv_id, cc_instance_id=inst.id)
                     await inst.client.query(prompt, session_id=f"{target_role}-{conv_id}")
+                    first = True
                     async for m in inst.client.receive_response():
+                        if first:
+                            try:
+                                await engine.update_triage_state(conv_id, cc_instance_id=inst.id)
+                            except Exception:
+                                logger.warning("failed to pin cc_instance_id for conv=%s", conv_id)
+                            first = False
                         yield m
             except Exception:
                 logger.exception(
-                    "triage: role=%s sub-pool acquire failed, falling back to customer",
+                    "triage: role=%s sub-pool acquire/stream failed, falling back to customer",
                     target_role,
                 )
+                # Clear any stale instance pin.
+                try:
+                    await engine.update_triage_state(conv_id, cc_instance_id=None)
+                except Exception:
+                    pass
                 try:
                     await engine.send_message(
                         conv_id, source="triage",

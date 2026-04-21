@@ -94,6 +94,7 @@ async def triage_and_route(
         )
     except Exception:
         log.exception("triage: failed to update state conv=%s", conv_id)
+        raise
 
     return decision
 
