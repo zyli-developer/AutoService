@@ -192,8 +192,12 @@ class LocalEngine:
         out.update(stored)
         return out
 
-    async def update_triage_state(self, conversation_id: str, **fields: Any) -> None:
-        """Patch-update triage state fields. Unknown fields raise KeyError."""
+    def _patch_triage_state_unlocked(self, conversation_id: str, **fields: Any) -> None:
+        """Apply triage field updates without acquiring the per-conv lock.
+
+        Callers MUST already hold ``self._get_lock(conversation_id)`` before
+        invoking this method.  Raises ``KeyError`` for unknown fields.
+        """
         unknown = set(fields) - set(_TRIAGE_DEFAULTS)
         if unknown:
             raise KeyError(f"Unknown triage field(s): {sorted(unknown)}")
@@ -204,11 +208,17 @@ class LocalEngine:
         new_meta[_TRIAGE_KEY] = triage
         self._update_conv(conversation_id, metadata=new_meta)
 
+    async def update_triage_state(self, conversation_id: str, **fields: Any) -> None:
+        """Patch-update triage state fields. Unknown fields raise KeyError."""
+        async with self._get_lock(conversation_id):
+            self._patch_triage_state_unlocked(conversation_id, **fields)
+
     async def incr_drift(self, conversation_id: str) -> int:
-        """Increment drift_counter and return the new value."""
-        state = await self.get_triage_state(conversation_id)
-        new_value = state["drift_counter"] + 1
-        await self.update_triage_state(conversation_id, drift_counter=new_value)
+        """Increment drift_counter and return the new value (serialized per conv)."""
+        async with self._get_lock(conversation_id):
+            state = await self.get_triage_state(conversation_id)
+            new_value = state["drift_counter"] + 1
+            self._patch_triage_state_unlocked(conversation_id, drift_counter=new_value)
         return new_value
 
     async def reset_drift(self, conversation_id: str) -> None:

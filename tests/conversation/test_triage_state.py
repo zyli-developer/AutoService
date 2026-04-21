@@ -63,3 +63,10 @@ async def test_triage_state_survives_unrelated_metadata(engine):
     conv2 = await engine.get_conversation(conv.id)
     assert conv2.metadata["squad_id"] == "S1"
     assert conv2.metadata["triage"]["active_role"] == "customer"
+
+
+@pytest.mark.asyncio
+async def test_update_triage_state_rejects_unknown_field(engine):
+    conv = await engine.create_conversation(channel="web", external_id="c5")
+    with pytest.raises(KeyError, match="unknown_field"):
+        await engine.update_triage_state(conv.id, unknown_field="x")
