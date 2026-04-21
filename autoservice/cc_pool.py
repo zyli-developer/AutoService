@@ -374,8 +374,14 @@ class CCPool(AsyncPool[CCClient]):
         cfg = config or PoolConfig()
         super().__init__(
             config=cfg,
-            factory=lambda: create_cc_client(cfg, mcp_servers=mcp_servers,
-                                              system_prompt=system_prompt),
+            factory=lambda: create_cc_client(
+                cfg,
+                mcp_servers=mcp_servers,
+                system_prompt=system_prompt,
+                role="customer",
+                tenant_id=None,
+                enable_kb_tool=False,
+            ),
             instance_prefix="cc",
             logger=log,
             on_sticky_release=on_sticky_release,
