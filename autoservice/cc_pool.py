@@ -257,6 +257,7 @@ async def create_cc_client(
     system_prompt: str | None = None,
     role: str | None = None,
     tenant_id: str | None = None,
+    enable_kb_tool: bool = False,
 ) -> CCClient:
     """Factory: creates and connects a CCClient from pool config.
 
@@ -274,6 +275,9 @@ async def create_cc_client(
                    a per-tenant soul from
                    ``.autoservice/sandbox/<tenant_id>/souls/<role>_soul.md``;
                    falls back to the default role soul when absent.
+        enable_kb_tool: When True AND tenant_id is non-None, injects the
+            ``autoservice_kb`` MCP server that exposes ``kb_search`` scoped
+            to the given tenant. No-op when False or tenant_id is None.
     """
     cwd = config.cwd or str(Path.cwd())
     cwd_path = Path(cwd).absolute()
@@ -293,6 +297,12 @@ async def create_cc_client(
                 "No soul found for role=%s tenant_id=%s — starting without system prompt",
                 role, tenant_id,
             )
+
+    if enable_kb_tool and tenant_id:
+        # Lazy import: avoids pulling SQLite/kb deps when tool isn't needed.
+        from autoservice.kb_mcp_server import build_kb_mcp_server
+        kb_server = build_kb_mcp_server(tenant_id)
+        mcp_servers = {**(mcp_servers or {}), "autoservice_kb": kb_server}
 
     options = ClaudeAgentOptions(
         cwd=cwd,
@@ -922,9 +932,11 @@ async def _make_tenant_instance(
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.
-        # TODO: enable_kb_tool=(role == "customer" and tenant_id is not None)
         client = await create_cc_client(
-            cfg, role=role, tenant_id=tenant_id,
+            cfg,
+            role=role,
+            tenant_id=tenant_id,
+            enable_kb_tool=(role == "customer" and tenant_id is not None),
         )
     pool._instance_counter += 1  # noqa: SLF001
     instance_id = (
