@@ -1,0 +1,1 @@
+# M3.5 plans dir\n\nSee [../m3.5-mini-sprint.md](../m3.5-mini-sprint.md) for the mini-sprint plan. Task artifacts (tasks.yaml / execution-plan.yaml / task-status.md) will land here when the sprint kicks off via `/prd2impl:skill-3-task-gen --plans-dir docs/plans/m3.5`.

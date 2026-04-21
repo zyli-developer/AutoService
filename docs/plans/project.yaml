@@ -3,7 +3,7 @@ project:
   branch: "dev-a"
   main_branch: "dev"
   generated_at: "2026-04-20"
-  plans_dir: docs/plans/m3   # switched from m2 to m3 on 2026-04-21 (M2 gate passed; per AutoService-M3-PRD §9.4)
+  plans_dir: docs/plans/m3.5   # switched from m3 to m3.5 on 2026-04-22 (M3 gate passed; tag v1.2.0-mvp + PR #74; per docs/plans/m3.5-mini-sprint.md)
   parallel_capacity: 2
   team:
     - id: Dev1
@@ -32,7 +32,11 @@ project:
       name: "Production-readiness + Identity/RBAC + Triage/Compliance/Dream/Ops"
       scope_doc: "docs/prd/AutoService-M3-PRD.md"
       plans_dir: docs/plans/m3
-      status: "ready"         # M2 gate passed 2026-04-21; M3 unblocked, awaiting kickoff decision
+      status: "shipped"       # M3 gate passed 2026-04-22; tag v1.2.0-mvp; PR #74 dev-a → dev
+      gate_passed_at: "2026-04-22"
+      gate_evidence: "13/14 smoke PASS (E6.2 DEFER M3.5); 1670/1670 regression; .artifacts/milestones/m3/m3-smoke-report.md"
+      tag: "v1.2.0-mvp"
+      merge_pr: "https://github.com/ezagent42/AutoService/pull/74"
       epic_design_specs:
         - "docs/superpowers/specs/2026-04-21-m3-e1-identity-rbac-design.md"
         - "docs/superpowers/specs/2026-04-21-m3-e3-triage-enhancement-design.md"
@@ -42,8 +46,19 @@ project:
       scope_notes:
         - "Epic E2 (Subtenant/Whitelabel/Referral) DEFERRED_M4 per PRD §8.1 Errata (v1.1 §8 whitelabel OoS)"
         - "16 in-scope stories (original 22 minus 6 E2.x)"
-        - "Kickoff target 2026-04-22; gate target 2026-05-03"
-        - "When M2 gate passes, update project.plans_dir → docs/plans/m3"
+        - "Kickoff 2026-04-21; gate 2026-04-22 (inside a single AI autorun)"
+        - "Dream Engine UI D1+D4 carved forward post-smoke (commit 2e50ac1 et al)"
+
+    M3.5:
+      name: "Mini-sprint — Playwright + Frontend UI surfaces (deferred from M3)"
+      scope_doc: "docs/plans/m3.5-mini-sprint.md"
+      plans_dir: docs/plans/m3.5
+      status: "ready"         # M3 gate passed 2026-04-22; M3.5 unblocked
+      scope_notes:
+        - "D1 Dream status band + D4 Runs history ALREADY shipped in M3 gate window"
+        - "Remaining dream-UI: D2 canary panel (Apply consolidation) + D3 im-block renderer (blocked on T3S.7-hotfix A2 revert)"
+        - "6 UI surfaces U1-U6 + Playwright T5S.1-5 (17 stories)"
+        - "Estimated ~5h AI for remaining dream-UI + ~10-14h AI for Playwright + U-surfaces"
 
   conventions:
     commit_style: "conventional commits (feat/fix/chore/test/refactor)"
