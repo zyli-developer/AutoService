@@ -13,11 +13,11 @@
 | Metric | Value |
 |---|---|
 | Total tasks | 39 |
-| ✅ Completed | 5 |
+| ✅ Completed | 7 |
 | 🏃 In progress | 0 |
 | ⏸️ Blocked | 0 |
-| ⏳ Pending | 34 |
-| Progress | 13% |
+| ⏳ Pending | 32 |
+| Progress | 18% |
 | Current milestone | M3-0 ready to start (M2 gate passed 2026-04-21) |
 | Current batch | batch-0 ready (pre-check satisfied) |
 
@@ -28,7 +28,7 @@
 | Phase | Name | Tasks | Done | Progress |
 |---|---|---|---|---|
 | P0 | Contract Freeze | 4 | 4 | 100% ✅ |
-| P1 | E1 P0 Foundation | 5 | 1 | 20% |
+| P1 | E1 P0 Foundation | 5 | 3 | 60% |
 | P2 | E1 P1 + Parallel Greens | 8 | 0 | 0% |
 | P3 | E3 Tail + E1 Close | 6 | 0 | 0% |
 | P4 | E5/E6/E4/E3 Remainders | 8 | 0 | 0% |
@@ -43,7 +43,7 @@
 |---|---|---|---|
 | batch-0 | M3-0 | T0S.1, T0S.2, T0S.3, T0S.4 | ✅ done 2026-04-21 (gate: 4 contracts committed; T0S.4 reviewer APPROVED after v1.1 revision) |
 | batch-1 | M3-1 | T1S.1 | ✅ done 2026-04-21 (14 tests green; full auth regression 65/65) |
-| batch-2 | M3-1 | T1S.2, T1S.4 | ⏳ pending |
+| batch-2 | M3-1 | T1S.2, T1S.4 | ✅ done 2026-04-21 (43 new tests green; 108/108 auth regression) |
 | batch-3 | M3-1 | T1S.3, T1S.5 | ⏳ pending |
 | batch-4 | M3-2 | T2S.1, T2S.3, T2S.6, T2S.8 | ⏳ pending |
 | batch-5 | M3-2 | T2S.2, T2S.4, T2S.7 | ⏳ pending |
@@ -69,6 +69,7 @@ _Append at each batch closure. Format: date · batch · summary · next._
 | 2026-04-21 | — | M2 gate passed (7/7/1-skip/0-fail; evidence in e2e-evidence/fork-sim-m2/). project.yaml.plans_dir switched m2→m3. M3 status → ready. | kickoff batch-0 (user decision pending: direct dispatch / autorun / other) |
 | 2026-04-21 | batch-0 | M3-0 Contract Freeze done. 4 contracts under docs/contracts/m3/ (e1-auth-rbac.md · e3-triage.md · e4-compliance.md · e5-dream.md v1.1). T0S.4 E5/🔒 CON-04 reviewer: CHANGES_REQUESTED v1.0 with 4 Critical findings → revised to v1.1 (import cone + value reject, race-safe conditional UPDATE, implemented→applied rename + migration, AST audit-write guard) → APPROVED. CON-04 now 5-layer defense (was 4). | batch-1 T1S.1 operators schema (first E1 code task) |
 | 2026-04-21 | batch-1 | T1S.1 done: autoservice/operators.py schema (operators + operator_sessions tables) + migrate_login_tokens_add_role. 14/14 new tests green; 65/65 full auth regression green (M2 51 + M3 T1S.1 14). Contract deviation: created autoservice/operators.py as sibling module rather than autoservice/auth/operators_schema.py (avoid auth.py package refactor). | batch-2: T1S.2 operator login + T1S.4 CRUD (parallel) |
+| 2026-04-21 | batch-2 | T1S.2 + T1S.4 done. operators.py extended with 14 helpers (CRUD + sessions + magic-link role-gated consume). operator_routes.py new (9 endpoints: request-login/verify/logout/me/list/get/create/patch/delete) mounted via api_routes.py bottom. 43 new tests (21 helper + 22 route) all green; 108/108 auth regression. Magic-link role gate proven: admin token rejected for operator-verify. Anti-enumeration: unknown operator returns same shape. T1S.4 disable-operator path also revokes all sessions (defense-in-depth beyond FK cascade). | batch-3: T1S.3 WS cookie 🟡 + T1S.5 invite |
 
 ---
 
@@ -88,9 +89,9 @@ _Append at each batch closure. Format: date · batch · summary · next._
 | ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
 |---|---|---|---|---|---|---|---|
 | T1S.1 | operators schema | 🟢 | M | T0S.1 | ✅ | Dev1 | [autoservice/operators.py](../../../autoservice/operators.py) · [tests/auth/test_operators_schema.py](../../../tests/auth/test_operators_schema.py) |
-| T1S.2 | operator HTTP login + cookie | 🟢 | M | T1S.1 | ⏳ | — | — |
+| T1S.2 | operator HTTP login + cookie | 🟢 | M | T1S.1 | ✅ | Dev1 | [autoservice/operators.py](../../../autoservice/operators.py) · [autoservice/operator_routes.py](../../../autoservice/operator_routes.py) · [tests/auth/test_operators_helpers.py](../../../tests/auth/test_operators_helpers.py) (21) · [tests/auth/test_operator_routes.py](../../../tests/auth/test_operator_routes.py) (22) |
 | T1S.3 | WS handshake cookie validation | 🟡 | M | T1S.2 | ⏳ | — | — |
-| T1S.4 | operator CRUD API | 🟢 | S | T1S.1 | ⏳ | — | — |
+| T1S.4 | operator CRUD API | 🟢 | S | T1S.1 | ✅ | Dev1 | routes in [operator_routes.py](../../../autoservice/operator_routes.py) · tests in [test_operator_routes.py](../../../tests/auth/test_operator_routes.py) §CRUD |
 | T1S.5 | operator invite (magic-link role ext) | 🟢 | M | T1S.2 | ⏳ | — | — |
 
 ### P2 · E1 P1 + Parallel Greens (8 tasks)

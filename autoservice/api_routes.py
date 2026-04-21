@@ -2115,3 +2115,13 @@ async def auth_dev_login(
         path="/",
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# Mount operator routes (M3 T1S.2 + T1S.4)
+# ---------------------------------------------------------------------------
+# Must be at module bottom so all api_router.* definitions above are complete
+# before include_router merges operator_router's paths in.
+from autoservice.operator_routes import operator_router as _operator_router  # noqa: E402
+
+api_router.include_router(_operator_router)

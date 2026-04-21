@@ -123,6 +123,42 @@ SQLite ≤ 3.39 cannot add CHECK constraints to existing columns via ALTER. Migr
 
 Total: ~30min. Contract-first + TDD enabled fast execution without losing quality (14 tests green, 65 regression green).
 
+### batch-2 T1S.2 Operator Login + T1S.4 CRUD
+
+#### 🟢 Single module `operators.py` hosting both T1S.2 + T1S.4 helpers worked well
+Both tasks share the same DB + dataclass + validation logic. Splitting by file would duplicate the `Operator` dataclass and validation. Kept as one module (~430 lines). Tasks in tasks.yaml are logical units, not physical file boundaries — this is healthy.
+
+#### 🟢 Anti-enumeration carried forward from M2 pattern
+M2's `/auth/request-login` returns identical `{"status":"sent"}` whether email is allowlisted or not. Copied pattern for operator request-login (status=sent + delivered=log, regardless). Side effect is only a log line for known operators.
+
+**Cross-task learning**: tasks.yaml should reference "conventions to carry forward" per task. Currently contracts describe **what** the endpoint does but not **which M2 idioms** to preserve (anti-enumeration, `.isoformat()` timestamps, `token_urlsafe(36)` for session IDs, `HttpOnly/SameSite=Lax` cookies). Implementer had to grep + pattern-match from api_routes.py.
+
+**Recommendation R7**: skill-4 should auto-generate a "conventions cheat-sheet" per Epic by scanning existing code for common idioms. Save as `{plans_dir}/m3-conventions.md` for fast lookup during implementation.
+
+#### 🔴 Contract §3.1 listed `{email, password}` as body shape; password auth NOT in M3 scope
+The contract listed password + magic-link as options but didn't flag that password auth is out-of-scope for M3. I had to make a judgment call (magic-link only, defer password to later). Documented in operator_routes.py module docstring.
+
+**Process improvement R8**: contract template should have explicit "scope for this milestone" section — what subset of the endpoint's body-shape universe is wire-ready. Vague "or X" language invites scope confusion.
+
+#### 🟢 Magic-link role-gate worked as designed
+Key security primitive for CON-08: admin token cannot log in as operator. Implemented in `consume_operator_login_token` by adding `AND role='operator'` to the UPDATE's WHERE clause. Test `test_consume_rejects_admin_token_via_operator_path` proved it. This was 3 lines of SQL but the key security surface — reviewer-worthy even though T1S.2 is marked 🟢 Green.
+
+**Observation**: some 🟢 Green tasks have hidden security surface that could benefit from reviewer eyes. Hard to know in advance. Heuristic: any task touching auth paths (even "just adding" something) should go through lightweight review.
+
+#### 🟡 FastAPI include_router mounted at module bottom of api_routes.py
+To avoid circular imports (`api_routes.py` → `operator_routes.py` → `api_routes.py`), the include_router call lives at the **very end** of api_routes.py after all `@api_router.*` definitions. Clean but fragile — next implementer needs to know.
+
+**Recommendation R9**: add a comment block in api_routes.py `# Mount modular routers (MUST be last)` section, and skill-4 task-gen should schedule route-mounting as an explicit final sub-step for any task introducing a new router module.
+
+#### 🟢 DB singleton with test-reset hook pattern scaled cleanly
+Both `api_routes._reset_auth_db_for_tests` (existing) and new `operator_routes._reset_op_db_for_tests` use the same pattern. Test fixture sets both to the same in-memory connection so admin + operator tokens live in one DB. This let the admin-token-rejection test reproduce the full security boundary without a real DB file.
+
+Time: **~50min** for T1S.2 + T1S.4 combined. Estimate was 6h. Contract + helper + route + tests + run in under 1 hour.
+
+**Why so fast?** M2 auth.py had a near-complete template (session create/lookup/revoke, cookie pattern, request-login anti-enumeration, verify redirect, logout). Operator auth is a **near-copy** with role gate added. The big savings: the problem was already solved once for admin; doing it for operator is mostly refactoring + adding role metadata.
+
+**Process observation**: skill-4 task-gen's "medium 2-8h" estimate for T1S.2 was conservative. When a task is "duplicate-and-modify of existing code", actual effort is often closer to 1-2h. Could add a "similarity hint" field to task metadata.
+
 ---
 
 ## Cross-Cutting Recommendations for prd2impl v0.3
@@ -147,6 +183,18 @@ Rolling up observations:
 ### R6: Contract version bump pattern documentation
 [See batch-0 §💡 finding]. Standardize Revision Log for 🔒 tasks.
 
+### R7: Auto-extract "conventions cheat-sheet" per Epic
+[See batch-2 §🟢 anti-enumeration finding]. Scan existing code for idioms and save as lookup doc.
+
+### R8: Contract template requires explicit per-milestone scope section
+[See batch-2 §🔴 password-shape finding]. "OR X" language without scope decomposition causes confusion.
+
+### R9: Flag route-mounting as explicit sub-task for new router modules
+[See batch-2 §🟡 mount-at-bottom finding]. Fragile ordering constraint should be documented.
+
+### R10: "Similarity hint" field for duplicate-and-modify tasks
+[See batch-2 §💡 time finding]. T1S.2 = "operator version of admin login" → realistic estimate 1-2h not 6h.
+
 ---
 
 ## Metrics (tracked as execution proceeds)
@@ -154,7 +202,7 @@ Rolling up observations:
 | Batch | Tasks | Est hours | Actual hours | Rework loops | Reviewer catches |
 |---|---|---|---|---|---|
 | batch-0 | 4 (3G/1Y) | 4 | ~1.5 | 1 (T0S.4 v1.0→v1.1) | 4 Critical (C1-C4) |
-| batch-1 | 1 (1G) | 3 | — | — | — |
-| batch-2 | 2 (2G) | 6 | — | — | — |
+| batch-1 | 1 (1G) | 3 | ~30min | 0 | — |
+| batch-2 | 2 (2G) | 6 | ~50min | 0 | — |
 | batch-3 | 2 (1Y/1G) | 6 | — | — | — |
 | **M3-1** | **9** | **19** | — | — | — |
