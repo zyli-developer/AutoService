@@ -53,12 +53,11 @@ describe('CopilotView', () => {
     useOperatorStore.setState({ activeCopilotConvId: 'conv-1' });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(
-      <>
-        <CopilotView send={send} />
-        <IMInput send={send} />
-      </>
-    );
+    // CopilotView now renders IMInput inside .op-chat-col so the composer
+    // shrinks together with the chat stream when the right panel toggles.
+    // Rendering IMInput separately here would create two `copilot-input`
+    // testids in the DOM.
+    render(<CopilotView send={send} />);
 
     const input = screen.getByTestId('copilot-input');
     await user.type(input, 'hello world');

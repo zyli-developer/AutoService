@@ -14,7 +14,11 @@ const FilterIcon = () => (
   </svg>
 );
 
-export function IMTitlebar() {
+interface IMTitlebarProps {
+  onHamburger?: () => void;
+}
+
+export function IMTitlebar({ onHamburger }: IMTitlebarProps = {}) {
   const { t } = useTranslation();
   const activeSquadId = useOperatorStore((s) => s.activeSquadId);
   const conversations = useOperatorStore((s) => s.conversations);
@@ -27,6 +31,17 @@ export function IMTitlebar() {
 
   return (
     <header className="im-topbar" data-testid="im-titlebar">
+      <button
+        type="button"
+        className="im-hamburger"
+        data-testid="im-hamburger"
+        onClick={onHamburger}
+        aria-label={t('operator.topbar.menu')}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M3 6h18M3 12h18M3 18h18" />
+        </svg>
+      </button>
       <div className="im-topbar-left">
         <div className="im-crumb">{t('operator.titlebar.title')}</div>
         <div className="im-page-title">

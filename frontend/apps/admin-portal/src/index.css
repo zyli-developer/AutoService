@@ -1,5 +1,16 @@
 @import '@autoservice/design-system';
 
+/* Honor reduced-motion preference (WCAG 2.3.3 AAA) — drawer + cascade nav
+   animation in particular can trigger vestibular discomfort. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -706,7 +717,7 @@ html, body, #root {
   width: 22px;
   height: 22px;
   background: var(--ink-900);
-  color: #FAFAF8;
+  color: var(--color-bg);
   border-radius: 5px;
   align-items: center;
   justify-content: center;
@@ -937,23 +948,37 @@ html, body, #root {
 
 /* ===== Command palette ===== */
 .cs-cmdk-overlay {
+  /* Click-outside dismiss surface; rendered as a real <button>. Reset native
+     button chrome so it reads as a transparent backdrop. The cmdk panel is a
+     sibling positioned above it via z-index. */
   position: fixed;
   inset: 0;
   background: rgba(46, 53, 69, .35);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 120px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
   z-index: 100;
 }
 
 .cs-cmdk-panel {
+  position: fixed;
+  /* Pin top:120px on desktop (drops the panel below the topbar), but on
+     small viewports center vertically so it doesn't get clipped by the
+     bottom edge — `max(20px, ...)` keeps it off the very top edge too. */
+  top: max(20px, min(120px, 15vh));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: 0 24px 60px rgba(46, 53, 69, .18);
   width: 520px;
-  max-width: 90vw;
+  max-width: calc(100vw - 32px);
   padding: 20px 22px;
   font-family: var(--font-sans);
   color: var(--color-text-secondary);
@@ -1126,7 +1151,19 @@ html, body, #root {
 
 /* ===== Hamburger + drawer backdrop (hidden above mobile breakpoint) ===== */
 .cs-hamburger { display: none; }
-.cs-side-backdrop { display: none; }
+.cs-side-backdrop {
+  display: none;
+  /* When toggled to display:block on mobile, this is a <button> — reset
+     user-agent button chrome so the backdrop reads as a transparent dismiss
+     surface, not a focusable visible button. */
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+}
 
 /* ===== Responsive ===== */
 @media (max-width: 1180px) {
@@ -1156,7 +1193,7 @@ html, body, #root {
     z-index: 60;
     transform: translateX(-105%);
     transition: transform 340ms var(--ease-ink-bloom);
-    box-shadow: 18px 0 48px rgba(26, 26, 26, 0.18), 2px 0 0 rgba(26, 26, 26, 0.04);
+    box-shadow: 6px 0 20px rgba(26, 26, 26, 0.08), 1px 0 0 rgba(26, 26, 26, 0.03);
     will-change: transform;
   }
   .cs-rail.open {
@@ -1204,11 +1241,11 @@ html, body, #root {
   .cs-rail.open .cs-nav-item:nth-child(7) { transition-delay: 250ms; }
   .cs-rail.open .cs-usage-card    { opacity: 1; transform: none; transition-delay: 290ms; }
 
-  /* Hamburger button in topbar */
+  /* Hamburger button in topbar — 44×44 hit area per WCAG 2.5.5 */
   .cs-hamburger {
     display: inline-flex;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     align-items: center;
     justify-content: center;
     border: 1px solid var(--color-border);
@@ -1225,8 +1262,8 @@ html, body, #root {
     transform: scale(0.96);
   }
   .cs-hamburger svg {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
   }
 
   /* Compact topbar */
@@ -1260,28 +1297,33 @@ html, body, #root {
   .cs-kpi-value { font-size: 22px; }
   .cs-kpi-sparkline { display: none; }
 
-  /* Tables → card list on mobile (leaderboard, any future table) */
-  .cs-table-wrap table,
-  .cs-table-wrap thead,
-  .cs-table-wrap tbody,
-  .cs-table-wrap tr,
-  .cs-table-wrap th,
-  .cs-table-wrap td {
+  /* Tables → card list on mobile.
+     Opt-in via the wrapper class `.cs-table-wrap.as-cards` so a future
+     dense reporting table that prefers horizontal scroll over card mode
+     can keep `cs-table-wrap` without being force-collapsed.
+     EVERY <td> in an opted-in table MUST carry data-label="..." or the
+     mobile card row will render with no column header. */
+  .cs-table-wrap.as-cards table,
+  .cs-table-wrap.as-cards thead,
+  .cs-table-wrap.as-cards tbody,
+  .cs-table-wrap.as-cards tr,
+  .cs-table-wrap.as-cards th,
+  .cs-table-wrap.as-cards td {
     display: block;
   }
-  .cs-table-wrap thead { display: none; }
-  .cs-table-wrap tbody tr {
+  .cs-table-wrap.as-cards thead { display: none; }
+  .cs-table-wrap.as-cards tbody tr {
     padding: 12px 0;
     border-bottom: 1px solid var(--color-border-subtle) !important;
   }
-  .cs-table-wrap tbody tr:last-child { border-bottom: none !important; }
-  .cs-table-wrap td {
+  .cs-table-wrap.as-cards tbody tr:last-child { border-bottom: none !important; }
+  .cs-table-wrap.as-cards td {
     padding: 3px 0 !important;
     border: none !important;
     font-size: 13px;
     text-align: left !important;
   }
-  .cs-table-wrap td::before {
+  .cs-table-wrap.as-cards td[data-label]::before {
     content: attr(data-label);
     display: inline-block;
     min-width: 84px;

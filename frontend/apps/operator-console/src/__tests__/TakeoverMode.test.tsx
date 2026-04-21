@@ -56,12 +56,9 @@ describe('Takeover Mode UI', () => {
     });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(
-      <>
-        <CopilotView send={send} />
-        <IMInput send={send} />
-      </>
-    );
+    // CopilotView renders IMInput internally; rendering it again here
+    // would create duplicate `copilot-input` testids.
+    render(<CopilotView send={send} />);
 
     await user.type(screen.getByTestId('copilot-input'), '您好客户');
     await user.click(screen.getByTestId('copilot-send'));
@@ -80,12 +77,8 @@ describe('Takeover Mode UI', () => {
     });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(
-      <>
-        <CopilotView send={send} />
-        <IMInput send={send} />
-      </>
-    );
+    // See TC-03 — CopilotView already includes IMInput.
+    render(<CopilotView send={send} />);
 
     await user.type(screen.getByTestId('copilot-input'), '建议回复');
     await user.click(screen.getByTestId('copilot-send'));

@@ -68,21 +68,21 @@ export function TakeoverTrendChart() {
             y1={yl.y}
             x2={W - PAD_R}
             y2={yl.y}
-            stroke="var(--silver, #ccc)"
+            stroke="var(--color-border-strong)"
             strokeDasharray="3,3"
             strokeWidth={0.5}
           />
         ))}
 
         {/* Area fill */}
-        <path d={areaPath} fill="var(--m100, #e0edff)" opacity={0.5} />
+        <path d={areaPath} fill="var(--indigo-50)" opacity={0.5} />
 
         {/* Line */}
-        <path d={linePath} fill="none" stroke="var(--m600, #2563eb)" strokeWidth={2} />
+        <path d={linePath} fill="none" stroke="var(--color-primary)" strokeWidth={2} />
 
         {/* Dots */}
         {coords.map((c, i) => (
-          <circle key={i} cx={c.x} cy={c.y} r={3} fill="var(--m600, #2563eb)">
+          <circle key={i} cx={c.x} cy={c.y} r={3} fill="var(--color-primary)">
             <title>{c.date}: {c.count}</title>
           </circle>
         ))}
@@ -95,7 +95,7 @@ export function TakeoverTrendChart() {
             y={yl.y + 4}
             textAnchor="end"
             fontSize={10}
-            fill="var(--silver, #999)"
+            fill="var(--color-text-muted)"
           >
             {yl.val}
           </text>
@@ -111,7 +111,7 @@ export function TakeoverTrendChart() {
                 y={H - 4}
                 textAnchor="middle"
                 fontSize={9}
-                fill="var(--silver, #999)"
+                fill="var(--color-text-muted)"
               >
                 {c.date.slice(5)}
               </text>
@@ -133,9 +133,9 @@ export function TakeoverTrendChart() {
               style={{
                 fontSize: 11,
                 padding: '2px 8px',
-                border: '1px solid var(--silver, #ccc)',
+                border: '1px solid var(--color-border-strong)',
                 borderRadius: 4,
-                background: period === p ? 'var(--m600, #2563eb)' : 'transparent',
+                background: period === p ? 'var(--color-primary)' : 'transparent',
                 color: period === p ? '#fff' : 'inherit',
                 cursor: 'pointer',
               }}
@@ -149,7 +149,7 @@ export function TakeoverTrendChart() {
       {error && <div className="cs-pg warn">{error}</div>}
       {!data && !error && <div className="im-empty">{t('common.loading')}</div>}
       {data && !hasData && (
-        <div className="im-empty" style={{ padding: 24, textAlign: 'center', color: 'var(--silver, #999)' }}>
+        <div className="im-empty" style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>
           {t('admin.dashboard.takeover_empty')}
         </div>
       )}

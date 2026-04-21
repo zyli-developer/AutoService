@@ -110,7 +110,7 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontWeight: 600 }}>
                     {dialog.scenario.name_zh} · {dialog.persona.name_zh}
-                    {dialog.scenario.degraded && <span style={{ color: 'var(--l700)', marginLeft: 6, fontSize: 10 }} data-testid={`degraded-tag-${dialog.id}`}>降级</span>}
+                    {dialog.scenario.degraded && <span style={{ color: 'var(--l700)', marginLeft: 6, fontSize: 10 }} data-testid={`degraded-tag-${dialog.id}`}>{t('admin.wizard.rehearsal.degraded')}</span>}
                   </span>
                   <span style={{ fontSize: 10, color: dialog.review_status === 'approved' ? 'var(--m600)' : dialog.review_status === 'flagged' ? 'var(--l700)' : 'var(--silver)', fontWeight: 700 }}>
                     {dialog.review_status === 'approved'

@@ -4,9 +4,15 @@ import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
 import { HijackButton } from './HijackButton';
 import { TakeoverIndicator } from './TakeoverIndicator';
+import { IMInput } from './IMInput';
 
 interface CopilotViewProps {
   send: (frame: Envelope) => void;
+  panelOpen?: boolean;
+  onTogglePanel?: () => void;
+  onOpenSheet?: () => void;
+  onCloseSheet?: () => void;
+  onBackToList?: () => void;
 }
 
 function ChatTop({
@@ -15,20 +21,39 @@ function ChatTop({
   isTakeover,
   send,
   onClose,
+  panelOpen,
+  onTogglePanel,
+  onOpenSheet,
+  onBackToList,
 }: {
   convId: string;
   conv: any;
   isTakeover: boolean;
   send: (frame: Envelope) => void;
   onClose: () => void;
+  panelOpen?: boolean;
+  onTogglePanel?: () => void;
+  onOpenSheet?: () => void;
+  onBackToList?: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="op-chat-top" data-testid="copilot-header">
+      <button
+        type="button"
+        className="op-mobi-back"
+        data-testid="op-mobi-back"
+        onClick={onBackToList}
+        aria-label={t('operator.chat.back')}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 18 9 12l6-6" />
+        </svg>
+      </button>
       <div className={`op-chat-av ${isTakeover ? 'a4' : 'a1'}`}>
         {isTakeover ? t('operator.chat.avatar.takeover') : (conv?.customerId || convId).slice(0, 1).toUpperCase()}
       </div>
-      <div className="op-chat-info">
+      <div className="op-chat-title">
         <h3 className="op-chat-h3">
           {t('operator.copilot.chat_window')} #{convId.slice(0, 6)}
           {conv?.customerId && <span className="op-chat-cust"> · {conv.customerId}</span>}
@@ -41,7 +66,44 @@ function ChatTop({
           <TakeoverIndicator conversationId={convId} />
         </div>
       </div>
+      <button
+        type="button"
+        className="op-mobi-detail-btn"
+        data-testid="op-mobi-detail"
+        onClick={onOpenSheet}
+        aria-label={t('operator.chat.show_detail')}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 3h7v7" />
+          <path d="M10 21H3v-7" />
+          <path d="m21 3-7 7" />
+          <path d="m3 21 7-7" />
+        </svg>
+        {t('operator.chat.detail')}
+      </button>
       <div className="op-chat-actions">
+        <button
+          type="button"
+          className={`op-detail-toggle ${panelOpen ? 'on' : ''}`}
+          data-testid="op-detail-toggle"
+          onClick={onTogglePanel}
+          title={panelOpen ? t('operator.chat.collapse_detail') : t('operator.chat.expand_detail')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            {panelOpen ? (
+              <>
+                <path d="M9 3v18" />
+                <path d="m16 15-3-3 3-3" />
+              </>
+            ) : (
+              <>
+                <path d="M15 3v18" />
+                <path d="m8 9 3 3-3 3" />
+              </>
+            )}
+          </svg>
+          {t('operator.chat.detail')}
+        </button>
         <HijackButton conversationId={convId} send={send} />
         <button
           type="button"
@@ -125,7 +187,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
   );
 }
 
-function SidePanel({ conv }: { conv: any }) {
+function SidePanel({ conv, onCloseSheet }: { conv: any; onCloseSheet?: () => void }) {
   const { t } = useTranslation();
   const draftPlaceholder = conv?.lastMessage
     ? t('operator.panel.draft_placeholder_active', { snippet: (conv.lastMessage as string).slice(0, 60) })
@@ -133,6 +195,13 @@ function SidePanel({ conv }: { conv: any }) {
 
   return (
     <aside className="op-side-panel">
+      <button
+        type="button"
+        className="op-sheet-handle"
+        onClick={onCloseSheet}
+        aria-label={t('operator.chat.close_detail')}
+        data-testid="op-sheet-handle"
+      />
       <div className="op-sp-sec">
         <div className="op-sp-lbl">
           <span>{t('operator.panel.snapshot_title')}</span>
@@ -189,7 +258,14 @@ function SidePanel({ conv }: { conv: any }) {
   );
 }
 
-export function CopilotView({ send }: CopilotViewProps) {
+export function CopilotView({
+  send,
+  panelOpen,
+  onTogglePanel,
+  onOpenSheet,
+  onCloseSheet,
+  onBackToList,
+}: CopilotViewProps) {
   const { t } = useTranslation();
   const activeCopilotConvId = useOperatorStore((s) => s.activeCopilotConvId);
   const copilotMessages = useOperatorStore((s) => s.copilotMessages);
@@ -210,9 +286,13 @@ export function CopilotView({ send }: CopilotViewProps) {
         isTakeover={isTakeover}
         send={send}
         onClose={closeCopilot}
+        panelOpen={panelOpen}
+        onTogglePanel={onTogglePanel}
+        onOpenSheet={onOpenSheet}
+        onBackToList={onBackToList}
       />
       <TakeoverWarning conversationId={activeCopilotConvId} send={send} />
-      <div className="op-chat-split">
+      <div className={`op-chat-split ${panelOpen ? 'panel-open' : ''}`}>
         <div className="op-chat-col">
           <div className="op-stream-lbl">
             <span>{t('operator.stream.lbl')}</span>
@@ -228,8 +308,9 @@ export function CopilotView({ send }: CopilotViewProps) {
               <StreamMessage key={msg.id} msg={msg} />
             ))}
           </div>
+          <IMInput send={send} />
         </div>
-        <SidePanel conv={conv} />
+        <SidePanel conv={conv} onCloseSheet={onCloseSheet} />
       </div>
     </div>
   );

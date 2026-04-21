@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 import { AdminTopbar } from './AdminTopbar';
 import { AdminRail } from './AdminRail';
@@ -33,6 +34,7 @@ export function AdminShell({
   hideMasterSection,
   tenantIdOverride,
 }: AdminShellProps = {}) {
+  const { t } = useTranslation();
   const activeTab = useAdminStore((s) => s.activeTab) as TabKey;
   const [navOpen, setNavOpen] = useState(false);
   const View = VIEWS[activeTab];
@@ -51,10 +53,13 @@ export function AdminShell({
         hideMasterSection={hideMasterSection}
         tenantIdOverride={tenantIdOverride}
       />
-      <div
+      <button
+        type="button"
         className={`cs-side-backdrop ${navOpen ? 'on' : ''}`}
         data-testid="cs-side-backdrop"
+        aria-label={t('admin.nav.close_menu')}
         onClick={closeNav}
+        tabIndex={navOpen ? 0 : -1}
       />
       <main className="cs-canvas" data-view={dataView} data-testid="admin-canvas">
         {children ?? <View />}
