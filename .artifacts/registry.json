@@ -566,6 +566,18 @@
       "created_at": "2026-04-21T00:23:15Z",
       "updated_at": "2026-04-21T00:23:15Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-006",
+      "name": "M2 batch-2 test-diff (T2B.1 + T2B.2 + T2B.3 parallel)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-2.md",
+      "created_at": "2026-04-21T00:23:18Z",
+      "updated_at": "2026-04-21T00:23:18Z",
+      "related_ids": []
     }
   ]
 }
