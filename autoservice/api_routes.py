@@ -2068,5 +2068,50 @@ async def auth_dev_login(
     if not DEV_MODE_ENABLED:
         return JSONResponse(status_code=404, content={"error": "not found"})
 
-    # Enabled-path implementation in Task 4.
-    return JSONResponse(status_code=501, content={"error": "not implemented"})
+    email_raw = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(email_raw, str) or not email_raw.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "email is required"},
+        )
+    email = email_raw.strip().lower()
+
+    tenant_raw = payload.get("tenant_id") if isinstance(payload, dict) else None
+    if isinstance(tenant_raw, str):
+        tenant_id = tenant_raw.strip() or None
+    else:
+        tenant_id = None
+
+    conn = _get_auth_db()
+    session_id = auth.create_session(conn, email, tenant_id=tenant_id)
+
+    sid_prefix = session_id[:8]
+    logger.warning(
+        "[dev-login] minted session for %s (tenant=%s, sid=%s…)",
+        email, tenant_id or "_master", sid_prefix,
+    )
+    _DEV_MAIL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    audit_record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "kind": "dev_login",
+        "email": email,
+        "tenant_id": tenant_id,
+        "session_id_prefix": sid_prefix,
+    }
+    with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(audit_record, ensure_ascii=False) + "\n")
+
+    redirect_target = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+
+    response = JSONResponse(content={"ok": True, "redirect": redirect_target})
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=AUTH_SESSION_COOKIE,
+        value=session_id,
+        max_age=auth.DEFAULT_SESSION_TTL_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response

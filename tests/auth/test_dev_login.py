@@ -191,3 +191,98 @@ def test_dev_login_returns_404_when_env_unset(
     assert rows["c"] == 0
     # No cookie set.
     assert "auth_session" not in r.cookies
+
+
+# ── /auth/dev-login — enabled path ────────────────────────────────────────
+
+
+def test_dev_login_mints_tier0_session_when_tenant_null(
+    dev_mode_on, app_client, auth_conn, tmp_path
+):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "admin@dev.local", "tenant_id": None},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"ok": True, "redirect": "/admin"}
+
+    rows = auth_conn.execute(
+        "SELECT admin_email, tenant_id, revoked_at FROM sessions"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["admin_email"] == "admin@dev.local"
+    assert rows[0]["tenant_id"] is None
+    assert rows[0]["revoked_at"] is None
+
+    # Cookie set with expected attributes.
+    cookie_header = r.headers.get("set-cookie", "")
+    assert "auth_session=" in cookie_header
+    assert "HttpOnly" in cookie_header
+    assert "samesite=lax" in cookie_header.lower()
+
+
+def test_dev_login_mints_tier1_session_and_redirects_to_tenant_admin(
+    dev_mode_on, app_client, auth_conn
+):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "admin@dev.local", "tenant_id": "acme"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "redirect": "/t/acme/admin"}
+
+    row = auth_conn.execute(
+        "SELECT tenant_id FROM sessions"
+    ).fetchone()
+    assert row["tenant_id"] == "acme"
+
+
+def test_dev_login_empty_tenant_id_treated_as_null(
+    dev_mode_on, app_client, auth_conn
+):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "admin@dev.local", "tenant_id": "   "},
+    )
+    assert r.status_code == 200
+    assert r.json()["redirect"] == "/admin"
+    row = auth_conn.execute("SELECT tenant_id FROM sessions").fetchone()
+    assert row["tenant_id"] is None
+
+
+def test_dev_login_empty_email_returns_400(dev_mode_on, app_client):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "   ", "tenant_id": None},
+    )
+    assert r.status_code == 400
+    assert "email" in r.json()["error"]
+
+
+def test_dev_login_missing_email_returns_400(dev_mode_on, app_client):
+    r = app_client.post("/api/auth/dev-login", json={})
+    assert r.status_code == 400
+
+
+def test_dev_login_writes_audit_jsonl_entry(
+    dev_mode_on, app_client, tmp_path
+):
+    r = app_client.post(
+        "/api/auth/dev-login",
+        json={"email": "admin@dev.local", "tenant_id": "acme"},
+    )
+    assert r.status_code == 200
+
+    log_path = tmp_path / ".autoservice" / "logs" / "auth-devmail.jsonl"
+    assert log_path.exists()
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["kind"] == "dev_login"
+    assert record["email"] == "admin@dev.local"
+    assert record["tenant_id"] == "acme"
+    assert "session_id_prefix" in record
+    assert len(record["session_id_prefix"]) == 8
+    # Full session id must NOT be in the log.
+    assert "session_id" not in record
