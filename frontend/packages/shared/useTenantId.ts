@@ -1,39 +1,55 @@
 /**
- * T1F.1 · useTenantId — shared tenant-id extraction hook
+ * T6F.1 · useTenantId — tenant-id extraction hook (M2 real impl)
  *
- * Returns the current tenant id by inspecting (in priority order):
- *  1. The `:tenantId` route path parameter (matches `/t/:tenantId/*`)
- *  2. The `?tenant=` query string parameter (read from the router's location,
- *     with a `window.location` fallback for non-router callers)
+ * Resolution order (spec §3.6):
+ *  1. The `:tenantId` route path param (matches `/t/:tenantId/*`) — URL wins
+ *     in ALL modes because deep links are authoritative. A fork admin
+ *     browsing `/t/other/admin` sees `other` (backend middleware will 403
+ *     the cross-tenant access, which is the desired UX — not a silent
+ *     substitution).
+ *  2. The `?tenant=` query-string parameter — legacy fallback.
+ *  3. `useSessionMode().data.tenant_id` — when no URL scope and the backend
+ *     reports `mode === "tenant"` (fork deployment), the session's own
+ *     tenant_id is the correct identity.
+ *  4. `null` — master mode with no URL scope = no tenant context.
  *
- * Returns `null` when neither is present. Safe to call from SSR contexts
- * (guards `window` access).
+ * Safe to call from SSR contexts (guards `window`), outside a router
+ * (but at minimum inside a `<Router>` — `useLocation` would throw
+ * otherwise; callers that need a router-less fallback should use the
+ * `_unsafeUseTenantIdNoRouter` export).
  *
- * Consumers: customer-chat, operator-console, admin-portal — unblocks
- * GAP-004 (multi-tenant SDK routing) by replacing hardcoded WS URLs like
- * `ws://localhost:8000/ws/customer` with `?tenant=<useTenantId()>`.
- *
- * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.1, §5.2
+ * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §3.6
  */
 import { useLocation, useParams } from 'react-router-dom';
 
+import { useSessionMode } from './useSessionMode';
+
 export function useTenantId(): string | null {
-  // Hooks must be called unconditionally (React Rules of Hooks).
+  // Hooks must run unconditionally — we always call all three even if the
+  // first yields a value.
   const params = useParams<{ tenantId?: string }>();
   const routerLocation = useLocation();
+  const { data: session } = useSessionMode();
 
   if (params.tenantId) return params.tenantId;
 
-  // Prefer the router's own location (works under MemoryRouter in tests);
-  // fall back to `window.location.search` for callers that sit outside a Router.
   let search = routerLocation?.search ?? '';
   if (!search && typeof window !== 'undefined') {
     search = window.location.search;
   }
 
   try {
-    return new URLSearchParams(search).get('tenant');
+    const fromQuery = new URLSearchParams(search).get('tenant');
+    if (fromQuery) return fromQuery;
   } catch {
-    return null;
+    // ignore malformed query string
   }
+
+  // Session fallback — only when backend reports fork mode. In master mode
+  // we return null so the caller can render the tenant-list / master view.
+  if (session && session.mode === 'tenant' && session.tenant_id) {
+    return session.tenant_id;
+  }
+
+  return null;
 }

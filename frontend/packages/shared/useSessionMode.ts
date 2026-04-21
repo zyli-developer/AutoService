@@ -1,33 +1,58 @@
 /**
- * T1F.2 · useSessionMode — deployment-mode detection hook
+ * T6F.1 · useSessionMode — deployment-mode + auth-state hook (M2 real impl)
  *
  * Queries `GET /api/session/mode` (served by `autoservice.api_routes`) and
- * exposes the resulting deployment mode so admin-portal can render either
- * MasterLayout (platform_admin) or TenantLayout (tenant_admin).
+ * exposes the resulting deployment mode + auth state so admin-portal's
+ * `<AuthGate>` can gate rendering and the mode-dispatch in `App.tsx` can
+ * select between MasterLayout and TenantLayout.
  *
- * M1 contract — master deployment only:
- *   { mode: "master", role: "platform_admin" }
+ * Response shape (batch-8 — spec §4.5):
+ *   {
+ *     mode: "master" | "tenant",
+ *     tenant_id: string | null,
+ *     authenticated: boolean,
+ *     authenticated_as: string | null,
+ *     tier: 0 | 1 | null,
+ *     brand_name: string
+ *   }
  *
- * M2 contract — tenant fork deployment adds `tenant_id`:
- *   { mode: "tenant", role: "tenant_admin", tenant_id: "<tid>" }
+ * The request uses `credentials: "include"` so the HttpOnly `auth_session`
+ * cookie set by `/api/auth/verify` is sent. The cookie is invisible to JS
+ * (HttpOnly) — the backend is the sole source of truth for auth-state.
  *
- * The `fetcher` parameter is injectable so tests can provide a mock without
- * touching the real network. Defaults to the global `fetch`.
+ * Implementation note (decision — see eval-doc-011):
+ *   Spec §3.6 shows a TanStack Query example; we roll our own vanilla
+ *   useState+useEffect hook because admin-portal does not depend on
+ *   `@tanstack/react-query`. The signature stays compatible if a future
+ *   batch swaps the impl for TanStack Query.
  *
- * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.3
+ * Backward compatibility: M1 callers of `useSessionMode()` that only read
+ * `data.mode` still work — `mode` is preserved. The M1 `role` field is
+ * deprecated (backend no longer returns it); consumers should read
+ * `data.authenticated` + `data.authenticated_as` instead.
+ *
+ * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §3.6, §4.5
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type SessionMode = {
   mode: 'master' | 'tenant';
-  role: 'platform_admin' | 'tenant_admin';
-  tenant_id?: string;
+  tenant_id: string | null;
+  authenticated: boolean;
+  authenticated_as: string | null;
+  tier: 0 | 1 | null;
+  brand_name: string;
+  // M1 backward-compat — some callers still read `role`. Backend no longer
+  // emits this; we preserve the field as optional so older consumers don't
+  // see a type error while they migrate to `authenticated_as`.
+  role?: 'platform_admin' | 'tenant_admin';
 };
 
 type Result = {
   data: SessionMode | null;
   loading: boolean;
   error: Error | null;
+  refetch: () => void;
 };
 
 export function useSessionMode(
@@ -37,12 +62,20 @@ export function useSessionMode(
   const [data, setData] = useState<SessionMode | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  // bump this counter to force re-fetch (refetch())
+  const [nonce, setNonce] = useState(0);
+
+  // Cancellation flag shared between effect runs — ensures a stale fetch
+  // doesn't overwrite state after a newer refetch has been kicked off.
+  const latestNonce = useRef(nonce);
+  latestNonce.current = nonce;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
 
-    fetcher(endpoint)
+    fetcher(endpoint, { credentials: 'include' })
       .then(async (r) => {
         if (!r.ok) {
           throw new Error(`/api/session/mode ${r.status}`);
@@ -50,13 +83,13 @@ export function useSessionMode(
         return (await r.json()) as SessionMode;
       })
       .then((json) => {
-        if (!cancelled) {
+        if (!cancelled && latestNonce.current === nonce) {
           setData(json);
           setLoading(false);
         }
       })
       .catch((e: unknown) => {
-        if (!cancelled) {
+        if (!cancelled && latestNonce.current === nonce) {
           setError(e instanceof Error ? e : new Error(String(e)));
           setLoading(false);
         }
@@ -65,7 +98,11 @@ export function useSessionMode(
     return () => {
       cancelled = true;
     };
-  }, [fetcher, endpoint]);
+  }, [fetcher, endpoint, nonce]);
 
-  return { data, loading, error };
+  const refetch = useCallback(() => {
+    setNonce((n) => n + 1);
+  }, []);
+
+  return { data, loading, error, refetch };
 }

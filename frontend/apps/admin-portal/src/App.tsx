@@ -1,40 +1,72 @@
 /**
- * T1F.5 · admin-portal dual-mode dispatch
+ * T6F.2 · admin-portal root — AuthGate + mode dispatch
  *
- * Queries `GET /api/session/mode` via `useSessionMode` (T1F.2) and renders:
- *   - MasterLayout when the backend reports `mode === "master"` (default)
- *   - TenantLayout stub when the backend reports `mode === "tenant"`
+ * Dispatch order (top to bottom):
+ *   1. `/login`                         → <LoginPage /> (public, no gate)
+ *   2. `/t/<tid>/admin` path prefix     → <AuthGate> wrapping TenantLayout
+ *   3. otherwise                         → <AuthGate> wrapping mode-dispatch
+ *      → TenantLayout (session.mode=tenant) or MasterLayout (default)
  *
- * While the mode request is in flight we render a minimal loading state;
- * on failure we fall back to MasterLayout so Master deployments (M1 scope)
- * remain usable even if `/api/session/mode` is unreachable — the endpoint
- * only matters once Tenant fork builds ship (M2).
+ * AuthGate (spec §4.5) sits in front of every non-login branch so
+ * anonymous visitors get redirected to `/login` without ever flashing
+ * MasterLayout frames (first-frame flicker mitigation, spec §9). Because
+ * MasterLayout / TenantLayout each wrap their own `<BrowserRouter>` and
+ * React Router v6 refuses nested Routers, AuthGate avoids `<Navigate>` and
+ * instead drives redirection via `window.location.assign` (see AuthGate).
  *
- * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.3
+ * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §3.6, §4.5
  */
 import { useSessionMode } from '@autoservice/shared';
+import { AuthGate } from './components/auth/AuthGate';
+import { LoginPage } from './components/auth/LoginPage';
 import { MasterLayout } from './layouts/MasterLayout';
 import { TenantLayout } from './layouts/TenantLayout';
 
-export function App() {
-  const { data, loading, error } = useSessionMode();
+/**
+ * Extract tenant id from a `/t/<tid>/admin` pathname. Returns null for any
+ * other shape.
+ */
+function tenantIdFromAdminPath(pathname: string): string | null {
+  const match = pathname.match(/^\/t\/([^/]+)\/admin(?:\/|$)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
-  if (loading) {
+/**
+ * Mode dispatcher — rendered INSIDE `<AuthGate>`. By the time this runs
+ * `data.authenticated === true` (AuthGate has redirected otherwise).
+ */
+function ModeDispatch() {
+  const { data } = useSessionMode();
+  if (data?.mode === 'tenant') {
+    return <TenantLayout tenantId={data.tenant_id ?? undefined} />;
+  }
+  return <MasterLayout />;
+}
+
+export function App() {
+  const pathname =
+    typeof window !== 'undefined' ? window.location.pathname : '';
+
+  // `/login` public — no gate.
+  if (pathname === '/login' || pathname.startsWith('/login/')) {
+    return <LoginPage />;
+  }
+
+  // `/t/<tid>/admin` path-tenant short-circuit (preserved from M1). Must
+  // still pass through AuthGate so anon visitors don't see the tenant
+  // shell before the redirect.
+  const pathTenantId = tenantIdFromAdminPath(pathname);
+  if (pathTenantId) {
     return (
-      <div
-        data-testid="session-mode-loading"
-        style={{ padding: 32, textAlign: 'center' }}
-      >
-        Loading…
-      </div>
+      <AuthGate>
+        <TenantLayout tenantId={pathTenantId} />
+      </AuthGate>
     );
   }
 
-  if (error) {
-    // Master deployment is the safe default in M1 — the endpoint only
-    // exists on master builds and tenant-fork rendering is a stub anyway.
-    return <MasterLayout />;
-  }
-
-  return data?.mode === 'tenant' ? <TenantLayout /> : <MasterLayout />;
+  return (
+    <AuthGate>
+      <ModeDispatch />
+    </AuthGate>
+  );
 }
