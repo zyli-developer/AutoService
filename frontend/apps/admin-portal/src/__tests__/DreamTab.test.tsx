@@ -54,7 +54,8 @@ function primeMocks() {
   fetchJSONMock.mockImplementation((path: string) => {
     if (path.startsWith('/api/dream/status')) return Promise.resolve(MOCK_STATUS);
     if (path.startsWith('/api/proposals')) return Promise.resolve(MOCK_PROPOSALS);
-    if (path.startsWith('/api/dream/runs')) return Promise.resolve(MOCK_RUNS);
+    if (path.startsWith('/api/dream/runs'))
+      return Promise.resolve({ tenant_id: 'acme', runs: MOCK_RUNS });
     return Promise.resolve({});
   });
   postJSONMock.mockResolvedValue({ ok: true });

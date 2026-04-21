@@ -94,10 +94,15 @@ export function DreamTab() {
         .then(setStatus)
         .catch(() => setStatus(null)),
       fetchJSON<DreamProposal[]>(`/api/proposals`)
-        .then((all) => setProposals(all.filter((p) => !p.status || p.status !== 'rejected')))
+        .then((all) => {
+          const arr = Array.isArray(all) ? all : [];
+          setProposals(arr.filter((p) => !p.status || p.status !== 'rejected'));
+        })
         .catch(() => setProposals([])),
-      fetchJSON<DreamRun[]>(`/api/dream/runs?tenant_id=${encodeURIComponent(tenantId)}&limit=10`)
-        .then(setRuns)
+      fetchJSON<{ tenant_id: string; runs: DreamRun[] }>(
+        `/api/dream/runs?tenant_id=${encodeURIComponent(tenantId)}&limit=10`,
+      )
+        .then((r) => setRuns(Array.isArray(r?.runs) ? r.runs : []))
         .catch(() => setRuns([])),
     ]).finally(() => setLoading(false));
   }, [tenantId]);
