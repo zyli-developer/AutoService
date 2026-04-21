@@ -1028,6 +1028,18 @@
         "test-diff-017",
         "test-diff-018"
       ]
+    },
+    {
+      "id": "eval-doc-018",
+      "name": "T7S.5 fork-mode boot smoke test",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "orchestrator-t7s-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7s-5-smoke.md",
+      "created_at": "2026-04-21T02:12:11Z",
+      "updated_at": "2026-04-21T02:12:11Z",
+      "related_ids": []
     }
   ]
 }
