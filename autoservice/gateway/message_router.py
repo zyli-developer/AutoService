@@ -1058,26 +1058,99 @@ async def _generate_agent_reply(
 
         logger.info("Agent reply: pool ready, sending to CC SDK...")
 
+        # --- Triage & route (spec 2026-04-21) ---
+        from autoservice.triage_dispatch import (
+            triage_and_route, _build_reseeded_prompt,
+        )
+        from autoservice.triage_config_loader import load_tenant_config_for_conv
+
+        tenant_config = await load_tenant_config_for_conv(engine, conv_id)
+        triage_enabled = getattr(tenant_config, "triage_dispatch_enabled", True)
+
+        target_role = "customer"
+        previous_role = None
+        if triage_enabled:
+            try:
+                decision = await triage_and_route(
+                    engine=engine, conv_id=conv_id,
+                    customer_text=customer_text, tenant_config=tenant_config,
+                )
+                target_role = decision.role
+                previous_role = decision.previous_role
+            except Exception:
+                logger.exception("triage_and_route failed; falling back to customer")
+
+        # Re-seed history if role switched
+        if previous_role and previous_role != target_role:
+            customer_text_for_prompt = await _build_reseeded_prompt(
+                engine, conv_id, customer_text,
+                previous_role=previous_role, new_role=target_role,
+                token_limit=getattr(tenant_config, "history_reseed_token_limit", 2000),
+            )
+        else:
+            customer_text_for_prompt = customer_text
+
         # Build prompt
         suggestions = await _collect_operator_suggestions(engine, conv_id)
         prompt_parts = []
         if suggestions:
             prompt_parts.append(suggestions)
             prompt_parts.append(
-                f"Customer message: {customer_text}\n\n"
+                f"Customer message: {customer_text_for_prompt}\n\n"
                 "You are a customer service AI. The operator has given you instructions above — "
                 "follow them when replying to the customer. Reply in the same language as the customer."
             )
         else:
             prompt_parts.append(
-                f"Customer message: {customer_text}\n\nReply briefly in the same language as the customer."
+                f"Customer message: {customer_text_for_prompt}\n\nReply briefly in the same language as the customer."
             )
         prompt = "\n".join(prompt_parts)
 
         # Collect response
         reply_text = ""
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
-        async for msg in pool.session_query(conv_id, prompt):
+
+        tenant_id = getattr(tenant_config, "tenant_id", None)
+
+        async def _role_stream():
+            """Yield Messages from a (role, tenant) sub-pool instance.
+
+            On acquire failure, writes a SIDE warning and falls back to the
+            customer sticky session (spec §6)."""
+            from autoservice.conversation_engine.types import MessageVisibility
+            try:
+                async with pool.acquire(
+                    role=target_role, tenant_id=tenant_id, timeout=2.0,
+                ) as inst:
+                    inst._sticky_conv_id = conv_id  # type: ignore[attr-defined]
+                    await engine.update_triage_state(conv_id, cc_instance_id=inst.id)
+                    await inst.client.query(prompt, session_id=f"{target_role}-{conv_id}")
+                    async for m in inst.client.receive_response():
+                        yield m
+            except Exception:
+                logger.exception(
+                    "triage: role=%s sub-pool acquire failed, falling back to customer",
+                    target_role,
+                )
+                try:
+                    await engine.send_message(
+                        conv_id, source="triage",
+                        content=f"[分流警告] target_role={target_role} 池获取失败,降级到 customer",
+                        requested_visibility=MessageVisibility.SIDE,
+                        metadata={"type": "sla_warning", "failed_role": target_role},
+                    )
+                except Exception:
+                    pass
+                async for m in pool.session_query(conv_id, prompt):
+                    yield m
+
+        iterator = (
+            pool.session_query(conv_id, prompt)
+            if target_role == "customer"
+            else _role_stream()
+        )
+
+        async for msg in iterator:
             cls = type(msg).__name__
             logger.debug("Agent reply: stream msg type=%s", cls)
             if isinstance(msg, AssistantMessage) and msg.content:
