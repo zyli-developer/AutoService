@@ -578,6 +578,18 @@
       "created_at": "2026-04-21T00:23:18Z",
       "updated_at": "2026-04-21T00:23:18Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-007",
+      "name": "M2 batch-3 test-diff (T3B.1 + T3B.2 + T3B.3 dream tools)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-3.md",
+      "created_at": "2026-04-21T00:23:22Z",
+      "updated_at": "2026-04-21T00:23:22Z",
+      "related_ids": []
     }
   ]
 }
