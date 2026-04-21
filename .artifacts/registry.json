@@ -1120,6 +1120,18 @@
         "test-diff-019",
         "test-diff-021"
       ]
+    },
+    {
+      "id": "eval-doc-020",
+      "name": "batch-15 T8B.1 GitHubApiForkCreator + T8B.2 LocalTarballForkCreator runbook config step",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "main-orchestrator-batch-15",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-15-forkcreator.md",
+      "created_at": "2026-04-21T02:21:31Z",
+      "updated_at": "2026-04-21T02:21:31Z",
+      "related_ids": []
     }
   ]
 }
