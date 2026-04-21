@@ -393,6 +393,125 @@ async def delete_one_operator(
 # ──────────────────────────────────────────────────────────────────────────
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Multi-admin per tenant (T2S.2 · E1.5)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@operator_router.get("/admin/{tenant_id}/admins")
+async def list_admins(
+    tenant_id: str,
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    """List all admins currently associated with a tenant.
+
+    An admin is identified by having a live (un-revoked, un-expired) session
+    scoped to this ``tenant_id``.  This reflects the PRD §2 E1.5 requirement:
+    ≥2 admins per tenant with identical permissions.  Multiple active sessions
+    for the same email count as ONE admin.
+    """
+    conn = _get_op_db()
+    now_iso = _isoformat_now()
+    rows = conn.execute(
+        """SELECT DISTINCT admin_email, MIN(created_at) AS first_seen,
+                  MAX(expires_at) AS latest_expires
+             FROM sessions
+            WHERE tenant_id = ?
+              AND revoked_at IS NULL
+              AND expires_at > ?
+            GROUP BY admin_email
+            ORDER BY first_seen""",
+        (tenant_id, now_iso),
+    ).fetchall()
+    return {
+        "admins": [
+            {
+                "email": r["admin_email"],
+                "first_seen": r["first_seen"],
+                "latest_expires": r["latest_expires"],
+            }
+            for r in rows
+        ]
+    }
+
+
+@operator_router.delete("/admin/{tenant_id}/admins/{email}")
+async def revoke_admin(
+    tenant_id: str,
+    email: str,
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    """Revoke all active sessions for an admin on this tenant.
+
+    Guardrail: refuse if this would leave zero admins on the tenant
+    (cannot orphan a tenant per contract §6 "Don't Do" list).  The caller
+    (who is an admin) cannot revoke themselves as the last admin — must
+    invite a co-admin first, then remove themselves.
+    """
+    conn = _get_op_db()
+    now_iso = _isoformat_now()
+    target_email = email.strip().lower()
+
+    # Count distinct live admin emails on this tenant
+    current = conn.execute(
+        """SELECT COUNT(DISTINCT admin_email) AS n
+             FROM sessions
+            WHERE tenant_id = ?
+              AND revoked_at IS NULL
+              AND expires_at > ?""",
+        (tenant_id, now_iso),
+    ).fetchone()
+
+    # Check target is actually an admin here
+    target_row = conn.execute(
+        """SELECT COUNT(*) AS n
+             FROM sessions
+            WHERE tenant_id = ?
+              AND admin_email = ?
+              AND revoked_at IS NULL
+              AND expires_at > ?""",
+        (tenant_id, target_email, now_iso),
+    ).fetchone()
+    if target_row["n"] == 0:
+        raise HTTPException(
+            status_code=404, detail={"error": "admin not found on this tenant"}
+        )
+
+    # Last-admin guard
+    if current["n"] <= 1:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "cannot_revoke_last_admin",
+                "message": (
+                    "This would orphan the tenant. Invite another admin first."
+                ),
+            },
+        )
+
+    # Revoke all live sessions for that admin on this tenant
+    conn.execute(
+        """UPDATE sessions
+              SET revoked_at = ?
+            WHERE tenant_id = ?
+              AND admin_email = ?
+              AND revoked_at IS NULL""",
+        (now_iso, tenant_id, target_email),
+    )
+    conn.commit()
+    return {"ok": True, "revoked_email": target_email}
+
+
+def _isoformat_now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Invites (T1S.5 — admin creates operator invite; new operator accepts)
+# ──────────────────────────────────────────────────────────────────────────
+
+
 @operator_router.post("/admin/{tenant_id}/invites")
 async def create_invite(
     tenant_id: str,

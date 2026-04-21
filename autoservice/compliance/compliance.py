@@ -145,13 +145,64 @@ class ComplianceEngine:
         tenant_id: str,
         config: dict,
         region_filter: Optional[str] = None,
+        *,
+        countries: Optional[list[str]] = None,
     ) -> ComplianceReport:
-        """Scan tenant config against all (or filtered) compliance rules."""
+        """Scan tenant config against compliance rules.
+
+        Filtering (T2S.7 — contract e4-compliance.md §3):
+        - ``countries`` (preferred): list of ISO 3166-1 alpha-2 codes OR
+          ``'*'`` (GLOBAL_TAG) OR ``'EU'`` alias.  Rules match when
+          ``rule.region in countries`` OR ``rule.region == '*'``.
+          Empty list → fail-closed (OQ-E4-1): raises ValueError so the
+          caller surfaces "tenant.countries not configured" to the user.
+        - ``region_filter`` (deprecated, removed M4): single-region string.
+          Emits DeprecationWarning when used.
+        - Both provided: ValueError — ambiguous caller intent.
+        - Neither provided: fallback to unfiltered scan (all rules) —
+          preserved for M2 callers until they migrate.
+        """
+        from autoservice import country_registry
+
+        if region_filter is not None and countries is not None:
+            raise ValueError(
+                "scan() takes EITHER region_filter (deprecated) OR countries, not both"
+            )
+
+        if region_filter is not None:
+            import warnings
+            warnings.warn(
+                "scan(region_filter=) is deprecated (M4 removal). "
+                "Use scan(countries=[...]) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if countries is not None:
+            if not countries:
+                # OQ-E4-1: fail-closed on empty list
+                raise ValueError(
+                    "tenant.countries is empty — compliance scan blocked. "
+                    "Configure tenant.countries in admin-portal before running scans."
+                )
+            # Validate codes early (catches typos at scan time, not rule mismatch time)
+            invalid = country_registry.validate_list(countries)
+            if invalid:
+                raise ValueError(
+                    f"Invalid country code(s) in scan(countries=): {invalid}"
+                )
+
         results: list[RuleResult] = []
 
         for rule in self._rules:
-            # Optional region filter
-            if region_filter and rule["region"] != region_filter:
+            rule_region = rule["region"]
+
+            # Filtering priority: countries (new) > region_filter (deprecated)
+            if countries is not None:
+                # Match iff rule is GLOBAL ('*') or its region is in the tenant's countries
+                if rule_region != country_registry.GLOBAL_TAG and rule_region not in countries:
+                    continue
+            elif region_filter and rule_region != region_filter:
                 continue
 
             trigger = rule["trigger"]
