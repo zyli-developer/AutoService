@@ -25,6 +25,25 @@ project:
       scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md"
       plan_doc: "docs/superpowers/plans/2026-04-20-tenant-sandbox-m2.md"
       plans_dir: docs/plans/m2
+      status: "shipped"
+      gate_passed_at: "2026-04-21"
+      gate_evidence: "§8 8-step acceptance — 7 passed / 1 skipped (step 8 M3 scope) / 0 failed; fork sim at e2e-evidence/fork-sim-m2/"
+    M3:
+      name: "Production-readiness + Identity/RBAC + Triage/Compliance/Dream/Ops"
+      scope_doc: "docs/prd/AutoService-M3-PRD.md"
+      plans_dir: docs/plans/m3
+      status: "planned"       # kickoff pending M2 gate
+      epic_design_specs:
+        - "docs/superpowers/specs/2026-04-21-m3-e1-identity-rbac-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e3-triage-enhancement-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e4-compliance-country-filter-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e5-dream-extension-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e6-ops-gc-playwright-design.md"
+      scope_notes:
+        - "Epic E2 (Subtenant/Whitelabel/Referral) DEFERRED_M4 per PRD §8.1 Errata (v1.1 §8 whitelabel OoS)"
+        - "16 in-scope stories (original 22 minus 6 E2.x)"
+        - "Kickoff target 2026-04-22; gate target 2026-05-03"
+        - "When M2 gate passes, update project.plans_dir → docs/plans/m3"
 
   conventions:
     commit_style: "conventional commits (feat/fix/chore/test/refactor)"

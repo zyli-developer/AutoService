@@ -8,9 +8,9 @@
 - **已完成**：38
 - **进行中**：0
 - **阻塞**：0
-- **待办**：3
-- **完成率**：100% (38/38) 🎉 M2 代码完整；人工 E2E run 是单独动作
-- **最后更新**：2026-04-20
+- **待办**：0
+- **完成率**：100% (38/38) 🎉 M2 代码完整 + §8 8-step 人工验收 7/8 PASS（step 8 M3 scope skip）
+- **最后更新**：2026-04-21 · **Gate**：SHIPPED
 
 ### 会话日志
 
@@ -40,6 +40,7 @@
 | 2026-04-21 | batch-14 combined e2e-report-011 + batch-14 close (Phase 7 COMPLETE · 35/38 = 92%) | e2e-report-011 registered |
 | 2026-04-21 | batch-15 P8 ForkCreator — T8B.1 (yellow L, reviewer APPROVED) + T8B.2 (eval-doc-020, test-diff-022, e2e-report-012; 19 new + 172 regression green; subagent rate-limited, main orchestrator closed) | `e3f2318` |
 | 2026-04-21 | **M2 CODE COMPLETE 🎉** · batch-16 T8S.3 E2E test code (eval-doc-021, test-diff-023, e2e-report-013; 8 @pytest.mark.e2e tests; subagent stalled, main orchestrator finished; inline reviewer APPROVED) | pending final commit |
+| 2026-04-21 | **M2 GATE PASS · SHIPPED 🚀** · §8 8-step 人工验收 7 passed / 1 skipped (step 8 proposals approve/reject endpoint defer M3 per test) / 0 failed · 18.68s · fork sim at `e2e-evidence/fork-sim-m2/` (tenant_26e0add6, `autoservice.web_gateway:app` on :8001, master on :8000) · evidence 已写入 `e2e-evidence/m2-acceptance/` | pending final commit |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
