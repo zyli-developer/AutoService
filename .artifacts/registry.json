@@ -770,7 +770,8 @@
       "created_at": "2026-04-21T00:59:37Z",
       "updated_at": "2026-04-21T00:59:37Z",
       "related_ids": [
-        "test-diff-013"
+        "test-diff-013",
+        "e2e-report-006"
       ]
     },
     {
@@ -784,7 +785,23 @@
       "created_at": "2026-04-21T01:07:29Z",
       "updated_at": "2026-04-21T01:07:29Z",
       "related_ids": [
-        "eval-doc-011"
+        "eval-doc-011",
+        "e2e-report-006"
+      ]
+    },
+    {
+      "id": "e2e-report-006",
+      "name": "batch-9 frontend shell hooks e2e report",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "subagent-batch-9",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-9.md",
+      "created_at": "2026-04-21T01:08:33Z",
+      "updated_at": "2026-04-21T01:08:33Z",
+      "related_ids": [
+        "eval-doc-011",
+        "test-diff-013"
       ]
     }
   ]
