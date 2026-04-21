@@ -726,7 +726,9 @@
       "path": ".artifacts/eval-docs/eval-batch-8-auth-gating.md",
       "created_at": "2026-04-21T00:44:07Z",
       "updated_at": "2026-04-21T00:44:07Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-012"
+      ]
     },
     {
       "id": "test-diff-012",
@@ -738,7 +740,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-8.md",
       "created_at": "2026-04-21T00:49:10Z",
       "updated_at": "2026-04-21T00:49:10Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-010"
+      ]
     }
   ]
 }
