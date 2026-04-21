@@ -378,7 +378,7 @@
   "admin.master.preview.open_new_tab": "在新标签页打开 ↗",
   "admin.master.preview.iframe_title": "租户预览",
   "operator.no_tenant.title": "请选择租户",
-  "operator.no_tenant.hint": "在 URL 中带上租户路径打开此控制台，例如 /t/<your-tenant>/operator",
+  "operator.no_tenant.hint": "在 URL 中带上租户路径打开此控制台，例如 /tenant/<your-tenant>/operator",
   "operator.splash.brand": "AutoService · 客服工作台",
   "operator.splash.retry": "重试",
   "operator.splash.session_error": "会话校验失败 — 重试以继续。",

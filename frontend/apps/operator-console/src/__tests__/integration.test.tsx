@@ -39,12 +39,12 @@ function forceLoggedIn(operatorId = 'op-001') {
 }
 
 // Wrap <App /> in a tenant-scoped route so WorkspacePage's useTenantId()
-// resolves (T1F.4). Operator console now expects /t/:tenantId/operator.
-function renderApp(initialPath = '/t/tenant_test/operator') {
+// resolves (T1F.4). Operator console now expects /tenant/:tenantId/operator.
+function renderApp(initialPath = '/tenant/tenant_test/operator') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
-        <Route path="/t/:tenantId/operator" element={<App />} />
+        <Route path="/tenant/:tenantId/operator" element={<App />} />
         <Route path="/" element={<App />} />
       </Routes>
     </MemoryRouter>,

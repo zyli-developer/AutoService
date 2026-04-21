@@ -43,9 +43,9 @@ describe('useTenantId', () => {
 
   it('TC-TEN-03: reads tenantId from route path param', () => {
     render(
-      <MemoryRouter initialEntries={['/t/acme/operator']}>
+      <MemoryRouter initialEntries={['/tenant/acme/operator']}>
         <Routes>
-          <Route path="/t/:tenantId/operator" element={<Probe />} />
+          <Route path="/tenant/:tenantId/operator" element={<Probe />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -82,9 +82,9 @@ describe('WorkspacePage tenant wiring', () => {
   it('TC-TEN-06: passes tenant-scoped WS URL into useOperatorWS when route carries :tenantId', async () => {
     useOperatorStore.getState().login('op-001', 'tok');
     render(
-      <MemoryRouter initialEntries={['/t/tenant_foo/operator']}>
+      <MemoryRouter initialEntries={['/tenant/tenant_foo/operator']}>
         <Routes>
-          <Route path="/t/:tenantId/operator" element={<WorkspacePage />} />
+          <Route path="/tenant/:tenantId/operator" element={<WorkspacePage />} />
         </Routes>
       </MemoryRouter>,
     );

@@ -378,7 +378,7 @@
   "admin.master.preview.open_new_tab": "Open in new tab ↗",
   "admin.master.preview.iframe_title": "Tenant preview",
   "operator.no_tenant.title": "Select a tenant",
-  "operator.no_tenant.hint": "Open this console with a tenant path, e.g. /t/<your-tenant>/operator",
+  "operator.no_tenant.hint": "Open this console with a tenant path, e.g. /tenant/<your-tenant>/operator",
   "operator.splash.brand": "AutoService · Operator",
   "operator.splash.retry": "Retry",
   "operator.splash.session_error": "Session check failed — retry to continue.",
