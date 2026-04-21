@@ -1131,7 +1131,9 @@
       "path": ".artifacts/eval-docs/eval-batch-15-forkcreator.md",
       "created_at": "2026-04-21T02:21:31Z",
       "updated_at": "2026-04-21T02:21:31Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-022"
+      ]
     },
     {
       "id": "test-diff-022",
@@ -1143,7 +1145,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-15.md",
       "created_at": "2026-04-21T02:43:52Z",
       "updated_at": "2026-04-21T02:43:52Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-020"
+      ]
     },
     {
       "id": "e2e-report-012",
