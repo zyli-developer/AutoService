@@ -1,0 +1,1021 @@
+metadata:
+  generated_at: "2026-04-20"
+  source:
+    prd_structure: "docs/plans/m2/2026-04-20-m2-prd-structure.yaml"
+    task_hints: "docs/plans/m2/2026-04-20-m2-task-hints.yaml"
+    project: "docs/plans/project.yaml"
+  source_type: "ingested"
+  note: |
+    No gap-analysis.yaml was produced during M2 ingestion (source was spec+plan, not a gap doc).
+    All tasks sourced from task_hints.implementation_steps; gap_ref is null throughout.
+    Dependency chain preserved as authored by plan (38-deep linear); skill-4 may identify
+    parallelizable subgraphs at the module level.
+  milestones:
+    M2:
+      name: "Tenant-side Dream Sandbox"
+      scope: "Bootstrap + schema + Dream agent + DreamScheduler + Magic-link auth + admin-portal TenantLayout + fork runtime + ForkCreator automation + E2E acceptance"
+
+# ────────────────────────────────────────────────────────────────
+# Phase 1 — Bootstrap + _master seed (MOD-01)
+# ────────────────────────────────────────────────────────────────
+tasks:
+  - id: T1B.1
+    name: "config.local.yaml schema expectations"
+    description: "Task 1.1 — Extend config.local.yaml schema expectations: deployment_mode, tenant_id, dream.* fields. Read-path in autoservice loader, no write yet."
+    line: backend
+    type: green
+    phase: P1
+    module: MOD-01a
+    gap_ref: null
+    story_refs: []
+    depends_on: []
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/config.py"
+      - ".autoservice/config.local.yaml.example"
+    verification: "pytest tests/bootstrap/test_get_deployment_mode.py — config read returns mode/tenant_id/dream fields"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.2
+    name: "soul_generator 5 roles (add dream)"
+    description: "Task 1.2 — Extend soul_generator to 5 roles: add dream role. LLM-generated dream_soul.md with fallback constant _FALLBACK_DREAM_SOUL."
+    line: backend
+    type: yellow
+    phase: P1
+    module: MOD-01b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/soul_generator.py"
+        type: code
+      - path: "tests/soul_generator/test_dream_role.py"
+        type: test
+    may_touch:
+      - "autoservice/onboarding.py"
+    verification: "pytest tests/soul_generator/test_dream_role.py — 5 roles generated; dream fallback triggered on LLM failure"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — LLM prompt content + fallback soul text needs review for quality"
+
+  - id: T1B.3
+    name: "ensure_master_tenant() bootstrap"
+    description: "Task 1.3 — ensure_master_tenant() bootstrap function: _master sandbox + souls + config.json at master startup."
+    line: backend
+    type: green
+    phase: P1
+    module: MOD-01c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1B.2]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/master_tenant.py"
+        type: code
+      - path: "autoservice/bootstrap.py"
+        type: code
+      - path: "tests/bootstrap/test_ensure_master_tenant.py"
+        type: test
+    may_touch: []
+    verification: "pytest tests/bootstrap/test_ensure_master_tenant.py — idempotent creation of _master sandbox"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.4
+    name: "ensure_local_admin() fork-side bootstrap"
+    description: "Task 1.4 — ensure_local_admin() fork-side bootstrap function (_local_admin sandbox at tenant-mode startup)."
+    line: backend
+    type: green
+    phase: P1
+    module: MOD-01d
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1B.3]
+    blocked_by: []
+    deliverables:
+      - path: "tests/bootstrap/test_ensure_local_admin.py"
+        type: test
+    may_touch:
+      - "autoservice/master_tenant.py"
+      - "autoservice/bootstrap.py"
+    verification: "pytest tests/bootstrap/test_ensure_local_admin.py — idempotent creation of _local_admin sandbox on fork"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T1B.5
+    name: "web_gateway lifespan mode-aware startup"
+    description: "Task 1.5 — Wire bootstrap into web_gateway lifespan: mode-aware startup hook dispatches to ensure_master_tenant or ensure_local_admin."
+    line: backend
+    type: green
+    phase: P1
+    module: MOD-01e
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1B.4]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/web_gateway.py"
+      - "autoservice/bootstrap.py"
+    verification: "uvicorn autoservice.web_gateway:app boots cleanly in both master and tenant modes without regressions"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 2 — Schema migrations (MOD-02)
+# ────────────────────────────────────────────────────────────────
+  - id: T2B.1
+    name: "proposals.tenant_id migration"
+    description: "Task 2.1 — Add tenant_id column to proposals table; ALTER TABLE with DEFAULT '_master' backfill for existing rows."
+    line: backend
+    type: green
+    phase: P2
+    module: MOD-02a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1B.5]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/proposal_pipeline.py"
+        type: code
+      - path: "tests/migrations/test_proposals_tenant_id_migration.py"
+        type: test
+    may_touch: []
+    verification: "pytest tests/migrations/test_proposals_tenant_id_migration.py — migration idempotent; backfill defaults _master"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T2B.2
+    name: "memory_pool.tenant_id migration + API"
+    description: "Task 2.2 — Add tenant_id to memory_pool; recent(tid) / last_message_at(tid) API surface."
+    line: backend
+    type: green
+    phase: P2
+    module: MOD-02b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T2B.1]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/memory_pool.py"
+        type: code
+      - path: "tests/migrations/test_memory_pool_tenant_id_migration.py"
+        type: test
+    may_touch: []
+    verification: "pytest tests/migrations/test_memory_pool_tenant_id_migration.py — tid-scoped recent() returns correct slice"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T2B.3
+    name: "dream_runs.db schema + repository"
+    description: "Task 2.3 — Create dream_runs.db schema + repository: run tracking (start/end/tool_calls/status)."
+    line: backend
+    type: green
+    phase: P2
+    module: MOD-02c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T2B.2]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/dream_runs.py"
+    verification: "Unit test: start_run() / end_run() round-trips; list_runs() filters by tenant_id"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 3 — Dream Agent (MOD-03)
+# ────────────────────────────────────────────────────────────────
+  - id: T3B.1
+    name: "emit_proposal tool"
+    description: "Task 3.1 — emit_proposal tool: Dream agent writes proposal rows (status='draft') to proposals table."
+    line: backend
+    type: green
+    phase: P3
+    module: MOD-03a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T2B.3]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/dream_agent.py"
+        type: code
+      - path: "tests/dream_agent/test_emit_proposal_tool.py"
+        type: test
+    may_touch: []
+    verification: "pytest tests/dream_agent/test_emit_proposal_tool.py — emit inserts row; status=draft enforced"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T3B.2
+    name: "kb_search tool"
+    description: "Task 3.2 — kb_search tool: Dream agent queries per-tenant kb.db."
+    line: backend
+    type: green
+    phase: P3
+    module: MOD-03b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.1]
+    blocked_by: []
+    deliverables:
+      - path: "tests/dream_agent/test_kb_search_tool.py"
+        type: test
+    may_touch:
+      - "autoservice/dream_agent.py"
+    verification: "pytest tests/dream_agent/test_kb_search_tool.py — returns top-K chunks scoped to tenant_id"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T3B.3
+    name: "list_souls tool"
+    description: "Task 3.3 — list_souls tool: Dream agent enumerates sandbox/souls/*.md for the active tenant."
+    line: backend
+    type: green
+    phase: P3
+    module: MOD-03c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.2]
+    blocked_by: []
+    deliverables:
+      - path: "tests/dream_agent/test_list_souls_tool.py"
+        type: test
+    may_touch:
+      - "autoservice/dream_agent.py"
+    verification: "pytest tests/dream_agent/test_list_souls_tool.py — enumerates 5 role files"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T3B.4
+    name: "run_dream() agent loop (core)"
+    description: "Task 3.4 — run_dream() agent loop core: max_tool_turns=10 hard cap; force-finalize on overrun; records to dream_runs.db."
+    line: backend
+    type: yellow
+    phase: P3
+    module: MOD-03d
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.3]
+    blocked_by: []
+    deliverables:
+      - path: "tests/dream_agent/test_run_dream.py"
+        type: test
+    may_touch:
+      - "autoservice/dream_agent.py"
+    verification: "pytest tests/dream_agent/test_run_dream.py — tool-turn cap honored; infinite-loop prevention; dream_runs row written"
+    estimated_effort: large
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — agent loop strategy (tool choice, termination, system prompt) needs design review (spec §9 risk mitigations)"
+
+  - id: T3B.5
+    name: "cc_pool role='dream' support"
+    description: "Task 3.5 — cc_pool role='dream' support: independent dream_pool size=1 (prevents dream starving customer slots, CON-06)."
+    line: backend
+    type: yellow
+    phase: P3
+    module: MOD-03e
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.4]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/cc_pool.py"
+    verification: "Unit test: role='dream' acquires from dream_pool; customer pool size unaffected"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — pool-isolation semantics touch the generic cc_pool; review for regression risk against M1 customer path"
+
+  - id: T3B.6
+    name: "/api/dream/trigger + /api/dream/runs"
+    description: "Task 3.6 — POST /api/dream/trigger (manual invoke) + GET /api/dream/runs (run history listing)."
+    line: backend
+    type: green
+    phase: P3
+    module: MOD-03f
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.5]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/api_routes.py"
+    verification: "API smoke: POST /api/dream/trigger starts a run; GET /api/dream/runs returns history filtered by tenant_id"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 4 — DreamScheduler (MOD-04)
+# ────────────────────────────────────────────────────────────────
+  - id: T4B.1
+    name: "should_trigger() logic"
+    description: "Task 4.1 — should_trigger() logic: idle_threshold_min=30 default; risk / coverage gates; 1h cool-down after last run."
+    line: backend
+    type: yellow
+    phase: P4
+    module: MOD-04a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3B.6]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/dream_scheduler.py"
+        type: code
+      - path: "tests/dream_scheduler/test_should_trigger.py"
+        type: test
+    may_touch: []
+    verification: "pytest tests/dream_scheduler/test_should_trigger.py — idle/risk/coverage/cool-down matrix covered"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — triggering heuristics are strategy choices; spec §9 flags cost-explosion risk if too loose"
+
+  - id: T4B.2
+    name: "scheduler loop + active-tenant discovery"
+    description: "Task 4.2 — Scheduler asyncio loop + active-tenant discovery; polls every N sec and evaluates should_trigger per tenant."
+    line: backend
+    type: green
+    phase: P4
+    module: MOD-04b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T4B.1]
+    blocked_by: []
+    deliverables:
+      - path: "tests/dream_scheduler/test_scheduler_loop.py"
+        type: test
+    may_touch:
+      - "autoservice/dream_scheduler.py"
+      - "autoservice/web_gateway.py"
+    verification: "pytest tests/dream_scheduler/test_scheduler_loop.py — loop iterates; cancels cleanly on lifespan shutdown"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T4B.3
+    name: "/dream-config → scheduler.refresh()"
+    description: "Task 4.3 — /dream-config confirm hook triggers scheduler.refresh(tenant_id) for dynamic reconfiguration."
+    line: backend
+    type: green
+    phase: P4
+    module: MOD-04c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T4B.2]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/dream_config_dialog.py"
+      - "autoservice/dream_scheduler.py"
+    verification: "Integration test: /dream-config confirm flips idle_threshold; next scheduler tick respects new value"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 5 — Magic-link auth (MOD-05)
+# ────────────────────────────────────────────────────────────────
+  - id: T5B.1
+    name: "auth DB schema + repo"
+    description: "Task 5.1 — Auth DB schema + session/token repo: sessions.db + login_tokens tables."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T4B.3]
+    blocked_by: []
+    deliverables:
+      - path: "autoservice/auth.py"
+        type: code
+    may_touch: []
+    verification: "Unit test: create_session / lookup / revoke round-trips; token TTL enforced"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T5B.2
+    name: "POST /api/auth/request-login"
+    description: "Task 5.2 — POST /api/auth/request-login: issue login_token + SMTP send (log mode in dev per spec §5 / CON-08)."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.1]
+    blocked_by: []
+    deliverables:
+      - path: "tests/auth/test_request_login.py"
+        type: test
+    may_touch:
+      - "autoservice/auth.py"
+      - "autoservice/api_routes.py"
+    verification: "pytest tests/auth/test_request_login.py — token persisted; dev log captures link"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T5B.3
+    name: "GET /api/auth/verify → cookie + redirect"
+    description: "Task 5.3 — GET /api/auth/verify?token=...: consume token, issue session cookie, redirect to portal."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.2]
+    blocked_by: []
+    deliverables:
+      - path: "tests/auth/test_verify.py"
+        type: test
+    may_touch:
+      - "autoservice/auth.py"
+      - "autoservice/api_routes.py"
+    verification: "pytest tests/auth/test_verify.py — valid token → 302 + Set-Cookie; invalid/expired → 401"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T5B.4
+    name: "POST /api/auth/logout"
+    description: "Task 5.4 — POST /api/auth/logout: revoke session + clear cookie."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05d
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.3]
+    blocked_by: []
+    deliverables:
+      - path: "tests/auth/test_logout.py"
+        type: test
+    may_touch:
+      - "autoservice/auth.py"
+      - "autoservice/api_routes.py"
+    verification: "pytest tests/auth/test_logout.py — cookie cleared; subsequent /api/session/mode anon"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T5B.5
+    name: "require_tenant_access middleware"
+    description: "Task 5.5 — require_tenant_access middleware: enforces session → tenant scope with internal-tenant exception for _master/_local_admin (spec §5 + CON-05)."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05e
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.4]
+    blocked_by: []
+    deliverables:
+      - path: "tests/auth/test_require_tenant_access.py"
+        type: test
+    may_touch:
+      - "autoservice/auth.py"
+    verification: "pytest tests/auth/test_require_tenant_access.py — cross-tenant access denied; _master bypass allowed"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T5B.6
+    name: "/api/session/mode auth-state extension"
+    description: "Task 5.6 — Extend /api/session/mode with auth state: returns authenticated_as + tier + brand_name."
+    line: backend
+    type: green
+    phase: P5
+    module: MOD-05f
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.5]
+    blocked_by: []
+    deliverables:
+      - path: "tests/auth/test_session_mode.py"
+        type: test
+    may_touch:
+      - "autoservice/api_routes.py"
+    verification: "pytest tests/auth/test_session_mode.py — response shape: {mode, authenticated_as, tier, brand_name}"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 6 — admin-portal TenantLayout (MOD-06)
+# ────────────────────────────────────────────────────────────────
+  - id: T6F.1
+    name: "useSessionMode + useTenantId real impl"
+    description: "Task 6.1 — useSessionMode full implementation (real fetch replacing master-only stub); useTenantId concrete impl (M1 reserved stub)."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T5B.6]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/packages/shared/useSessionMode.ts"
+        type: code
+      - path: "frontend/packages/shared/useTenantId.ts"
+        type: code
+    may_touch: []
+    verification: "Vitest: fetch mock returns mode payload; hook state matches; loading/error branches covered"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T6F.2
+    name: "AuthGate + LoginPage"
+    description: "Task 6.2 — AuthGate wrapper (splash on loading; redirect to /login when anon) + LoginPage (magic-link request form)."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.1]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/auth/AuthGate.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/components/auth/LoginPage.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/App.tsx"
+        type: code
+    may_touch: []
+    verification: "RTL: loading → splash; anon → /login; authed → children; risk: first-frame flicker mitigated (spec §9)"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T6F.3
+    name: "AdminRail variant prop"
+    description: "Task 6.3 — AdminRail variant prop: master vs tenant icon sets (declarative config map)."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.2]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/shell/AdminRail.tsx"
+        type: code
+    may_touch: []
+    verification: "RTL: variant=master renders 4 icons; variant=tenant renders 4 tenant icons; no regression on existing AdminRail tests"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T6F.4
+    name: "AdminTopbar + AvatarMenu extensions"
+    description: "Task 6.4 — AdminTopbar (brandName + authenticatedAs props) + AvatarMenu (Logout item)."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06d
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.3]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/shell/AdminTopbar.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/components/shell/AvatarMenu.tsx"
+        type: code
+    may_touch: []
+    verification: "RTL: brandName renders; authenticatedAs shown; Logout click posts /api/auth/logout and redirects"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T6F.5
+    name: "TenantLayout 4-tab component"
+    description: "Task 6.5 — TenantLayout component (spec §4.1): Dashboard / Proposals / Billing / Chat tabs scaffold."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06e
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.4]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/layouts/TenantLayout.tsx"
+        type: code
+    may_touch: []
+    verification: "RTL: 4 tabs render; default active=Dashboard; tab change preserves route"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T6F.6
+    name: "ChatTab → /api/admin/chat"
+    description: "Task 6.6 — ChatTab component → POST /api/admin/chat: _local_admin conversation surface."
+    line: frontend
+    type: green
+    phase: P6
+    module: MOD-06f
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.5]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"
+        type: code
+    may_touch: []
+    verification: "Integration: send → /api/admin/chat returns response; history renders; loading/error states"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 7 — Fork runtime (MOD-07)
+# ────────────────────────────────────────────────────────────────
+  - id: T7B.1
+    name: "TenantContext middleware mode branching"
+    description: "Task 7.1 — TenantContext middleware mode branching: master uses /t/<tid>/ prefix; tenant uses URL-flat /chat."
+    line: backend
+    type: green
+    phase: P7
+    module: MOD-07a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T6F.6]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/web_gateway.py"
+    verification: "pytest tests/fork_runtime/test_tenant_context.py — master mode preserves prefix; tenant mode strips it"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T7B.2
+    name: "tenant_root() path helper"
+    description: "Task 7.2 — tenant_root() helper for unified path resolution (sandbox / skills / kb paths in both modes)."
+    line: backend
+    type: green
+    phase: P7
+    module: MOD-07b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7B.1]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/bootstrap.py"
+    verification: "Unit: master + tenant modes both resolve to correct absolute paths; no PROJECT_ROOT violations (CON-07)"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T7F.3
+    name: "customer-chat + operator-console mode routing"
+    description: "Task 7.3 — customer-chat + operator-console mode-based routing: frontends pick URL scheme by deployment_mode."
+    line: frontend
+    type: green
+    phase: P7
+    module: MOD-07c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7B.2]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/customer-chat/src/main.tsx"
+        type: code
+      - path: "frontend/apps/operator-console/src/main.tsx"
+        type: code
+    may_touch: []
+    verification: "Vitest: master mode routes to /t/<tid>/chat; tenant mode routes to /chat"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T7S.4
+    name: "scripts/setup.sh mode-aware"
+    description: "Task 7.4 — scripts/setup.sh mode-aware setup: Makefile target delegates; per-tenant skill symlink in tenant mode."
+    line: shared
+    type: green
+    phase: P7
+    module: MOD-07d
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7F.3]
+    blocked_by: []
+    deliverables:
+      - path: "scripts/setup.sh"
+        type: code
+      - path: "Makefile"
+        type: code
+    may_touch: []
+    verification: "make setup succeeds on both master and tenant modes (fresh checkout simulate)"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T7S.5
+    name: "Fork-mode boot smoke test"
+    description: "Task 7.5 — Fork-mode boot smoke test: fresh tenant fork boots web_gateway and admin-portal cleanly."
+    line: shared
+    type: green
+    phase: P7
+    module: MOD-07e
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7S.4]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "tests/fork_runtime/"
+    verification: "pytest tests/fork_runtime/test_boot_smoke.py — make run-web starts; /chat returns 200"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T7B.6
+    name: "/api/management/chat → _master routing"
+    description: "Task 7.6 — /api/management/chat → _master routing: A ↔ _master self-iteration path."
+    line: backend
+    type: green
+    phase: P7
+    module: MOD-07f
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7S.5]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/api_routes.py"
+    verification: "Integration: POST /api/management/chat routes to _master cc_pool client; regression: no stub LLM path (risk §9)"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 8 — ForkCreator automation + E2E (MOD-08)
+# ────────────────────────────────────────────────────────────────
+  - id: T8B.1
+    name: "GitHubApiForkCreator (gh CLI)"
+    description: "Task 8.1 — GitHubApiForkCreator: gh CLI subprocess implementation; fails gracefully with human-readable guidance on partial failure (spec §9 risk)."
+    line: backend
+    type: yellow
+    phase: P8
+    module: MOD-08a
+    gap_ref: null
+    story_refs: []
+    depends_on: [T7B.6]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/publish.py"
+    verification: "Integration: gh CLI mocked → fork created; failure surfaces repo name for human cleanup (no auto-delete)"
+    estimated_effort: large
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — external CLI integration + partial-failure recovery needs careful design + review"
+
+  - id: T8B.2
+    name: "LocalTarballForkCreator runbook config step"
+    description: "Task 8.2 — LocalTarballForkCreator runbook adds config step: auto-write .autoservice/config.local.yaml (deployment_mode=tenant + tenant_id)."
+    line: backend
+    type: green
+    phase: P8
+    module: MOD-08b
+    gap_ref: null
+    story_refs: []
+    depends_on: [T8B.1]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "autoservice/publish.py"
+    verification: "Unit: runbook emits config.local.yaml with correct fields; idempotent on rerun"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T8S.3
+    name: "Full E2E acceptance (@pytest.mark.e2e)"
+    description: "Task 8.3 — Full E2E acceptance (manual-runnable, @pytest.mark.e2e; spec §8 acceptance 8 steps). Slow, needs Anthropic key + gh CLI + real uvicorn."
+    line: shared
+    type: yellow
+    phase: P8
+    module: MOD-08c
+    gap_ref: null
+    story_refs: []
+    depends_on: [T8B.2]
+    blocked_by: []
+    deliverables: []
+    may_touch:
+      - "tests/e2e/"
+    verification: "pytest -m e2e tests/e2e/test_m2_acceptance.py — all 8 spec §8 steps pass end-to-end"
+    estimated_effort: large
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Yellow — live LLM + gh CLI + network; flaky risk. Run manually at M2 gate; not in CI."
+
+# ────────────────────────────────────────────────────────────────
+# Dependency graph (adjacency list — task → downstream tasks)
+# ────────────────────────────────────────────────────────────────
+dependency_graph:
+  T1B.1: [T1B.2]
+  T1B.2: [T1B.3]
+  T1B.3: [T1B.4]
+  T1B.4: [T1B.5]
+  T1B.5: [T2B.1]
+  T2B.1: [T2B.2]
+  T2B.2: [T2B.3]
+  T2B.3: [T3B.1]
+  T3B.1: [T3B.2]
+  T3B.2: [T3B.3]
+  T3B.3: [T3B.4]
+  T3B.4: [T3B.5]
+  T3B.5: [T3B.6]
+  T3B.6: [T4B.1]
+  T4B.1: [T4B.2]
+  T4B.2: [T4B.3]
+  T4B.3: [T5B.1]
+  T5B.1: [T5B.2]
+  T5B.2: [T5B.3]
+  T5B.3: [T5B.4]
+  T5B.4: [T5B.5]
+  T5B.5: [T5B.6]
+  T5B.6: [T6F.1]
+  T6F.1: [T6F.2]
+  T6F.2: [T6F.3]
+  T6F.3: [T6F.4]
+  T6F.4: [T6F.5]
+  T6F.5: [T6F.6]
+  T6F.6: [T7B.1]
+  T7B.1: [T7B.2]
+  T7B.2: [T7F.3]
+  T7F.3: [T7S.4]
+  T7S.4: [T7S.5]
+  T7S.5: [T7B.6]
+  T7B.6: [T8B.1]
+  T8B.1: [T8B.2]
+  T8B.2: [T8S.3]
+  T8S.3: []
+
+critical_path: [T1B.1, T1B.2, T1B.3, T1B.4, T1B.5, T2B.1, T2B.2, T2B.3, T3B.1, T3B.2, T3B.3, T3B.4, T3B.5, T3B.6, T4B.1, T4B.2, T4B.3, T5B.1, T5B.2, T5B.3, T5B.4, T5B.5, T5B.6, T6F.1, T6F.2, T6F.3, T6F.4, T6F.5, T6F.6, T7B.1, T7B.2, T7F.3, T7S.4, T7S.5, T7B.6, T8B.1, T8B.2, T8S.3]
+critical_path_length: 38
+
+# ────────────────────────────────────────────────────────────────
+# Phase groupings
+# ────────────────────────────────────────────────────────────────
+phases:
+  - id: P1
+    name: "Bootstrap + _master seed"
+    milestone: M2
+    tasks: [T1B.1, T1B.2, T1B.3, T1B.4, T1B.5]
+    gate: "Master + tenant boot hooks active; 5-role souls generated for _master and _local_admin"
+
+  - id: P2
+    name: "Schema migrations"
+    milestone: M2
+    tasks: [T2B.1, T2B.2, T2B.3]
+    gate: "proposals + memory_pool + dream_runs schemas live; M1 data intact"
+
+  - id: P3
+    name: "Dream Agent"
+    milestone: M2
+    tasks: [T3B.1, T3B.2, T3B.3, T3B.4, T3B.5, T3B.6]
+    gate: "run_dream loop produces a draft proposal; dream_runs row persisted; cc_pool isolation verified"
+
+  - id: P4
+    name: "DreamScheduler"
+    milestone: M2
+    tasks: [T4B.1, T4B.2, T4B.3]
+    gate: "Idle tenant triggers run_dream automatically; dynamic /dream-config refresh works"
+
+  - id: P5
+    name: "Magic-link auth"
+    milestone: M2
+    tasks: [T5B.1, T5B.2, T5B.3, T5B.4, T5B.5, T5B.6]
+    gate: "Request → verify → session cookie → require_tenant_access cross-tenant denial; logout revokes"
+
+  - id: P6
+    name: "admin-portal TenantLayout"
+    milestone: M2
+    tasks: [T6F.1, T6F.2, T6F.3, T6F.4, T6F.5, T6F.6]
+    gate: "Tenant brand renders 4 tabs; AuthGate gates anon; ChatTab hits /api/admin/chat"
+
+  - id: P7
+    name: "Fork runtime"
+    milestone: M2
+    tasks: [T7B.1, T7B.2, T7F.3, T7S.4, T7S.5, T7B.6]
+    gate: "Fresh tenant fork boots; customer-chat + operator-console route correctly; /api/management/chat → _master"
+
+  - id: P8
+    name: "ForkCreator + E2E"
+    milestone: M2
+    tasks: [T8B.1, T8B.2, T8S.3]
+    gate: "spec §8 acceptance 8/8 pass under @pytest.mark.e2e"
+
+# ────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────
+summary:
+  total_tasks: 38
+  by_type:
+    green: 31
+    yellow: 7
+    red: 0
+  by_line:
+    backend: 24
+    frontend: 7
+    shared: 3
+  by_phase:
+    P1: 5
+    P2: 3
+    P3: 6
+    P4: 3
+    P5: 6
+    P6: 6
+    P7: 6
+    P8: 3
+  critical_path_length: 38
+  estimated_duration: "Linear chain per plan hints; skill-4 should identify intra-phase parallelizable subgraphs"
+
+warnings:
+  - "No gap-analysis.yaml exists for M2 (ingestion used spec+plan only). All gap_ref fields are null."
+  - "Dependency chain is 38-deep linear as authored in task-hints. Real coupling is often looser within phases (e.g. T3B.1/2/3 are independent tools joined only at T3B.4). skill-4 may collapse the chain to shorten critical path."
+  - "7 Yellow tasks cluster around LLM agent + strategy design (T1B.2 dream soul, T3B.4 run_dream, T3B.5 cc_pool role, T4B.1 should_trigger) and external integration (T8B.1 gh CLI, T8S.3 e2e). Plan human-review checkpoints."
+  - "T3B.4 (run_dream core) and T8B.1 (GitHubApiForkCreator) and T8S.3 (E2E) are large (>8h); consider splitting if granularity becomes an issue during execution."
+  - "Non-goals filter applied: no deliverable paths matched any of 13 non_goals tokens (subtenant/tier=2/OAuth/SSO/2FA/passkey/auto-apply/cross-tenant/custom-domain/DNS/countries/invitations/Sandbox-GC/E2E-scripting)."
+
+non_goals_applied:
+  - "Subtenant (tier=2) materialization"
+  - "Operator / client authentication; team invitations; RBAC"
+  - "Platform-level dream"
+  - "Merchant custom domains / wildcard DNS"
+  - "Compliance templates filtered by countries"
+  - "Sandbox GC"
+  - "OAuth / SSO / 2FA / passkey"
+  - "Dream proposal auto-apply (red line)"
+  - "Dream cross-tenant learning"
+  - "per-tenant CC process-level isolation"
+  - "Multiple admin login; admin invitations"
+  - "E2E scripting (M3+)"

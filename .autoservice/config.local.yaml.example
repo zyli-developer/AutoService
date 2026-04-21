@@ -1,6 +1,31 @@
 # AutoService 本地配置 (复制为 config.local.yaml 使用)
 # 此文件被 gitignore，安全存放密钥和本地参数
 
+# ─── 部署模式（M2） ─────────────────────────────────────
+# master: 主平台（运维 A 从 admin-portal 创建 tenant）
+# tenant: fork 仓（单租户运行时；tenant_id 必填，且与 plugins/<tid>/config.json 一致）
+deployment_mode: master        # master | tenant
+tenant_id: null                # master 模式 null；tenant 模式必填
+
+# ─── ForkCreator（仅 master 模式消费） ─────────────────
+fork_creator: local            # local | github_api（M2 §3.4）
+
+# ─── Dream Agent（M2） ─────────────────────────────────
+dream:
+  idle_threshold_min: 30       # 最后一次对话超过此分钟 → idle 触发
+  cool_down_min: 60            # 单次 run_dream 后的硬冷却（分钟）
+  max_tool_turns: 10           # agent loop 工具调用轮数硬上限
+
+# ─── 管理员鉴权（M2 §5） ───────────────────────────────
+auth:
+  admin_emails: []             # 允许登录 admin-portal 的邮箱列表
+  smtp:
+    host: ""                   # 空字符串 → 开发模式（log + .eml 落本地）
+    port: 587
+    user: ""
+    password_env: "SMTP_PASSWORD"
+    from: "AutoService <noreply@example.com>"
+
 # ─── CC Pool 配置 ───────────────────────────────────────
 cc_pool:
   # 池大小

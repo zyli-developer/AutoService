@@ -1,27 +1,13 @@
 .PHONY: setup run-channel run-web run-gateway run-server start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
 
 # --- Setup ---
-# Create symlinks from .claude/ to top-level dirs, discover plugin skills,
-# and create .autoservice/ runtime directories.
+# Mode-aware setup delegated to scripts/setup.sh (T7S.4, spec §3.5):
+#   • reads deployment_mode from .autoservice/config.local.yaml
+#   • master mode → M1 behavior (links + plugin skill discovery)
+#   • tenant mode → per-tenant skill isolation (plugins/<tid>/skills)
+#   • init .autoservice/ runtime dirs (idempotent)
 setup:
-	@echo "==> Linking top-level dirs into .claude/"
-	@mkdir -p .claude
-	@for dir in skills commands agents hooks; do \
-		rm -f .claude/$$dir; \
-		ln -sfn ../$$dir .claude/$$dir; \
-		echo "  .claude/$$dir -> ../$$dir"; \
-	done
-	@echo "==> Scanning plugins for skills..."
-	@for skill_dir in plugins/*/skills/*/; do \
-		[ -d "$$skill_dir" ] || continue; \
-		name=$$(basename "$$skill_dir"); \
-		rm -f skills/$$name; \
-		ln -sfn ../$$skill_dir skills/$$name; \
-		echo "  skills/$$name -> ../$$skill_dir"; \
-	done
-	@echo "==> Creating .autoservice/ runtime dirs"
-	@mkdir -p .autoservice/logs .autoservice/data .autoservice/cache
-	@echo "Done."
+	@bash scripts/setup.sh
 
 # --- Run ---
 run-channel:

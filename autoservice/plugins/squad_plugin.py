@@ -35,6 +35,26 @@ class SquadPlugin:
         # conv_id → squad_id
         self._assignments: dict[str, str] = {}
 
+    # ---------- Pure routing (no state mutation) ----------
+
+    def choose_squad(
+        self, *, channel: str | None = None, explicit: str | None = None,
+    ) -> str:
+        """Decide squad for a conversation without mutating state.
+
+        Call this BEFORE engine.create_conversation() so the squad_id can be
+        injected into the conversation's metadata. This closes the race where
+        subscribers filtering on squad scope miss the conversation.created
+        event (fires before on_conversation_created hook assigns the squad).
+        """
+        if explicit:
+            return explicit
+        if channel:
+            routed = self._channel_routing.get(channel)
+            if routed:
+                return routed
+        return self._default_squad
+
     # ---------- PluginHook callbacks ----------
 
     async def on_conversation_created(self, conv: Conversation) -> None:

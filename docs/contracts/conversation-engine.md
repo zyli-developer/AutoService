@@ -390,10 +390,13 @@ class PluginHook(Protocol):
 |-----------|-------------|--------------------------------------|
 | auto      | agent       | PUBLIC |
 | auto      | customer    | PUBLIC |
+| auto      | operator    | **SIDE**（降级） |
 | copilot   | agent       | PUBLIC |
 | copilot   | operator    | **SIDE**（降级） |
 | takeover  | agent       | **SIDE**（降级） |
 | takeover  | operator    | PUBLIC |
+
+> `auto + operator` 说明：虽然 `join(operator)` 会把 mode 推向 `copilot`，但旁路进来的 operator（例如管理员指令、合并分队前的预言状态、外部集成）在 mode 仍是 `auto` 时发 PUBLIC 消息必须被降级，避免「客户不知道有人工介入」的会话突然出现 operator 公开话术。
 
 - `requested=SIDE` / `requested=SYSTEM` 原样保留，不受 Gate 影响。
 - Gate 降级后，发 `message.gated` 事件，前端 operator UI 据此显示「已降为 side」。
@@ -488,7 +491,18 @@ class ValidationError(EngineError):
 3. **mode 切换原子**：同一 conversation 的 switch_mode 串行化（asyncio.Lock per conv）；目标态 == 当前态 → `mode.noop` 事件，不抛异常（Q4）。
 4. **事件顺序**：同一 conversation 的事件按 `sequence_number` 严格递增，前端可按此判断丢失；跨 conversation / squad / global 订阅按 `event_id`（ULID）字典序单调递增。
 5. **Gate 降级不可逆** ⚓：一旦 visibility 被 Gate 从 PUBLIC 降为 SIDE，后续任何 mode 切换、命令、时间流逝都不会把它升回 PUBLIC。此条是**强不变量**，不再讨论（Q7 决策）。
-6. **读写路径对称**：写路径（`send_message`）由 Gate 决定最终 visibility；读路径（`get_messages` / `subscribe` / `query_events`）由 Engine 根据 `viewer_role` 过滤。App 层不应承担 visibility 授权职责（Q9 决策）。
+6. **读写路径对称**：写路径（`send_message`）由 Gate 决定最终 visibility；读路径（`get_messages` / `subscribe` / `query_events`）由 Engine 根据 `viewer_role` 过滤。App 层不应承担 visibility 授权职责（Q9 决策）。具体可见性矩阵：
+
+   | viewer_role | PUBLIC | SIDE | SYSTEM |
+   |-------------|--------|------|--------|
+   | CUSTOMER    | ✅     | ❌   | ✅     |
+   | AGENT       | ✅     | ✅   | ✅     |
+   | OPERATOR    | ✅     | ✅   | ✅     |
+   | OBSERVER    | ✅     | ✅   | ✅     |
+   | ADMIN       | ✅     | ✅   | ✅     |
+   | None        | ✅     | ✅   | ✅     |
+
+   **设计意图**：SIDE = 团队内部通道（operator 指示 + agent 草稿）。仅 CUSTOMER 需要过滤；其他角色包括 AGENT 本身都可见 SIDE（AGENT 需要读 operator 指示来生成回复）。
 7. **Plugin Hook 隔离**：任何 PluginHook 抛出的异常被吞并发 `hook.failed` 事件，不影响核心流程（Q8 决策）。
 8. **最后一个 operator leave 回落**：mode=copilot 且最后一个 OPERATOR role 的 participant leave → 自动切回 auto。对应 mode.changed 事件的 `trigger="auto:last_operator_left"`。
 

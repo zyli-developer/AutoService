@@ -19,11 +19,163 @@ import json
 import logging
 import os
 import re
+import shutil
+import sqlite3
+import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 log = logging.getLogger("onboarding")
+
+
+# ---------------------------------------------------------------------------
+# Sandbox paths & constants
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SANDBOX_ROOT = PROJECT_ROOT / ".autoservice" / "sandbox"
+DREAM_SOUL_TEMPLATE = Path(__file__).resolve().parent / "dream_soul_template.md"
+
+
+def sandbox_dir(tenant_id: str) -> Path:
+    """Return the sandbox root for a given tenant."""
+    return SANDBOX_ROOT / tenant_id
+
+
+# ---------------------------------------------------------------------------
+# Sandbox KB helpers (per-tenant SQLite + FTS5)
+# ---------------------------------------------------------------------------
+
+def _init_sandbox_kb(db_path: Path) -> sqlite3.Connection:
+    """Initialize a per-tenant sandbox KB SQLite DB with FTS5.
+
+    Schema mirrors the minimum fields required by the spec §2.4
+    (kb_chunks: id, content, source_name, section, domain) and
+    provides an FTS5 virtual table `kb_fts` that mirrors `content`.
+    Content-synced FTS keeps writes cheap and search consistent.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kb_chunks (
+            id          TEXT PRIMARY KEY,
+            content     TEXT NOT NULL,
+            source_name TEXT DEFAULT '',
+            section     TEXT DEFAULT '',
+            domain      TEXT DEFAULT '',
+            created_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
+            content,
+            source_name,
+            section,
+            domain,
+            content=kb_chunks,
+            content_rowid=rowid,
+            tokenize="unicode61 remove_diacritics 1"
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS kb_ai AFTER INSERT ON kb_chunks BEGIN
+            INSERT INTO kb_fts(rowid, content, source_name, section, domain)
+            VALUES (new.rowid, new.content, new.source_name, new.section, new.domain);
+        END
+        """
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS kb_ad AFTER DELETE ON kb_chunks BEGIN
+            INSERT INTO kb_fts(kb_fts, rowid, content, source_name, section, domain)
+            VALUES ('delete', old.rowid, old.content, old.source_name, old.section, old.domain);
+        END
+        """
+    )
+    conn.commit()
+    return conn
+
+
+def _ingest_chunks_into_sandbox_kb(
+    tenant_id: str,
+    file_results: Iterable[dict],
+    *,
+    domain: str = "",
+) -> int:
+    """Write extracted chunks into `.autoservice/sandbox/<tid>/kb/kb.db`.
+
+    Returns the number of chunks written.
+    """
+    db_path = sandbox_dir(tenant_id) / "kb" / "kb.db"
+    conn = _init_sandbox_kb(db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    written = 0
+    try:
+        for r in file_results:
+            if r.get("status") != "ok":
+                continue
+            source_name = r.get("original_name") or r.get("file_name") or ""
+            for chunk in r.get("chunks", []) or []:
+                text = (chunk or "").strip()
+                if not text:
+                    continue
+                conn.execute(
+                    "INSERT INTO kb_chunks (id, content, source_name, section, domain, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (_uuid.uuid4().hex, text, source_name, "", domain, now),
+                )
+                written += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return written
+
+
+def _write_sandbox_config_skeleton(
+    tenant_id: str,
+    brand_name: str,
+    industry: str,
+) -> Path:
+    """Write the initial `config.json` skeleton for a sandbox tenant.
+
+    Only the fields owned by Step 0 `/upload` are set here:
+    tenant_id, brand_name, industry, status, created_at. Compliance,
+    channels, soul, and dream fields are filled by later steps
+    (`/activate`, `/dream-config`); see spec §2.2 / §3.2.
+    """
+    path = sandbox_dir(tenant_id) / "config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    skeleton = {
+        "tenant_id": tenant_id,
+        "brand_name": brand_name or "",
+        "industry": industry or "general",
+        "status": "sandbox",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path.write_text(json.dumps(skeleton, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _copy_dream_soul_template(tenant_id: str) -> Optional[Path]:
+    """Copy the static dream_soul.md template into the sandbox souls/ dir.
+
+    Returns the destination path on success, or None if the template
+    is missing (caller should log — we treat it as non-fatal).
+    """
+    if not DREAM_SOUL_TEMPLATE.exists():
+        log.warning("dream_soul_template.md not found at %s", DREAM_SOUL_TEMPLATE)
+        return None
+    dest = sandbox_dir(tenant_id) / "souls" / "dream_soul.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(DREAM_SOUL_TEMPLATE, dest)
+    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -297,10 +449,31 @@ async def upload_and_parse(
 
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
+    # --- Sandbox provisioning (spec §2 / §3.1) ---
+    # Step 0 owns three on-disk artifacts:
+    #   1. .autoservice/sandbox/<tid>/config.json  (skeleton — tenant metadata only)
+    #   2. .autoservice/sandbox/<tid>/kb/kb.db     (FTS5 SQLite with extracted chunks)
+    #   3. .autoservice/sandbox/<tid>/souls/       (4 LLM-generated + dream template)
+    config_path = None
+    try:
+        config_path = _write_sandbox_config_skeleton(tenant_id, brand_name, industry)
+    except Exception as exc:
+        log.warning("Failed to write sandbox config skeleton: %s", exc)
+
+    # --- KB ingest: write extracted chunks into per-tenant sandbox KB ---
+    kb_chunks_written = 0
+    try:
+        kb_chunks_written = _ingest_chunks_into_sandbox_kb(
+            tenant_id, results, domain=industry or ""
+        )
+    except Exception as exc:
+        log.warning("Sandbox KB ingest failed (upload still succeeds): %s", exc)
+
     # --- Soul generation: wire soul_generator after text extraction ---
     souls_output = None
+    souls_saved: dict[str, str] = {}
     try:
-        from autoservice.soul_generator import TenantConfig, generate_souls
+        from autoservice.soul_generator import TenantConfig, generate_souls, save_drafts
 
         # Combine extracted text from all successfully parsed files
         combined_text = "\n\n".join(
@@ -316,10 +489,18 @@ async def upload_and_parse(
 
         gen_result = generate_souls(soul_config, dry_run=(not combined_text))
 
+        # --- Persist soul drafts to sandbox (fixes bug #1) ---
+        try:
+            paths = save_drafts(gen_result)
+            souls_saved = {role: str(p) for role, p in paths.items()}
+        except Exception as exc:
+            log.warning("save_drafts failed: %s", exc)
+
         souls_output = {
             "mode": gen_result.mode,
             "total_kb_hits": gen_result.total_kb_hits,
             "warnings": gen_result.warnings,
+            "saved_to": souls_saved,
             "roles": {
                 role: {
                     "content": draft.content,
@@ -333,6 +514,16 @@ async def upload_and_parse(
         log.warning("Soul generation failed (upload still succeeds): %s", exc)
         souls_output = {"error": str(exc)}
 
+    # --- Dream soul placeholder: copy static template (M1 only, see §2.5) ---
+    try:
+        dream_path = _copy_dream_soul_template(tenant_id)
+        if dream_path is not None:
+            souls_saved["dream"] = str(dream_path)
+            if isinstance(souls_output, dict) and "saved_to" in souls_output:
+                souls_output["saved_to"] = souls_saved
+    except Exception as exc:
+        log.warning("Dream soul template copy failed: %s", exc)
+
     return {
         "tenant_id": tenant_id,
         "brand_name": brand_name,
@@ -340,59 +531,131 @@ async def upload_and_parse(
         "files_parsed": len([r for r in results if r.get("status") == "ok"]),
         "file_results": results,
         "url_result": url_result,
+        "sandbox_dir": str(sandbox_dir(tenant_id)),
+        "config_path": str(config_path) if config_path else None,
+        "kb_chunks_written": kb_chunks_written,
         "souls": souls_output,
     }
 
 
-@onboard_router.post("/activate")
-async def activate_sandbox(tenant_id: str = Form(...)):
-    """Activate tenant sandbox: create runtime dir, write config, return usable URLs."""
-    # Configurable base URL components
+# ---------------------------------------------------------------------------
+# /activate helpers — defaults and URL builder (spec §2.2 / §3.2 / §5.1)
+# ---------------------------------------------------------------------------
+
+#: 16-field compliance defaults.  ``setdefault`` only fills this when the
+#: config has no ``compliance`` block, so tenant-facing tweaks survive.
+DEFAULT_COMPLIANCE: dict = {
+    "privacy_policy_url": "",
+    "consent_mechanism_enabled": False,
+    "data_retention_days": None,
+    "right_to_erasure_enabled": False,
+    "data_collection_disclosure": False,
+    "opt_out_enabled": False,
+    "coppa_compliant": False,
+    "provider_registration_id": "",
+    "data_cross_border_enabled": False,
+    "user_identity_verification": False,
+    "complaint_channel_url": "",
+    "training_data_compliance": False,
+}
+
+#: 4-switch soul defaults (AI disclosure / escalation / decision notice / labeling).
+DEFAULT_SOUL_CFG: dict = {
+    "disclosure_enabled": False,
+    "human_escalation_enabled": False,
+    "automated_decision_notice": False,
+    "ai_content_labeling": False,
+}
+
+#: Dream Engine defaults — spec §2.2 field.  M1 only persists these; the
+#: pipeline still reads from memory (bug #9 is fixed by just landing them).
+DEFAULT_DREAM_CFG: dict = {
+    "trigger": "idle",
+    "coverage": "all",
+    "risk_threshold": "medium",
+    "canary": {"stages": [5, 25, 100], "observe_hours": 24},
+}
+
+
+def _parse_channels(raw: str) -> list[str]:
+    """Split the comma-separated ``channels`` form field, trimming each token."""
+    if not raw:
+        return []
+    return [tok.strip() for tok in raw.split(",") if tok.strip()]
+
+
+def build_urls(tenant_id: str, channels: list[str] | None = None) -> dict[str, str]:
+    """Return the three sandbox URLs in path form (spec §5.1).
+
+    Shape: ``/t/<tenant_id>/{chat,operator,admin}``. The subdomain form
+    ``<tid>.sandbox.localhost`` is no longer used. ``channels`` is accepted
+    for future per-channel URL variants but currently unused — the sandbox
+    URL set is identical regardless of which channels are enabled.
+    """
     scheme = os.getenv("WEB_SCHEME", "http")
     host = os.getenv("WEB_HOST", "localhost")
     port = os.getenv("DEMO_PORT", "8000")
-    base_url = f"{scheme}://{host}:{port}"
-
-    # Create tenant runtime directory and write config
-    tenant_dir = Path(".autoservice") / "tenants" / tenant_id
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-
-    config_path = tenant_dir / "config.json"
-    config = {
-        "tenant_id": tenant_id,
-        "status": "active",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        # Compliance-relevant fields (defaults for new tenants)
-        "privacy_policy_url": "",
-        "consent_mechanism_enabled": False,
-        "data_retention_days": None,
-        "right_to_erasure_enabled": False,
-        "data_collection_disclosure": False,
-        "opt_out_enabled": False,
-        "coppa_compliant": False,
-        "provider_registration_id": "",
-        "data_cross_border_enabled": False,
-        "user_identity_verification": False,
-        "complaint_channel_url": "",
-        "training_data_compliance": False,
-        "soul": {
-            "disclosure_enabled": False,
-            "human_escalation_enabled": False,
-            "automated_decision_notice": False,
-            "ai_content_labeling": False,
-        },
+    base = f"{scheme}://{host}:{port}"
+    return {
+        "chat": f"{base}/t/{tenant_id}/chat",
+        "operator": f"{base}/t/{tenant_id}/operator",
+        "admin": f"{base}/t/{tenant_id}/admin",
     }
-    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+@onboard_router.post("/activate")
+async def activate_sandbox(
+    tenant_id: str = Form(...),
+    channels: str = Form(""),
+):
+    """Activate tenant sandbox — idempotent merge.
+
+    Reads ``.autoservice/sandbox/<tid>/config.json`` (written as a skeleton
+    by Step 0 ``/upload``), merges in the Step 1 payload + defaults, and
+    writes it back. Calling this twice is safe: compliance / soul / dream
+    blocks are ``setdefault``'d so any manual edits between calls survive.
+    Spec refs: §2.2, §3.2.
+    """
+    from fastapi import HTTPException
+
+    cfg_path = sandbox_dir(tenant_id) / "config.json"
+    if not cfg_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Sandbox config not found for tenant {tenant_id!r} "
+                f"(expected at {cfg_path}). Run /api/onboard/upload first."
+            ),
+        )
+
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Corrupt sandbox config at {cfg_path}: {exc}",
+        )
+
+    # Bug #3: channels is authoritative — Step 1 UI owns this field, so we
+    # overwrite rather than setdefault.  Other fields use setdefault to stay
+    # idempotent (bug #6).
+    parsed_channels = _parse_channels(channels)
+    cfg["channels"] = parsed_channels
+    cfg.setdefault("compliance", dict(DEFAULT_COMPLIANCE))
+    cfg.setdefault("soul", dict(DEFAULT_SOUL_CFG))
+    # Dream block needs a deep copy so nested canary dict isn't shared.
+    cfg.setdefault("dream", json.loads(json.dumps(DEFAULT_DREAM_CFG)))
+
+    cfg_path.write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
     return {
         "tenant_id": tenant_id,
-        "status": "active",
-        "urls": {
-            "chat": f"{base_url}/chat?tenant={tenant_id}",
-            "login": f"{base_url}/login?tenant={tenant_id}",
-            "api": f"{base_url}/api/onboard",
-        },
-        "config_dir": str(tenant_dir),
+        "status": cfg.get("status", "sandbox"),
+        "channels": parsed_channels,
+        "urls": build_urls(tenant_id, parsed_channels),
+        "config_path": str(cfg_path),
     }
 
 

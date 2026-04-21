@@ -2,11 +2,31 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../../store/adminStore';
 
-export function AvatarMenu() {
+/**
+ * T6F.4 — default redirector matches batch-9 AuthGate pattern.
+ * See: frontend/apps/admin-portal/src/components/auth/AuthGate.tsx
+ */
+function defaultRedirector(to: string) {
+  if (typeof window !== 'undefined') {
+    window.location.assign(to);
+  }
+}
+
+interface AvatarMenuProps {
+  /**
+   * Test seam — called with the target URL after logout. Defaults to
+   * `window.location.assign`. Matches AuthGate's redirector injection so
+   * tests can intercept without unloading jsdom.
+   */
+  redirector?: (to: string) => void;
+}
+
+export function AvatarMenu({ redirector }: AvatarMenuProps = {}) {
   const { t } = useTranslation();
   const tenantId = useAdminStore((s) => s.tenantId);
   const logout = useAdminStore((s) => s.logout);
   const [open, setOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,6 +41,32 @@ export function AvatarMenu() {
   }, [open]);
 
   const initial = tenantId ? tenantId.charAt(0).toLowerCase() : '?';
+  const nav = redirector ?? defaultRedirector;
+
+  async function handleLogout() {
+    if (logoutPending) return;
+    setLogoutPending(true);
+    // Clear in-memory admin state defensively (zustand); batch-9 tests
+    // assert `useAdminStore.getState().isLoggedIn === false` after click.
+    logout();
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Best-effort: the cookie is HttpOnly so the backend is the only
+      // thing that can truly revoke the session. If the network call fails
+      // we still redirect to /login; AuthGate will re-probe the session
+      // and show its error splash on the next load if needed.
+    } finally {
+      setOpen(false);
+      nav('/login');
+      // Leave `logoutPending` true — the page is about to navigate; flipping
+      // it back would let the user click Logout again during the redirect,
+      // which is pointless and could race.
+    }
+  }
 
   return (
     <div ref={rootRef} style={{ position: 'relative' }}>
@@ -45,10 +91,9 @@ export function AvatarMenu() {
             type="button"
             className="cs-avatar-menu-btn"
             data-testid="btn-logout"
-            onClick={() => {
-              setOpen(false);
-              logout();
-            }}
+            onClick={handleLogout}
+            disabled={logoutPending}
+            aria-busy={logoutPending}
           >
             {t('common.logout')}
           </button>

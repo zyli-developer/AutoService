@@ -4,6 +4,8 @@ import { useAdminStore } from '../../store/adminStore';
 import type { SimDialogUI, SimTurnUI } from '../../store/adminStore';
 import { postJSON } from '../../api';
 
+type ReviewStatus = 'approved' | 'flagged';
+
 const PERSONAS = [
   { id: 'angry-refund', name_zh: '愤怒退款客户', traits: ['情绪激动', '用词尖锐'], communication_style: 'aggressive' },
   { id: 'price-sensitive', name_zh: '价格敏感客户', traits: ['反复询价', '比较竞品'], communication_style: 'cautious' },
@@ -64,6 +66,27 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
     }
   };
 
+  // T1F.7: persist review status via /api/rehearsal/review (T1B.3 endpoint).
+  // We optimistically update local state for instant feedback; on API failure
+  // the local state already reflects the attempt (matches the pre-T1F.7 UX).
+  const handleReview = async (dialogId: string, status: ReviewStatus) => {
+    updateDialogReviewStatus(dialogId, status);
+    try {
+      await postJSON<{ status: string; dialog_id: string; review_status: string }>(
+        '/api/rehearsal/review',
+        {
+          tenant_id: tenantId,
+          dialog_id: dialogId,
+          review_status: status,
+        },
+      );
+    } catch {
+      // Swallow — local state already reflects the user's intent; backend
+      // persistence is best-effort for M1 (demo-mode dialogs aren't in
+      // rehearsal.json and /review returns 404 for them, which is expected).
+    }
+  };
+
   return (
     <div data-testid="virtual-rehearsal-step">
       <div className="cs-card hl">
@@ -112,8 +135,8 @@ export function VirtualRehearsalStep({ tenantId }: Props) {
 
                 {dialog.review_status === 'pending' && (
                   <div className="cs-btns" style={{ marginTop: 8 }}>
-                    <button className="cs-btn ok" data-testid={`btn-approve-${dialog.id}`} onClick={() => updateDialogReviewStatus(dialog.id, 'approved')}>{t('admin.wizard.rehearsal.pass')}</button>
-                    <button className="cs-btn" data-testid={`btn-flag-${dialog.id}`} onClick={() => updateDialogReviewStatus(dialog.id, 'flagged')} style={{ background: 'var(--l500)', color: 'var(--l800)', border: 'none' }}>{t('admin.wizard.rehearsal.edit')}</button>
+                    <button className="cs-btn ok" data-testid={`btn-approve-${dialog.id}`} onClick={() => handleReview(dialog.id, 'approved')}>{t('admin.wizard.rehearsal.pass')}</button>
+                    <button className="cs-btn" data-testid={`btn-flag-${dialog.id}`} onClick={() => handleReview(dialog.id, 'flagged')} style={{ background: 'var(--l500)', color: 'var(--l800)', border: 'none' }}>{t('admin.wizard.rehearsal.edit')}</button>
                   </div>
                 )}
               </div>

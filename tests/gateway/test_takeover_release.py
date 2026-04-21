@@ -223,6 +223,36 @@ def test_takeover_timer_armed_frame_sent_after_hijack(fast_takeover_app):
             assert p["armed_at"]
 
 
+def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_app):
+    """Before /hijack the conversation is COPILOT (auto-flipped on operator_join).
+    In that state operator_message is a SIDE suggestion for the agent — it must
+    NOT be pushed to the customer WS (conversation-engine.md §4 Gate + Q9).
+
+    Regression: the router used to push the frame to cust_ws unconditionally,
+    leaking coaching/drafts into the customer chat window.
+    """
+    with TestClient(fast_takeover_app) as client:
+        with client.websocket_connect("/ws/customer") as cws, \
+             client.websocket_connect("/ws/operator") as ows:
+            _setup(cws, ows)
+            conv_id = _customer_start_conv(cws)
+            _operator_join(ows, conv_id, "op42")
+            # No /hijack → conv stays in COPILOT after operator_join
+
+            ows.send_json(_frame("operator_message", {
+                "conversation_id": conv_id,
+                "operator_id": "op42",
+                "content": "coach the customer carefully",
+            }))
+
+            # Customer must NOT see this SIDE message within a short window.
+            leaked = _wait_frame(cws, "message", timeout=0.3)
+            assert leaked is None, (
+                "operator SIDE suggestion leaked to customer: "
+                f"{leaked and leaked.get('payload')}"
+            )
+
+
 def test_operator_message_reaches_customer_ws(fast_takeover_app):
     """After hijack, operator_message frames must push to the customer WS.
 

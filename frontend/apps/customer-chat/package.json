@@ -15,12 +15,14 @@
   "dependencies": {
     "@autoservice/design-system": "workspace:*",
     "@autoservice/i18n": "workspace:*",
+    "@autoservice/shared": "workspace:*",
     "@autoservice/ws-client": "workspace:*",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-slot": "^1.0.2",
     "clsx": "^2.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.23.0",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

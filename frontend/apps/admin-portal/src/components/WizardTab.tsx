@@ -4,6 +4,7 @@ import { MaterialUploadStep } from './wizard/MaterialUploadStep';
 import { ChannelConfigStep } from './wizard/ChannelConfigStep';
 import { VirtualRehearsalStep } from './wizard/VirtualRehearsalStep';
 import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
+import { SandboxReady } from './wizard/SandboxReady';
 
 const STEP_KEYS = [
   'admin.wizard.step.1',
@@ -39,24 +40,17 @@ function useStepComplete(step: number): boolean {
   }
 }
 
-function SandboxReady() {
-  const { t } = useTranslation();
-  const tenantId = useAdminStore((s) => s.tenantId);
-  return (
-    <div className="cs-card hl">
-      <div className="cs-ct">🎉 {t('admin.wizard.sandbox.title')}</div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.url')}</span><span style={{ color: 'var(--m600)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>{tenantId}.sandbox.onesync</span></div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.team')}</span><span style={{ color: '#000' }}>{t('admin.wizard.sandbox.team_count', { count: 5 })}</span></div>
-      <div className="cs-row"><span>{t('admin.wizard.sandbox.public')}</span><span style={{ color: 'var(--l700)', fontWeight: 700 }}>{t('admin.wizard.sandbox.pending_merchant')}</span></div>
-      <div className="cs-pg ok">{t('admin.wizard.sandbox.one_click_live')}</div>
-    </div>
-  );
-}
-
 export function WizardTab() {
   const { t } = useTranslation();
-  const { tenantId, wizardStep, setWizardStep } = useAdminStore();
+  const { tenantId, wizardStep, setWizardStep, generationResult } = useAdminStore();
   const currentStepComplete = useStepComplete(wizardStep);
+
+  // IMPORTANT: prefer the tenant_id that /api/onboard/upload actually created
+  // (generationResult.tenantId, e.g. "tenant_8f3a12bd") over the login-time
+  // tenantId (adminStore.tenantId, e.g. "mystore"). The sandbox directory
+  // on disk is created under the generated id, so Steps 1-4 (activate /
+  // rehearsal / compliance / publish) must use it, not the login id.
+  const effectiveTenantId = generationResult?.tenantId || tenantId || 'default';
 
   return (
     <div data-testid="tab-wizard">
@@ -77,9 +71,9 @@ export function WizardTab() {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        {wizardStep === 0 && <MaterialUploadStep tenantId={tenantId || 'default'} onGenerated={() => setWizardStep(1)} />}
-        {wizardStep === 1 && <ChannelConfigStep tenantId={tenantId || 'default'} />}
-        {wizardStep === 2 && <VirtualRehearsalStep tenantId={tenantId || 'default'} />}
+        {wizardStep === 0 && <MaterialUploadStep tenantId={effectiveTenantId} onGenerated={() => setWizardStep(1)} />}
+        {wizardStep === 1 && <ChannelConfigStep tenantId={effectiveTenantId} />}
+        {wizardStep === 2 && <VirtualRehearsalStep tenantId={effectiveTenantId} />}
         {wizardStep === 3 && <ComplianceCheckStep />}
         {wizardStep === 4 && <SandboxReady />}
       </div>

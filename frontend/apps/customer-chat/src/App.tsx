@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { useTenantId } from '@autoservice/shared';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
@@ -15,6 +16,30 @@ function getCustomerId(): string {
   return id;
 }
 
+/**
+ * Resolve the WebSocket base URL.
+ *
+ * Priority:
+ *   1. `VITE_WS_BASE` env var (full URL, e.g. `wss://chat.example.com`)
+ *   2. Same-origin derived from `window.location` (secure protocol auto-upgrade).
+ *
+ * We deliberately avoid hardcoding `localhost:8000` — the dev server proxy
+ * (or reverse proxy in prod) forwards `/ws/customer` to the gateway.
+ */
+function resolveWsBase(): string {
+  const envBase = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_WS_BASE;
+  if (envBase) return envBase.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}`;
+  }
+  // Last-resort fallback for non-DOM contexts (tests without jsdom). Tenant
+  // presence is already gated by useTenantId(), so this is only ever reached
+  // if a caller renders <App/> outside jsdom — we return an obviously-fake
+  // origin so any accidental connect fails loudly.
+  return 'ws://invalid.local';
+}
+
 type SheetState = 'peek' | 'full';
 
 function getInitialSheet(): SheetState {
@@ -27,8 +52,56 @@ function getInitialSheet(): SheetState {
   return 'peek';
 }
 
+/**
+ * Chat application. Requires a tenant in the URL:
+ *   - `/t/<tenant>/chat` (canonical)
+ *   - `/chat?tenant=<tenant>` (fork-side fallback, see spec §5.4)
+ *
+ * When no tenant is resolvable, renders a friendly "select tenant" message
+ * instead of crashing or silently connecting to the wrong backend.
+ */
 export function App() {
-  const wsUrl = `ws://${window.location.hostname}:8000/ws/customer`;
+  const tenantId = useTenantId();
+
+  if (!tenantId) {
+    return <TenantFallback />;
+  }
+
+  return <ChatApp tenantId={tenantId} />;
+}
+
+function TenantFallback() {
+  return (
+    <div
+      className="web-canvas"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        padding: '2rem',
+        textAlign: 'center',
+      }}
+      data-testid="tenant-fallback"
+    >
+      <div style={{ maxWidth: 480 }}>
+        <h1 style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>
+          Select a tenant to start chatting
+        </h1>
+        <p style={{ opacity: 0.75, lineHeight: 1.5 }}>
+          Open this page via <code>/t/&lt;your-tenant&gt;/chat</code> or append{' '}
+          <code>?tenant=&lt;your-tenant&gt;</code> to the URL.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ChatApp({ tenantId }: { tenantId: string }) {
+  const wsUrl = useMemo(
+    () => `${resolveWsBase()}/ws/customer?tenant=${encodeURIComponent(tenantId)}`,
+    [tenantId],
+  );
   const { send } = useWebSocket(wsUrl, 'customer-chat');
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
   const [isOpen, setIsOpen] = useState(() => {

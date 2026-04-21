@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useAdminStore, initialState } from '../store/adminStore';
@@ -37,5 +37,49 @@ describe('AvatarMenu', () => {
     useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: null });
     render(<AvatarMenu />);
     expect(screen.getByTestId('avatar-trigger')).toHaveTextContent('?');
+  });
+
+  // T6F.4 — new logout flow (spec §4.3 + §5)
+  describe('logout integration', () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+    let redirector: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+      vi.stubGlobal('fetch', fetchMock);
+      redirector = vi.fn();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('btn-logout POSTs /api/auth/logout with credentials', async () => {
+      const user = userEvent.setup();
+      render(<AvatarMenu redirector={redirector} />);
+      await user.click(screen.getByTestId('avatar-trigger'));
+      await user.click(screen.getByTestId('btn-logout'));
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/auth/logout',
+        expect.objectContaining({ method: 'POST', credentials: 'include' }),
+      );
+    });
+
+    it('redirects to /login after logout', async () => {
+      const user = userEvent.setup();
+      render(<AvatarMenu redirector={redirector} />);
+      await user.click(screen.getByTestId('avatar-trigger'));
+      await user.click(screen.getByTestId('btn-logout'));
+      expect(redirector).toHaveBeenCalledWith('/login');
+    });
+
+    it('network error still triggers redirect (best-effort)', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('offline'));
+      const user = userEvent.setup();
+      render(<AvatarMenu redirector={redirector} />);
+      await user.click(screen.getByTestId('avatar-trigger'));
+      await user.click(screen.getByTestId('btn-logout'));
+      expect(redirector).toHaveBeenCalledWith('/login');
+    });
   });
 });

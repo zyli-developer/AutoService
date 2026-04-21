@@ -14,15 +14,45 @@ const TITLE_KEYS: Record<string, string> = {
 
 interface AdminTopbarProps {
   onToggleNav?: () => void;
+  /**
+   * Override the store's `tenantId` for display. Set when the topbar is
+   * rendered inside a tenant-scoped iframe (/t/<tid>/admin) so the crumb
+   * reflects the previewed tenant instead of the host session.
+   */
+  tenantIdOverride?: string;
+  /**
+   * T6F.4 — tenant fork brand name (spec §4.3, "B 的 brand_name").
+   * When provided, replaces the tenant token in the crumb/title, so a
+   * tenant-mode admin sees their fork's brand instead of the bare tenant id.
+   * Empty string is treated as "not provided" (no flicker).
+   */
+  brandName?: string;
+  /**
+   * T6F.4 — `authenticated_as` email from `/api/session/mode` (spec §4.3,
+   * "Avatar（显示 authenticated_as）"). Renders inline to the left of the
+   * avatar. Empty string is treated as "not provided".
+   */
+  authenticatedAs?: string;
 }
 
-export function AdminTopbar({ onToggleNav }: AdminTopbarProps = {}) {
+export function AdminTopbar({
+  onToggleNav,
+  tenantIdOverride,
+  brandName,
+  authenticatedAs,
+}: AdminTopbarProps = {}) {
   const { t } = useTranslation();
-  const tenantId = useAdminStore((s) => s.tenantId);
+  const storeTenantId = useAdminStore((s) => s.tenantId);
+  const tenantId = tenantIdOverride ?? storeTenantId;
   const activeTab = useAdminStore((s) => s.activeTab);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
-  const tenant = tenantId ?? 'Admin';
+  // Empty string → treated as absent (spec §4.3 flicker guard)
+  const brandNameResolved = brandName && brandName.length > 0 ? brandName : null;
+  const authedAsResolved =
+    authenticatedAs && authenticatedAs.length > 0 ? authenticatedAs : null;
+
+  const brand = brandNameResolved ?? tenantId ?? 'Admin';
   const titleKey = TITLE_KEYS[activeTab] ?? 'admin.nav.dashboard';
   const pageTitle = t(titleKey);
 
@@ -40,15 +70,34 @@ export function AdminTopbar({ onToggleNav }: AdminTopbarProps = {}) {
         </svg>
       </button>
       <div className="cs-topbar-left">
-        <div className="cs-topbar-crumb">{`${tenant} · ${t('admin.topbar.suffix')}`}</div>
+        <div className="cs-topbar-crumb">{`${brand} · ${t('admin.topbar.suffix')}`}</div>
         <div className="cs-topbar-title">
           <span className="cs-topbar-dot" aria-hidden="true" />
-          <span className="cs-topbar-tenant" data-testid="topbar-tenant">{tenant}</span>
+          <span className="cs-topbar-tenant" data-testid="topbar-tenant">{brand}</span>
           <span className="cs-topbar-sep">/</span>
           <span className="cs-topbar-page">{pageTitle}</span>
         </div>
       </div>
       <div className="cs-topbar-right">
+        {authedAsResolved ? (
+          <span
+            className="cs-topbar-authed-as"
+            data-testid="topbar-authed-as"
+            style={{
+              fontSize: 12,
+              color: 'var(--color-text-secondary)',
+              fontFamily: 'var(--font-mono)',
+              marginRight: 4,
+              maxWidth: 220,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={authedAsResolved}
+          >
+            {`Signed in as ${authedAsResolved}`}
+          </span>
+        ) : null}
         <LanguageSwitcher
           style={{
             padding: '4px 10px',

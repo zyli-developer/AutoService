@@ -44,6 +44,7 @@ from autoservice.conversation_engine.types import (
 # Gate matrix: (mode, sender_role) → should downgrade PUBLIC to SIDE?
 _GATE_DOWNGRADE: frozenset[tuple[ConversationMode, ParticipantRole]] = frozenset(
     {
+        (ConversationMode.AUTO, ParticipantRole.OPERATOR),
         (ConversationMode.COPILOT, ParticipantRole.OPERATOR),
         (ConversationMode.TAKEOVER, ParticipantRole.AGENT),
     }

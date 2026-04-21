@@ -18,8 +18,9 @@ from typing import Any
 
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from autoservice.conversation_engine import ConversationEngine, LocalEngine
 from autoservice.gateway.connection import (
@@ -210,6 +211,56 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # T7B.1 — TenantContext middleware (spec §3.2).
+    #
+    # Populates request.state.deployment_mode + request.state.tenant_id and
+    # — in tenant mode — rewrites /t/<self>/* to /* (URL-flat fork routing)
+    # while refusing cross-tenant paths /t/<other>/* with 403.
+    #
+    # Placement: registered AFTER the CORSMiddleware add_middleware call so
+    # Starlette wraps it INSIDE CORS (Starlette chains in reverse registration
+    # order). That is the desired order — CORS headers attach to our 403
+    # responses, and CORS-only preflight OPTIONS requests still reach us
+    # unchanged.
+    @app.middleware("http")
+    async def tenant_context_middleware(request: Request, call_next):
+        from autoservice import bootstrap
+
+        try:
+            mode = bootstrap.get_deployment_mode()
+        except (FileNotFoundError, ImportError):
+            # Missing config.local.yaml in dev/test → act as master mode.
+            mode = "master"
+
+        request.state.deployment_mode = mode
+        request.state.tenant_id = (
+            bootstrap.get_tenant_id() if mode == "tenant" else None
+        )
+
+        if mode == "tenant":
+            self_tid = request.state.tenant_id
+            path = request.url.path
+            if self_tid and path.startswith(f"/t/{self_tid}/"):
+                # Strip the /t/<self> prefix so the fork's URL-flat routes
+                # receive the request (spec §3.2 "fork 模式 URL-flat").
+                request.scope["path"] = path[len(f"/t/{self_tid}"):] or "/"
+            elif self_tid and path == f"/t/{self_tid}":
+                # Trailing-slash-less variant.
+                request.scope["path"] = "/"
+            elif path.startswith("/t/"):
+                # Cross-tenant attempt in single-tenant fork → refuse.
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": (
+                            "cross-tenant access denied "
+                            "(tenant-mode single-tenant fork)"
+                        ),
+                    },
+                )
+
+        return await call_next(request)
+
     # Register squad plugin
     from autoservice.plugins.squad_plugin import SquadPlugin
     _squad_plugin = SquadPlugin(squad_config={
@@ -243,7 +294,36 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         alert_engine = AlertEngine(aggregator)
         alert_engine.set_notify(_push_alert_to_admins)
         app.state.alert_engine = alert_engine
-        logger.info("AlertEngine wired with admin WS push")
+
+        # Per-record breach → immediate sla_alert frame to admins (Issue 5).
+        # Complements AlertEngine's window-based aggregate alerts.
+        def _on_per_record_breach(info: dict) -> None:
+            from autoservice.gateway.connection import build_frame
+            frame = build_frame("sla_alert", {
+                "severity": info["severity"],
+                "message": (
+                    f"SLA threshold breached: {info['metric']}={info['value']:.0f} "
+                    f"({info['comparator']} {info['limit']})"
+                ),
+                "details": info,
+                "source": "per_record",
+            })
+            async def _push():
+                stale: list[str] = []
+                for sid, ws in list(_admin_connections.items()):
+                    try:
+                        await ws.send_json(frame)
+                    except Exception:
+                        stale.append(sid)
+                for sid in stale:
+                    _admin_connections.pop(sid, None)
+            try:
+                asyncio.create_task(_push())
+            except RuntimeError:
+                pass
+        aggregator.set_breach_callback(_on_per_record_breach)
+
+        logger.info("AlertEngine wired with admin WS push (aggregate + per-record)")
     except Exception:
         logger.warning("AlertEngine init failed, alerts disabled", exc_info=True)
 
@@ -253,6 +333,90 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             _make_endpoint(role),
             name=f"ws_{role}",
         )
+
+    @app.on_event("startup")
+    async def _bootstrap_internal_tenants() -> None:
+        """M2 spec §2.7/§2.8 — ensure _master or _local_admin exists per mode."""
+        try:
+            from autoservice import bootstrap, master_tenant
+            mode = bootstrap.get_deployment_mode()
+            if mode == "master":
+                created = master_tenant.ensure_master_tenant()
+                logger.info(
+                    "master-mode bootstrap: _master %s",
+                    "provisioned" if created else "already present",
+                )
+            else:
+                created = master_tenant.ensure_local_admin()
+                logger.info(
+                    "tenant-mode bootstrap: _local_admin %s",
+                    "provisioned" if created else "already present",
+                )
+        except FileNotFoundError:
+            # Absent config.local.yaml → non-fatal in dev (M1 default behavior);
+            # later auth setup will fail loudly if actually needed.
+            logger.warning(
+                "skipping internal-tenant bootstrap: .autoservice/config.local.yaml not found",
+            )
+        except Exception:
+            logger.warning("internal-tenant bootstrap failed", exc_info=True)
+
+    @app.on_event("startup")
+    async def _warm_cc_pool() -> None:
+        # Eagerly init pool so .autoservice/cc_pool_status.json appears
+        # right after `make start`, instead of waiting for the first message.
+        try:
+            await _get_pool()
+        except Exception:
+            logger.warning("eager CCPool warm-up failed", exc_info=True)
+
+    @app.on_event("startup")
+    async def _start_dream_scheduler() -> None:
+        """T4B.2 — start the DreamScheduler background loop (spec §2.6).
+
+        Registers the scheduler as the module-level singleton so the
+        ``/dream-config`` confirm path (``on_config_confirmed``) can
+        invalidate cached tenant config on the next tick.
+
+        Disabled when ``DREAM_SCHEDULER_DISABLED=1`` — useful for CI and
+        for the TestClient-based smoke tests that bring the app up
+        without an event loop long enough to service real background work.
+        """
+        if os.environ.get("DREAM_SCHEDULER_DISABLED") == "1":
+            return
+        try:
+            from autoservice.dream_scheduler import (
+                DreamScheduler,
+                set_scheduler,
+            )
+            sched = DreamScheduler()
+            await sched.start()
+            set_scheduler(sched)
+            app.state.dream_scheduler = sched
+            logger.info("DreamScheduler started")
+        except Exception:
+            logger.warning("DreamScheduler startup failed", exc_info=True)
+
+    @app.on_event("shutdown")
+    async def _stop_dream_scheduler() -> None:
+        """Pair of :func:`_start_dream_scheduler` — cancel the loop cleanly."""
+        try:
+            sched = getattr(app.state, "dream_scheduler", None)
+            if sched is None:
+                return
+            await sched.stop()
+            from autoservice.dream_scheduler import set_scheduler
+            set_scheduler(None)
+        except Exception:
+            logger.debug("DreamScheduler shutdown failed", exc_info=True)
+
+    @app.on_event("shutdown")
+    async def _shutdown_cc_pool() -> None:
+        try:
+            from autoservice.cc_pool import shutdown_pool
+            await shutdown_pool()
+        except Exception:
+            logger.debug("CCPool shutdown failed", exc_info=True)
 
     return app
 

@@ -34,4 +34,27 @@ describe('AdminTopbar', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByTestId('cmdk-panel')).toBeNull();
   });
+
+  // T6F.4 — new props (spec §4.3)
+  it('brandName prop replaces the tenant crumb when provided', () => {
+    render(<AdminTopbar brandName="AcmeShop" />);
+    expect(screen.getByTestId('topbar-tenant')).toHaveTextContent('AcmeShop');
+  });
+
+  it('empty brandName is treated as not provided (flicker guard)', () => {
+    render(<AdminTopbar brandName="" />);
+    // Falls through to tenantId → 'acme-corp' from beforeEach
+    expect(screen.getByTestId('topbar-tenant')).toHaveTextContent('acme-corp');
+  });
+
+  it('authenticatedAs renders inline near the avatar when provided', () => {
+    render(<AdminTopbar authenticatedAs="admin@example.com" />);
+    const el = screen.getByTestId('topbar-authed-as');
+    expect(el).toHaveTextContent('admin@example.com');
+  });
+
+  it('empty authenticatedAs renders nothing (flicker guard)', () => {
+    render(<AdminTopbar authenticatedAs="" />);
+    expect(screen.queryByTestId('topbar-authed-as')).toBeNull();
+  });
 });

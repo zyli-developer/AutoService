@@ -1,0 +1,321 @@
+gap_analysis:
+  scan_date: "2026-04-20"
+  source_type: "ingested"
+  source_files:
+    - "docs/plans/2026-04-18-prd-full-journey-gap.md"
+
+  summary:
+    total_gaps: 18
+    by_priority:
+      P0: 6
+      P1: 7
+      P2: 5
+    by_gap_type:
+      missing: 5
+      partial: 13
+      outdated: 0
+
+  gaps:
+    - id: GAP-001
+      source_id: "A-①"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a--p0"
+      description: '缺"注册接入"独立步骤：商户提交公司名/联系人/主营国家，平台分配 tenant_id + 独立沙箱 + IAM + 按国家匹配合规模板'
+      module: "onboarding"
+      priority: P0
+      gap_type: missing
+      existing_code:
+        - "frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx (从「上传」开始)"
+        - "autoservice/onboarding.py (tenant_id 在 upload 阶段才生成)"
+      missing_parts:
+        - "前置 RegisterStep"
+        - "落盘 countries → compliance_profile 映射"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-002
+      source_id: "A-②"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a--im--4-agent--p0"
+      description: "IM 管理群自动建立 + 4 Agent 入群；Act C Dream Engine 对话式配置、晨起推送、/approve 的 IM 载体"
+      module: "channels"
+      priority: P0
+      gap_type: missing
+      existing_code:
+        - "frontend/apps/admin-portal/src/components/wizard/ChannelConfigStep.tsx (仅渠道勾选)"
+      missing_parts:
+        - "Web 首发边界下降级：Web 通知中心 + 4 agent 注册到管理群虚拟 channel"
+        - "前端管理群组件"
+      estimated_effort: large
+      depends_on_gaps: []
+      notes: '合并 S2 "管理群 IM 化"'
+
+    - id: GAP-003
+      source_id: "A-③"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a--p0-1"
+      description: '"一键对外"真实动作缺失：沙箱 → 生产切换 gate + 签署'
+      module: "onboarding"
+      priority: P0
+      gap_type: missing
+      existing_code:
+        - "autoservice/onboarding.py activate_sandbox (/api/onboard/activate 直接返回 URL)"
+        - "frontend/apps/admin-portal/src/components/wizard/SandboxReady.tsx (按钮为 cosmetic)"
+      missing_parts:
+        - "/api/onboard/publish 端点"
+        - "sandbox → production 切换"
+        - "开放前签署 gate"
+      estimated_effort: large
+      depends_on_gaps: []
+      notes: '合并 S6 "沙箱→生产切换 gate"'
+
+    - id: GAP-004
+      source_id: "B-⑦"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "b--sdk--p0"
+      description: "商户独立站浮窗 SDK 多租户路由（核心阻塞）"
+      module: "frontend-sdk"
+      priority: P0
+      gap_type: partial
+      existing_code:
+        - "frontend/apps/customer-chat/src/App.tsx (硬编码 ws://localhost:8000/ws/customer)"
+        - "frontend/packages/ws-client (已发布但未验证跨域/按 tenant 路由)"
+      missing_parts:
+        - "ws-client 支持 ?tenant=X 路由 + domain 白名单"
+        - "发布 iframe/script 两种嵌入形态"
+        - "后端 /ws/customer?tenant=X 路由到对应 tenant agent 池"
+      estimated_effort: large
+      depends_on_gaps: []
+      notes: '合并 S4 "独立站 SDK 嵌入"'
+
+    - id: GAP-005
+      source_id: "C-⑫"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "c--act-c-step-0-im--p0"
+      description: "Act C step 0「配置规则」未接入 IM 载体：老陈在管理群 IM 对话式与 Dream Engine 配置 4 参数（trigger/coverage/risk/canary）"
+      module: "dream-engine"
+      priority: P0
+      gap_type: partial
+      existing_code:
+        - "autoservice/dream_config_dialog.py (状态机已实现)"
+      missing_parts:
+        - "管理群 WebSocket channel"
+        - "dream_config_dialog 挂入管理群 bot 入口"
+        - "输出写入 tenant_config/{tenant_id}/dream_rules.yaml"
+        - "autoservice/canary.py 读取 tenant rule 动态调整 stage"
+      estimated_effort: large
+      depends_on_gaps:
+        - GAP-002
+
+    - id: GAP-006
+      source_id: "C-⑭"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "c--im----p0"
+      description: "晨起推送实际 IM 送达 + 命令处理（/approve /edit /reject 提案卡片）"
+      module: "dream-engine"
+      priority: P0
+      gap_type: partial
+      existing_code:
+        - "autoservice/morning_push.py (仅聚合，未推送到管理群)"
+        - "/approve /reject T6C.3 标 🟩"
+      missing_parts:
+        - "morning_push 接入管理群 channel"
+        - "/edit 命令 handler"
+        - "全链路回归：提案生成 → 推送 → 命令 → 灰度触发"
+      estimated_effort: large
+      depends_on_gaps:
+        - GAP-002
+
+    - id: GAP-007
+      source_id: "B-⑧"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "b--agent--confidence---humanrequested---p1"
+      description: "Agent 主动求助路径：confidence 不足时自动 @客服请接管"
+      module: "triage"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "autoservice/triage.py (只做分流，未见 confidence < 0.6 → 自动 @operator 通知链路)"
+      missing_parts:
+        - "agent 生成时附带 confidence"
+        - "confidence_threshold trigger → emit HumanRequested event"
+        - "SquadPane 订阅并弹出 @ 提醒"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-008
+      source_id: "B-⑨"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "b--agent-sidebar--hint--p1"
+      description: "接管态 Agent sidebar 主动 hint 回传：人工 driver 时侧栏持续推送 agent 建议"
+      module: "takeover"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "TakeoverIndicator (只显示倒计时)"
+      missing_parts:
+        - "takeover 模式下保持 agent 运行（输出 visibility=side）"
+        - "CopilotSidebar 订阅推送"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-009
+      source_id: "B-⑪"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "b---p1"
+      description: "平台监控「实时事件流」面板：conn.open / agent.greet / mode.changed / slow.query / confidence / HumanRequested / takeover_count / conv.close 事件流"
+      module: "platform-console"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "EventBus + metrics_plugin 有数据源"
+        - "admin-portal Dashboard (只有聚合指标，非事件流)"
+      missing_parts:
+        - "platform-console 或 admin-portal 下的「事件流」标签页"
+        - "消费 EventBus 渲染实时流"
+      estimated_effort: medium
+      depends_on_gaps: []
+      notes: '合并 S5 "平台监控页面"'
+
+    - id: GAP-010
+      source_id: "C-⑮"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "c---p1"
+      description: "中风险提案「二次确认」流：老陈规则「中风险需二次确认 ✓」"
+      module: "dream-engine"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "proposal_pipeline 产出 risk_level"
+      missing_parts:
+        - "risk_level>=middle 时 morning_push 附加 [需二次确认] tag"
+        - "/approve 命令对中风险提案走两阶段确认"
+      estimated_effort: small
+      depends_on_gaps:
+        - GAP-006
+
+    - id: GAP-011
+      source_id: "C-⑯"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "c---vs--ui--p1"
+      description: "灰度「命中 vs 未命中」双值对比 UI：CSAT/升级率 baseline vs canary delta 并排展示"
+      module: "canary"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "autoservice/canary_monitor.py (有 baseline/canary 数据)"
+        - "T4B.2 灰度进度可视化 UI"
+      missing_parts:
+        - "admin-portal canary 视图新增 baseline vs canary 对比列"
+      estimated_effort: small
+      depends_on_gaps: []
+
+    - id: GAP-012
+      source_id: "S1"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "s1"
+      description: "租户隔离：当前有 tenant_id 但无进程/DB 隔离"
+      module: "tenant-isolation"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "tenant_id 字段"
+      missing_parts:
+        - "进程级隔离"
+        - "DB 级隔离"
+      estimated_effort: large
+      depends_on_gaps: []
+
+    - id: GAP-013
+      source_id: "S3"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "s3"
+      description: "客服 Agent 分队 IM 化：Slack 风频道 + 卡片 + @提醒"
+      module: "operator-console"
+      priority: P1
+      gap_type: partial
+      existing_code:
+        - "operator-console dashboard 形态"
+      missing_parts:
+        - "Slack 风频道"
+        - "卡片化消息"
+        - "@提醒"
+      estimated_effort: large
+      depends_on_gaps: []
+
+    - id: GAP-014
+      source_id: "A-④"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a---tenant-countries---p2"
+      description: "合规模板按 tenant.countries 过滤：按注册国家下发子集"
+      module: "compliance"
+      priority: P2
+      gap_type: partial
+      existing_code:
+        - "autoservice/compliance/rules.yaml (静态全加载 16 条)"
+      missing_parts:
+        - "compliance.py load_rules_for_tenant(countries) 过滤器"
+      estimated_effort: small
+      depends_on_gaps:
+        - GAP-001
+
+    - id: GAP-015
+      source_id: "A-⑤"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a--15min-agent--30min--1h52min---p2"
+      description: "时间预算监测：15min agent 生成 / 30min 预演 / 1h52min 总耗时承诺"
+      module: "observability"
+      priority: P2
+      gap_type: missing
+      existing_code: []
+      missing_parts:
+        - "onboarding 各阶段埋点"
+        - "向导 UI 显示预计/实际耗时"
+      estimated_effort: small
+      depends_on_gaps: []
+      notes: '合并 S7 "时间预算监测"'
+
+    - id: GAP-016
+      source_id: "A-⑥"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "a--5--p2"
+      description: "团队邀请（5 人）：沙箱就绪后商户邀请团队成员试用"
+      module: "team"
+      priority: P2
+      gap_type: missing
+      existing_code: []
+      missing_parts:
+        - "团队/子账号邀请 API"
+      estimated_effort: medium
+      depends_on_gaps: []
+
+    - id: GAP-017
+      source_id: "B-⑩"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "b--copilot----p2"
+      description: "Copilot 建议「采纳/拒绝」回执：agent2 消息显示已采纳建议并发送给客户"
+      module: "copilot-sidebar"
+      priority: P2
+      gap_type: partial
+      existing_code:
+        - "CopilotSidebar 送出的 suggestion 无采纳/拒绝回传"
+      missing_parts:
+        - "agent 处理 suggestion 后 emit suggestion.adopted/rejected 事件"
+        - "UI 显示回执"
+      estimated_effort: small
+      depends_on_gaps: []
+
+    - id: GAP-018
+      source_id: "C-⑬"
+      source_file: "2026-04-18-prd-full-journey-gap.md"
+      source_anchor: "c-memory_pool-7--ttl--p2"
+      description: "memory_pool 7 天 TTL 滚动淘汰：未结构化对话记忆的定时清理"
+      module: "memory-pool"
+      priority: P2
+      gap_type: partial
+      existing_code:
+        - "autoservice/memory_pool.py (有 schema，无 eviction)"
+      missing_parts:
+        - "低峰调度器附加 evict_turns(older_than=7d) 定时任务"
+      estimated_effort: small
+      depends_on_gaps: []
