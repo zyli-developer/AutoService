@@ -13,13 +13,13 @@
 | Metric | Value |
 |---|---|
 | Total tasks | 39 |
-| ✅ Completed | 17 |
+| ✅ Completed | 31 |
 | 🏃 In progress | 0 |
 | ⏸️ Blocked | 0 |
-| ⏳ Pending | 22 |
-| Progress | 44% |
-| Current milestone | **M3-2 ✅ gated 2026-04-21** (RBAC + SLA + compliance + master dream) — next M3-3 |
-| Current batch | M3-2 done; batch-7 (P3/P4 preps: handoff parser + classify DB + compressor) ready |
+| ⏳ Pending | 8 |
+| Progress | 79% |
+| Current milestone | **M3-3 ✅ gated 2026-04-21** (Triage + Dream apply 🔒 + Ops + Compliance) — next M3-4 Playwright (deferrable per CON-13) |
+| Current batch | M3-3 done; batch-11 (Playwright scaffold) + batch-12 suites OR defer to M3.5 |
 
 ---
 
@@ -30,8 +30,8 @@
 | P0 | Contract Freeze | 4 | 4 | 100% ✅ |
 | P1 | E1 P0 Foundation | 5 | 5 | 100% ✅ M3-1 gate |
 | P2 | E1 P1 + Parallel Greens | 8 | 8 | 100% ✅ M3-2 gate |
-| P3 | E3 Tail + E1 Close | 6 | 0 | 0% |
-| P4 | E5/E6/E4/E3 Remainders | 8 | 0 | 0% |
+| P3 | E3 Tail + E1 Close | 6 | 6 | 100% ✅ |
+| P4 | E5/E6/E4/E3 Remainders | 8 | 8 | 100% ✅ (M3-3 gate) |
 | P5 | Playwright (deferrable M3.5) | 5 | 0 | 0% |
 | P6 | M3 Gate | 3 | 0 | 0% |
 
