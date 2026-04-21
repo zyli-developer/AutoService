@@ -427,8 +427,17 @@ class CCPool(AsyncPool[CCClient]):
 
         Recycle failures are caught and logged; the uncycled warm instance
         is still returned so the caller can degrade rather than crash. The
-        instance is stamped with ``_pool_tenant_id = None`` in that case so
-        a subsequent same-tenant acquire won't mistakenly skip recycle.
+        instance is stamped with ``_pool_tenant_id = tenant_id`` in that
+        case so subsequent same-tenant acquires match instead of raising
+        :class:`StickyTenantMismatch`; the instance still works without
+        the tenant soul.
+
+        Concurrency: assumes a single in-flight acquire per key. Recycle
+        runs outside ``_sticky_lock`` while the binding still points at
+        the instance being destroyed; a concurrent acquire for the same
+        key could observe a dead binding and double-bind. Safe for the
+        typical one-conv-one-caller pattern; revisit if the gateway fans
+        out parallel acquires.
         """
         existing = self._sticky_bindings.get(key)  # noqa: SLF001
         if existing is not None and existing.instance.is_healthy:
@@ -451,11 +460,6 @@ class CCPool(AsyncPool[CCClient]):
                 self, instance,
                 role="customer", tenant_id=tenant_id,
             )
-            # Belt-and-suspenders: the helper stamps on the rebuild path,
-            # but the noop path (same tenant already stamped) returns the
-            # instance unchanged. An explicit override-level stamp makes
-            # the post-condition unconditional.
-            instance._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
             # If recycle swapped the instance, update the sticky binding
             # so future acquires see the new one.
             async with self._sticky_lock:  # noqa: SLF001
@@ -468,9 +472,10 @@ class CCPool(AsyncPool[CCClient]):
                 "returning uncycled instance (degraded)",
                 key, tenant_id,
             )
-            # Best-effort stamp so future same-tenant acquires don't
-            # mistakenly skip recycle on a degraded instance.
-            instance._pool_tenant_id = None  # type: ignore[attr-defined]
+            # Bind to the target tenant anyway so subsequent acquires see
+            # a match instead of raising StickyTenantMismatch; the
+            # instance still works without the tenant soul.
+            instance._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
 
         return instance
 
