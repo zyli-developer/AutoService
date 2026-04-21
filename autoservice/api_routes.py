@@ -12,9 +12,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 
-from autoservice import dream_agent, dream_runs
+from autoservice import auth, dream_agent, dream_runs
 from autoservice.canary import CanaryStage
 
 logger = logging.getLogger("autoservice.api")
@@ -1398,3 +1399,312 @@ async def onboard_unfreeze(payload: dict[str, Any] = Body(...)) -> Any:
             status_code=400,
             content={"error": str(exc), "tenant_id": tenant_id},
         )
+
+
+# ---------------------------------------------------------------------------
+# Magic-link auth endpoints (T5B.2 / T5B.3 / T5B.4)
+# ---------------------------------------------------------------------------
+#
+# Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §5.
+#
+# Flow:
+#   1. Admin hits POST /api/auth/request-login with their email.
+#   2. If the email is on config.local.yaml.auth.admin_emails, a short-TTL
+#      login token is persisted and either SMTP-sent or written to the dev
+#      log (when SMTP host is empty). The 200 response is identical either
+#      way — anti-enumeration (spec §5.2).
+#   3. Admin clicks the link, which hits GET /api/auth/verify?token=…&redirect=…
+#      The token is burned atomically; a 30-day session cookie is minted and
+#      the browser is 302'd to the redirect target.
+#   4. POST /api/auth/logout revokes the session and clears the cookie.
+#
+# CON-08 (m2-task-hints.yaml risks) — magic-link HTTP-sniffing is accepted in
+# dev; the cookie `Secure` flag is conditional on the request being HTTPS.
+# Production runbook must front this with HTTPS.
+
+# Cookie name for admin sessions.  Spec §5.2 uses "adm_s"; we pick the more
+# readable "auth_session" — T5B.5 / T6F.2 reconciliation will pick the final
+# name when the frontend AuthGate lands.
+AUTH_SESSION_COOKIE = "auth_session"
+
+# Path for dev-mode magic link log (spec §5.6). One JSONL line per send.
+_DEV_MAIL_LOG = Path(".autoservice") / "logs" / "auth-devmail.jsonl"
+
+
+_auth_db_conn = None
+
+
+def _get_auth_db():
+    """Return the shared auth SQLite connection (lazy singleton).
+
+    Mirrors :func:`_get_dream_runs_db`.  The DB lives under
+    ``.autoservice/database/auth.db`` by default (see
+    :func:`autoservice.auth.open_connection`).
+    """
+    global _auth_db_conn
+    if _auth_db_conn is None:
+        _auth_db_conn = auth.open_connection()
+    return _auth_db_conn
+
+
+def _reset_auth_db_for_tests(conn=None):
+    """Test-only hook: inject an in-memory sqlite3 connection.
+
+    Passing ``conn=None`` clears the cache so the next call re-opens from
+    disk.  Tests pass a prepared in-memory connection (schema applied via
+    :func:`autoservice.auth.apply_schema`) so they never hit the on-disk DB.
+    """
+    global _auth_db_conn
+    _auth_db_conn = conn
+
+
+def _load_admin_emails() -> list[str]:
+    """Read the ``auth.admin_emails`` allowlist from config.local.yaml.
+
+    Returns an empty list when the file or field is missing.  Case is
+    normalised to lowercase for membership checks.
+
+    Returns a fresh list per call — cheap (small YAML) and keeps the
+    allowlist hot-reloadable without needing a reset hook for tests.
+    """
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        return []
+
+    auth_cfg = cfg.get("auth") or {}
+    emails = auth_cfg.get("admin_emails") or []
+    if not isinstance(emails, list):
+        return []
+    return [str(e).strip().lower() for e in emails if e]
+
+
+def _smtp_host() -> str:
+    """Return the configured SMTP host (empty string if unset → dev log mode)."""
+    try:
+        from autoservice import bootstrap
+        cfg = bootstrap._load_local_config()
+    except Exception:
+        return ""
+    auth_cfg = cfg.get("auth") or {}
+    smtp_cfg = auth_cfg.get("smtp") or {}
+    host = smtp_cfg.get("host") or ""
+    return str(host).strip()
+
+
+def _dev_log_magic_link(
+    email: str,
+    tenant_id: str | None,
+    token: str,
+    link: str,
+) -> None:
+    """Persist a magic link to the dev log + emit a WARNING-level log record.
+
+    Writes one JSONL line to ``.autoservice/logs/auth-devmail.jsonl`` (spec
+    §5.6).  Operators grep this file during local dev; in prod SMTP is
+    configured so this path is never exercised.
+    """
+    _DEV_MAIL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "email": email,
+        "tenant_id": tenant_id,
+        "token": token,
+        "link": link,
+    }
+    with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    # Loud banner so dev-mode operators notice the link in the console.
+    logger.warning(
+        "[dev-mail] Magic link for %s (tenant=%s): %s",
+        email, tenant_id or "_master", link,
+    )
+
+
+def _build_magic_link(request: Request, token: str, redirect: str) -> str:
+    """Compose the absolute magic link URL shown to the admin.
+
+    Uses the request's scheme + host so operators running behind a tunnel
+    (ngrok, localtunnel) get a link that actually resolves.
+    """
+    base = str(request.base_url).rstrip("/")
+    from urllib.parse import quote
+    return f"{base}/api/auth/verify?token={quote(token)}&redirect={quote(redirect)}"
+
+
+def _send_smtp_magic_link(email: str, link: str) -> None:
+    """Send the magic link via SMTP using .autoservice/config.local.yaml.auth.smtp.
+
+    M2 implementation is minimal — host/port/from only.  M3 can add TLS
+    credentials when needed.  This path is intentionally not exercised by
+    the test suite (tests run in dev-log mode).
+    """
+    import smtplib
+    from email.message import EmailMessage
+    from autoservice import bootstrap
+
+    cfg = bootstrap._load_local_config()
+    smtp_cfg = (cfg.get("auth") or {}).get("smtp") or {}
+    host = str(smtp_cfg.get("host") or "").strip()
+    port = int(smtp_cfg.get("port") or 25)
+    sender = str(smtp_cfg.get("from") or "no-reply@autoservice.local").strip()
+
+    msg = EmailMessage()
+    msg["Subject"] = "Your AutoService admin login link"
+    msg["From"] = sender
+    msg["To"] = email
+    msg.set_content(f"Click to sign in (expires in 10 min):\n\n{link}\n")
+
+    with smtplib.SMTP(host, port) as server:
+        server.send_message(msg)
+
+
+@api_router.post("/auth/request-login")
+async def auth_request_login(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> Any:
+    """Issue a magic-link login token for an admin email (spec §5.2).
+
+    Request body::
+
+        {"email": "<admin@example.com>", "tenant_id": "<tid>"}  # tenant_id optional
+
+    Response (always 200, anti-enumeration per spec §5.2)::
+
+        {"status": "sent", "delivered": "smtp" | "log"}
+
+    Behaviour:
+        * If ``email`` is on ``config.local.yaml.auth.admin_emails`` a token
+          is persisted and delivered (SMTP if host is set, else dev log).
+        * If ``email`` is NOT on the allowlist the response is identical
+          but no token is persisted and no mail is sent.
+        * Missing ``email`` field → 422.
+
+    The ``tenant_id`` field is optional — ``NULL`` means a ``_master`` tier-0
+    session will be created when the token is verified.
+    """
+    email_raw = payload.get("email") if isinstance(payload, dict) else None
+    if not isinstance(email_raw, str) or not email_raw.strip():
+        return JSONResponse(
+            status_code=422,
+            content={"error": "email is required"},
+        )
+
+    email = email_raw.strip().lower()
+    tenant_id = payload.get("tenant_id") if isinstance(payload, dict) else None
+    if isinstance(tenant_id, str):
+        tenant_id = tenant_id.strip() or None
+    else:
+        tenant_id = None
+
+    allowlist = _load_admin_emails()
+    smtp_host = _smtp_host()
+    delivered = "smtp" if smtp_host else "log"
+
+    # Anti-enumeration: we ALWAYS return the same shape.  Side effects only
+    # happen for allowlisted addresses.
+    if email in allowlist:
+        conn = _get_auth_db()
+        token = auth.issue_login_token(conn, email, tenant_id=tenant_id)
+
+        # Default redirect target: _master tier-0 goes to /admin, a tenant
+        # session goes to /t/<tid>/admin.  Caller can override via the
+        # verify endpoint's ?redirect= query param.
+        redirect = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+        link = _build_magic_link(request, token, redirect)
+
+        if smtp_host:
+            try:
+                _send_smtp_magic_link(email, link)
+            except Exception:
+                # Fall back to dev log so the admin still has a way in if
+                # SMTP is misconfigured (spec §5.6 spirit).
+                logger.exception("SMTP send failed for %s; falling back to dev log", email)
+                _dev_log_magic_link(email, tenant_id, token, link)
+                delivered = "log"
+        else:
+            _dev_log_magic_link(email, tenant_id, token, link)
+
+    return {"status": "sent", "delivered": delivered}
+
+
+@api_router.get("/auth/verify")
+async def auth_verify(
+    request: Request,
+    token: str | None = None,
+    redirect: str = "/admin",
+) -> Any:
+    """Burn a login token and mint a session cookie (spec §5.2).
+
+    Query params:
+        token:    required, non-empty — the magic-link token to consume.
+        redirect: optional — path the browser is sent to after cookie is
+                  set.  Defaults to ``/admin``.
+
+    Response:
+        * 302 to ``redirect`` with ``Set-Cookie: auth_session=…`` on success.
+        * 401 (plain text) on unknown / expired / already-consumed tokens.
+        * 422 when ``token`` is missing or empty.
+
+    The cookie is ``HttpOnly + SameSite=Lax`` unconditionally; the ``Secure``
+    flag is set only when the request was served over HTTPS — CON-08 dev
+    waiver is honoured.
+    """
+    if not token or not token.strip():
+        return JSONResponse(
+            status_code=422,
+            content={"error": "token is required"},
+        )
+
+    conn = _get_auth_db()
+    result = auth.consume_login_token(conn, token.strip())
+    if result is None:
+        return PlainTextResponse(
+            "Invalid or expired login link",
+            status_code=401,
+        )
+
+    admin_email, tenant_id = result
+    session_id = auth.create_session(conn, admin_email, tenant_id=tenant_id)
+
+    response = RedirectResponse(url=redirect, status_code=302)
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=AUTH_SESSION_COOKIE,
+        value=session_id,
+        max_age=auth.DEFAULT_SESSION_TTL_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response
+
+
+@api_router.post("/auth/logout")
+async def auth_logout(request: Request) -> Response:
+    """Revoke the current session and clear the cookie (spec §5.2).
+
+    Always returns 204 — idempotent.  No cookie, unknown session, or
+    already-revoked session are all handled silently.
+    """
+    sid = request.cookies.get(AUTH_SESSION_COOKIE)
+    if sid:
+        conn = _get_auth_db()
+        auth.revoke_session(conn, sid)
+
+    response = Response(status_code=204)
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=AUTH_SESSION_COOKIE,
+        value="",
+        max_age=0,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response

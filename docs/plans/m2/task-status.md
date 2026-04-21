@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：17
+- **已完成**：21
 - **进行中**：0
 - **阻塞**：0
-- **待办**：21
-- **完成率**：45% (17/38)
+- **待办**：17
+- **完成率**：55% (21/38)
 - **最后更新**：2026-04-21
 
 ### 会话日志
@@ -26,6 +26,7 @@
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
 | 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `5d614bc` |
 | 2026-04-21 | Phase 1-4 artifact backfill (option B) | eval-doc-005/006/007/008, test-diff-004/005/006/007/008/009/010, e2e-report-003 |
+| 2026-04-21 | batch-7 P5 auth core (artifact-compliant: eval-doc-009, test-diff-011, e2e-report-004) | PENDING (filled post-commit) |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -116,10 +117,10 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T5B.1 | auth DB schema + repo | green | small | ⏳ pending | — | — |
-| T5B.2 | POST /api/auth/request-login | green | small | ⏳ pending | — | — |
-| T5B.3 | GET /api/auth/verify → cookie + redirect | green | small | ⏳ pending | — | — |
-| T5B.4 | POST /api/auth/logout | green | small | ⏳ pending | — | — |
+| T5B.1 | auth DB schema + repo | green | small | ✅ done | Subagent batch-7 | PENDING (7 tests) |
+| T5B.2 | POST /api/auth/request-login | green | small | ✅ done | Subagent batch-7 | PENDING (5 tests) |
+| T5B.3 | GET /api/auth/verify → cookie + redirect | green | small | ✅ done | Subagent batch-7 | PENDING (5 tests) |
+| T5B.4 | POST /api/auth/logout | green | small | ✅ done | Subagent batch-7 | PENDING (3 tests) |
 | T5B.5 | require_tenant_access middleware | green | medium | ⏳ pending | — | — |
 | T5B.6 | /api/session/mode auth-state extension | green | small | ⏳ pending | — | — |
 
@@ -174,7 +175,7 @@ Phase 1-4 回填已完成（option B 承诺兑现）。共 **12 artifacts 注册
 | batch-4 | P3 | ✅ 完成 | T3B.4 run_dream 完成；10 tests + 99 regression；inline reviewer APPROVED |
 | batch-5 | P3 | ✅ 完成 | T3B.5 ✅ done (9 tests + 0 regression, yellow) / T3B.6 ✅ done (15 tests + 0 regression) |
 | batch-6 | P4 | ✅ 完成 | 3 tasks + 33 tests + 0 regression; inline reviewer APPROVED |
-| batch-7 | P5 | ⏳ pending | — |
+| batch-7 | P5 | ✅ 完成 | T5B.1-T5B.4 · 20 new tests + 0 regression; artifact-compliant (eval-doc-009 / test-diff-011 / e2e-report-004) |
 | batch-8 | P5 | ⏳ pending | — |
 | batch-9 | P6 | ⏳ pending | — |
 | batch-10 | P6 | ⏳ pending | — |
