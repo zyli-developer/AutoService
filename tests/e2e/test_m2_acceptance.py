@@ -76,9 +76,19 @@ def _gh_available() -> bool:
         return False
 
 
+def _claude_sdk_available() -> bool:
+    """Project uses claude_agent_sdk (local CLI via subscription), not raw
+    ANTHROPIC_API_KEY. Probe that the SDK imports and cc_pool can warm."""
+    try:
+        import claude_agent_sdk  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 requires_anthropic = pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY unset — spec §8 steps 6+7 need a live LLM",
+    not _claude_sdk_available(),
+    reason="claude_agent_sdk unavailable — steps 6+7 need local Claude SDK (subscription or ANTHROPIC_API_KEY)",
 )
 
 requires_gh = pytest.mark.skipif(
@@ -92,9 +102,14 @@ requires_gh = pytest.mark.skipif(
 def tenant_id() -> str:
     """Target tenant id for the acceptance run.
 
-    Picks a deterministic ephemeral id per run so a second invocation
-    doesn't collide with a prior fork. Uses UTC-date + run-minute.
+    Order of precedence:
+    1. M2_TENANT_ID env — pin to an operator-chosen id (useful when a
+       pre-provisioned fork uvicorn expects a specific tenant).
+    2. Auto-generate ``acceptance_<UTC-date>-<minute>`` so a second
+       invocation doesn't collide with a prior fork.
     """
+    if override := os.environ.get("M2_TENANT_ID"):
+        return override
     stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M")
     return f"acceptance_{stamp}"
 
@@ -121,7 +136,7 @@ def test_step_1_wizard_creates_tenant_and_publishes(master_base_url, tenant_id):
     - POST /api/onboard/publish produces a tarball artifact
     - The sandbox's status flips to 'archived' (or equivalent) after publish
     """
-    import requests
+    import httpx as requests
 
     # 1a. /upload (minimal KB)
     upload_resp = requests.post(
@@ -168,9 +183,9 @@ def test_step_2_fork_creator_extracts_and_writes_config(tmp_path_factory, tenant
     exposed by autoservice.publish in a tmp_path — the full gh-API path is
     covered by unit tests in tests/publish/test_github_api_fork_creator.py.
     """
-    from autoservice.publish import _fork_local_config_yaml
+    from autoservice.publish import _fork_local_config_yaml_text
 
-    cfg_yaml = _fork_local_config_yaml(tenant_id)
+    cfg_yaml = _fork_local_config_yaml_text(tenant_id)
     fork_root = tmp_path_factory.mktemp(f"fork-{tenant_id}")
     (fork_root / ".autoservice").mkdir(parents=True)
     (fork_root / ".autoservice" / "config.local.yaml").write_text(
@@ -194,11 +209,11 @@ def test_step_3_fork_make_setup_and_run_web(fork_base_url):
     started manually OR by a future launch fixture). Here it only verifies
     reachability: GET / or a known route returns non-5xx.
     """
-    import requests
+    import httpx as requests
 
     try:
         r = requests.get(f"{fork_base_url}/api/session/mode", timeout=10)
-    except requests.exceptions.ConnectionError:
+    except (requests.ConnectError, requests.ConnectTimeout):
         pytest.skip(
             f"fork uvicorn not running at {fork_base_url} — start with `make run-web` "
             "in the fork repo before invoking this step"
@@ -214,11 +229,11 @@ def test_step_3_fork_make_setup_and_run_web(fork_base_url):
 # ── Step 4: Browser /chat responds ──────────────────────────────────────
 def test_step_4_browser_chat_endpoint_responds(fork_base_url):
     """Spec §8 step 4 — GET /chat on fork responds (no /t/<tid>/ prefix)."""
-    import requests
+    import httpx as requests
 
     try:
-        r = requests.get(f"{fork_base_url}/chat", timeout=10, allow_redirects=False)
-    except requests.exceptions.ConnectionError:
+        r = requests.get(f"{fork_base_url}/chat", timeout=10, follow_redirects=False)
+    except (requests.ConnectError, requests.ConnectTimeout):
         pytest.skip(f"fork uvicorn not running at {fork_base_url}")
     # 200 (SPA shell) or 3xx (redirect to SPA) are acceptable; 5xx is NOT.
     assert r.status_code < 500, f"fork /chat returned 5xx: {r.status_code}"
@@ -233,7 +248,7 @@ def test_step_4_browser_chat_endpoint_responds(fork_base_url):
 def test_step_5_magic_link_login_and_session_mode(fork_base_url, tenant_id):
     """Spec §8 step 5 — magic-link request produces a dev-mode log entry;
     verify consumes it; /api/session/mode returns tier + authenticated_as."""
-    import requests
+    import httpx as requests
 
     admin_email = os.environ.get("M2_ADMIN_EMAIL", "acceptance@example.com")
 
@@ -264,7 +279,7 @@ def test_step_5_magic_link_login_and_session_mode(fork_base_url, tenant_id):
         f"{fork_base_url}/api/auth/verify",
         params={"token": token, "redirect": "/admin"},
         timeout=10,
-        allow_redirects=False,
+        follow_redirects=False,
     )
     assert verify_resp.status_code in (302, 303)
     cookie = verify_resp.cookies.get("auth_session")
@@ -290,7 +305,7 @@ def test_step_5_magic_link_login_and_session_mode(fork_base_url, tenant_id):
 def test_step_6_dream_agent_run_after_idle(fork_base_url, tenant_id):
     """Spec §8 step 6 — 5-turn conversation, wait idle_threshold_min;
     DreamScheduler auto-triggers run_dream; proposals + dream_runs rows appear."""
-    import requests
+    import httpx as requests
     import sqlite3
 
     # 6a. Seed conversation (5 turns) — mocked through /api/admin/chat
@@ -359,7 +374,7 @@ def test_step_7_master_admin_chat_routes_to_master(master_base_url):
     """Spec §8 step 7 — POST /api/management/chat on Master routes to
     _master tenant cc_pool client; _master dream produces a platform-level
     proposal."""
-    import requests
+    import httpx as requests
 
     r = requests.post(
         f"{master_base_url}/api/management/chat",
@@ -378,25 +393,38 @@ def test_step_7_master_admin_chat_routes_to_master(master_base_url):
 def test_step_8_proposal_approve_reject_persists(master_base_url, tenant_id):
     """Spec §8 step 8 — approve/reject a proposal via admin-portal API;
     state persists in the proposals table."""
-    import requests
+    import httpx as requests
     import sqlite3
 
     # Seed a proposal directly (so the test is independent of step 6's
-    # side effects)
-    from autoservice.proposal_pipeline import ProposalPipeline
+    # side effects). Use the apply_schema + sqlite3 path since
+    # ProposalPipeline requires a memory_pool to instantiate (M1 contract).
+    from autoservice.proposal_pipeline import apply_schema
+    import sqlite3
+    import uuid
+    from datetime import datetime, timezone
 
-    pipeline = ProposalPipeline()
-    seeded = pipeline.create_proposal(
-        tenant_id=tenant_id,
-        category="soul_update",
-        title="Acceptance test proposal",
-        description="Seed for step 8 approve/reject.",
-        suggestion="n/a",
-        evidence="seeded by test_step_8",
-        risk_level="low",
-        target_role="customer",
-    )
-    proposal_id = seeded["id"]
+    proposals_db = PROJECT_ROOT / ".autoservice" / "database" / "proposals.db"
+    proposals_db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(proposals_db))
+    try:
+        apply_schema(conn)
+        proposal_id = uuid.uuid4().hex
+        conn.execute(
+            """INSERT INTO proposals
+            (id, tenant_id, category, title, description, suggestion,
+             evidence, risk_level, target_role, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)""",
+            (
+                proposal_id, tenant_id, "soul_update",
+                "Acceptance test proposal", "Seed for step 8 approve/reject.",
+                "n/a", "seeded by test_step_8", "low", "customer",
+                datetime.now(tz=timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Approve
     approve_resp = requests.post(
