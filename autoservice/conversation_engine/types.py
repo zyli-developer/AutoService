@@ -27,6 +27,7 @@ class ParticipantRole(str, Enum):
     AGENT = "agent"
     OPERATOR = "operator"
     OBSERVER = "observer"
+    TRIAGE = "triage"
 
 
 class MessageVisibility(str, Enum):
