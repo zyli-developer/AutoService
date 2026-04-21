@@ -632,6 +632,12 @@ class DreamScheduler:
         Broken out for testability — tests override either ``_run_dream_fn``
         or :meth:`_spawn_run` to observe invocation, so this just does the
         mechanical "fetch resources, call the function" step.
+
+        T2S.8 routing: when ``tenant_id == bootstrap.MASTER_TENANT_ID``,
+        dispatch to :func:`master_dream_agent.run_platform_dream` instead
+        of the per-tenant ``run_dream_fn``.  This isolates platform-level
+        dream from tenant dreams and keeps the CON-04 red-line testable
+        in a single module boundary.
         """
         try:
             cc_pool = self._get_cc_pool_sync()
@@ -661,6 +667,19 @@ class DreamScheduler:
             logger.warning("proposals conn acquire failed: %s", exc)
             runs_conn.close()
             return None
+
+        # T2S.8: platform-level dream routes to master_dream_agent
+        from autoservice import bootstrap as _bootstrap
+        if tenant_id == _bootstrap.MASTER_TENANT_ID:
+            from autoservice import master_dream_agent as _master_dream
+            return _master_dream.run_platform_dream(
+                tenant_id,
+                cc_pool,
+                mempool,
+                proposals_conn,
+                runs_conn,
+                max_tool_turns=10,
+            )
 
         return run_dream_fn(
             tenant_id,
