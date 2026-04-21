@@ -1174,7 +1174,9 @@
       "path": ".artifacts/eval-docs/eval-batch-16-e2e.md",
       "created_at": "2026-04-21T03:19:38Z",
       "updated_at": "2026-04-21T03:19:38Z",
-      "related_ids": []
+      "related_ids": [
+        "test-diff-023"
+      ]
     },
     {
       "id": "test-diff-023",
@@ -1186,7 +1188,9 @@
       "path": ".artifacts/test-diffs/test-diff-batch-16.md",
       "created_at": "2026-04-21T03:19:39Z",
       "updated_at": "2026-04-21T03:19:39Z",
-      "related_ids": []
+      "related_ids": [
+        "eval-doc-021"
+      ]
     },
     {
       "id": "e2e-report-013",
