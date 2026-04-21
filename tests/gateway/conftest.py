@@ -73,6 +73,41 @@ def local_engine_app():
 
 
 @pytest.fixture
+def operator_session_cookie():
+    """Seed an operator + session and return the cookie value.
+
+    T1S.3 (strict mode): /ws/operator requires a valid operator_session cookie.
+    All tests that connect to /ws/operator must set this cookie on their client.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+
+    from autoservice import auth, operator_routes, operators
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    auth.apply_schema(conn)
+    operators.apply_operators_schema(conn)
+    operators.migrate_login_tokens_add_role(conn)
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO operators (id, tenant_id, email, role, status, created_at) "
+        "VALUES ('op42', 'acme', 'op42@acme', 'responder', 'active', ?)",
+        (now,),
+    )
+    conn.commit()
+    operator_routes._reset_op_db_for_tests(conn)
+
+    cookie = operators.issue_operator_session(
+        conn, operator_id="op42", tenant_id="acme"
+    )
+    yield cookie
+    operator_routes._reset_op_db_for_tests(None)
+
+
+@pytest.fixture
 def local_engine_client(local_engine_app):
     return TestClient(local_engine_app)
 

@@ -63,8 +63,15 @@ def test_tc004_default_engine_is_local_engine():
     "endpoint,expected_role",
     [("/ws/customer", "customer"), ("/ws/operator", "operator"), ("/ws/admin", "admin")],
 )
-def test_tc005_006_007_handshake_viewer_role(local_engine_client, endpoint, expected_role):
+def test_tc005_006_007_handshake_viewer_role(
+    local_engine_client, operator_session_cookie, endpoint, expected_role
+):
     """TC-005/006/007: handshake returns server_hello with correct viewer_role."""
+    from autoservice import operators as _ops
+    if expected_role == "operator":
+        local_engine_client.cookies.set(
+            _ops.OPERATOR_SESSION_COOKIE_NAME, operator_session_cookie
+        )
     with local_engine_client.websocket_connect(endpoint) as ws:
         reply = handshake(ws, viewer_role_expected=expected_role)
         payload = reply["payload"]
@@ -186,8 +193,14 @@ def test_tc017_customer_message_auto_creates_conversation(local_engine_client):
         assert msg["payload"]["conversation_id"]
 
 
-def test_tc018_operator_command_not_implemented_returns_command_response(local_engine_client):
+def test_tc018_operator_command_not_implemented_returns_command_response(
+    local_engine_client, operator_session_cookie
+):
     """TC-018: /hijack NotImplementedError → command_response{ok:false}, NOT error frame."""
+    from autoservice import operators as _ops
+    local_engine_client.cookies.set(
+        _ops.OPERATOR_SESSION_COOKIE_NAME, operator_session_cookie
+    )
     with local_engine_client.websocket_connect("/ws/operator") as ws:
         handshake(ws, viewer_role_expected="operator")
         frame = make_frame(
@@ -257,8 +270,14 @@ def test_tc021_dummy_engine_unexpected_exception_returns_5010_error(
         assert reply["payload"]["code"] == "5010_INTERNAL"
 
 
-def test_tc022_customer_frame_on_operator_endpoint_rejected(local_engine_client):
+def test_tc022_customer_frame_on_operator_endpoint_rejected(
+    local_engine_client, operator_session_cookie
+):
     """TC-022: customer_message on /ws/operator → 4012 (frame_not_allowed_on_endpoint)."""
+    from autoservice import operators as _ops
+    local_engine_client.cookies.set(
+        _ops.OPERATOR_SESSION_COOKIE_NAME, operator_session_cookie
+    )
     with local_engine_client.websocket_connect("/ws/operator") as ws:
         handshake(ws, viewer_role_expected="operator")
         ws.send_json(

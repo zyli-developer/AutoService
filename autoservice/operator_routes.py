@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import (
@@ -41,18 +41,40 @@ operator_router = APIRouter(tags=["operator"])
 _op_db_conn: sqlite3.Connection | None = None
 
 
+_op_db_lock: Any = None   # set lazily to avoid importing threading at module load
+
+
 def _get_op_db() -> sqlite3.Connection:
     """Return the shared operator-DB connection (lazy singleton).
 
     Uses the same ``auth.db`` file as admin auth (contract §2 DB location).
     Ensures operators + operator_sessions tables and migration applied.
+
+    Reviewer finding C2 (2026-04-21): init is lock-guarded + connection is
+    opened with ``check_same_thread=False`` so ASGI worker-thread dispatch
+    does not trigger sqlite3 "created in thread X, used in thread Y" errors.
     """
-    global _op_db_conn
-    if _op_db_conn is None:
-        conn = auth.open_connection()
-        operators.apply_operators_schema(conn)
-        operators.migrate_login_tokens_add_role(conn)
-        _op_db_conn = conn
+    global _op_db_conn, _op_db_lock
+    if _op_db_conn is not None:
+        return _op_db_conn
+    if _op_db_lock is None:
+        import threading
+        _op_db_lock = threading.Lock()
+    with _op_db_lock:
+        if _op_db_conn is None:
+            # auth.open_connection doesn't expose check_same_thread — open here.
+            import sqlite3 as _sqlite3
+            from autoservice.auth import _DEFAULT_DB_PATH
+            path = _DEFAULT_DB_PATH
+            path.parent.mkdir(parents=True, exist_ok=True)
+            conn = _sqlite3.connect(
+                str(path), check_same_thread=False
+            )
+            conn.row_factory = _sqlite3.Row
+            auth.apply_schema(conn)
+            operators.apply_operators_schema(conn)
+            operators.migrate_login_tokens_add_role(conn)
+            _op_db_conn = conn
     return _op_db_conn
 
 
@@ -364,6 +386,159 @@ async def delete_one_operator(
         raise HTTPException(status_code=404, detail={"error": "operator not found"})
     operators.delete_operator(conn, operator_id)
     return Response(status_code=204)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Invites (T1S.5 — admin creates operator invite; new operator accepts)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@operator_router.post("/admin/{tenant_id}/invites")
+async def create_invite(
+    tenant_id: str,
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+    ctx: auth.AuthContext = Depends(auth.require_tenant_access),
+) -> Any:
+    """Create a magic-link invite token.
+
+    Request body::
+        {"email": "<new-op@example.com>", "role": "operator" | "tenant_admin"}
+
+    Response:
+        201 { "invite_url": "...", "expires_in_min": 10 }
+
+    T1S.5 implements role='operator' fully; role='tenant_admin' is accepted
+    and persists a token but the UI for admin-to-admin invite lands with
+    E1.6 (batch-9).
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail={"error": "body must be JSON"})
+    email = payload.get("email")
+    role = payload.get("role")
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(status_code=422, detail={"error": "email is required"})
+    if role not in ("operator", "tenant_admin"):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "role must be operator|tenant_admin"},
+        )
+
+    conn = _get_op_db()
+    if role == "operator":
+        token = operators.issue_operator_login_token(
+            conn,
+            operator_email=email,
+            tenant_id=tenant_id,
+            invited_by=ctx.admin_email,
+        )
+        accept_path = f"/api/auth/operator/accept-invite?token={token}"
+    else:
+        # tenant_admin path — write to login_tokens with role column set.
+        # Full admin-to-admin flow (E1.6) will extend this; T1S.5 only
+        # persists the token so audit trail is complete.
+        from datetime import timedelta
+        from autoservice.auth import _coerce_now, DEFAULT_LOGIN_TOKEN_TTL_MIN
+        import secrets as _secrets
+
+        created = _coerce_now(None)
+        expires = created + timedelta(minutes=DEFAULT_LOGIN_TOKEN_TTL_MIN)
+        token = _secrets.token_urlsafe(24)
+        conn.execute(
+            """INSERT INTO login_tokens
+                 (token, admin_email, tenant_id, created_at, expires_at,
+                  consumed_at, role, invited_by)
+               VALUES (?, ?, ?, ?, ?, NULL, 'tenant_admin', ?)""",
+            (
+                token,
+                email.strip().lower(),
+                tenant_id,
+                created.isoformat(),
+                expires.isoformat(),
+                ctx.admin_email,
+            ),
+        )
+        conn.commit()
+        accept_path = f"/api/auth/verify?token={token}"  # reuses admin verify
+
+    # Build absolute invite URL using the request's origin.
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    invite_url = f"{origin}{accept_path}"
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "invite_url": invite_url,
+            "role": role,
+            "expires_in_min": 10,
+        },
+    )
+
+
+@operator_router.get("/auth/operator/accept-invite")
+async def accept_operator_invite(
+    request: Request,
+    token: str | None = None,
+    redirect: str = "/operator",
+) -> Any:
+    """Consume an operator invite token; create operator on first use; set cookie.
+
+    Differs from ``/auth/operator/verify`` which requires the operator to
+    already exist.  Invite flow: the admin created the token but not the
+    operator row — this endpoint creates the operator on first click.
+
+    Default new-operator role: 'viewer' (OQ-E1 default — admin can promote
+    via T1S.4 CRUD PATCH after acceptance).
+    """
+    if not token or not token.strip():
+        return JSONResponse(
+            status_code=422, content={"error": "token is required"}
+        )
+
+    conn = _get_op_db()
+    result = operators.consume_operator_login_token(conn, token.strip())
+    if result is None:
+        return PlainTextResponse(
+            "Invalid or expired invite link", status_code=401
+        )
+
+    email, tenant_id, invited_by = result
+
+    # Create-if-missing: operator may or may not exist yet.
+    op = operators.get_operator_by_email(conn, tenant_id, email)
+    if op is None:
+        op = operators.create_operator(
+            conn,
+            tenant_id=tenant_id,
+            email=email,
+            role="viewer",  # default; admin can promote via PATCH
+            created_by=invited_by,
+        )
+    elif op.status != "active":
+        return PlainTextResponse(
+            "Operator account disabled", status_code=401
+        )
+
+    op_token = operators.issue_operator_session(
+        conn,
+        operator_id=op.id,
+        tenant_id=tenant_id,
+        ip_created=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    response = RedirectResponse(url=redirect, status_code=302)
+    secure_flag = request.url.scheme == "https"
+    response.set_cookie(
+        key=operators.OPERATOR_SESSION_COOKIE_NAME,
+        value=op_token,
+        max_age=operators.DEFAULT_OPERATOR_SESSION_TTL_HOURS * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=secure_flag,
+        path="/",
+    )
+    return response
 
 
 def _operator_to_dict(op: operators.Operator | None) -> dict:

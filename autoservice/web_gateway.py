@@ -29,7 +29,9 @@ from autoservice.gateway.connection import (
     generate_session_id,
 )
 from autoservice.gateway.envelope import ACCEPTED_VERSIONS, parse_envelope
+from autoservice import operator_routes, operators
 from autoservice.gateway.errors import (
+    ERR_AUTH,
     ERR_VALIDATION,
     ERR_VERSION_INCOMPATIBLE,
     make_error_payload,
@@ -471,18 +473,56 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         await ws.close(code=_CLOSE_CODE_VERSION)
         return
 
+    # T1S.3 — operator role: STRICT cookie validation per contract §4
+    # (docs/contracts/m3/e1-auth-rbac.md).  Closes the M2 spoof gap where
+    # operator_id was trusted blindly from client_hello JSON payload.
+    #   * Valid cookie → bind to session's operator_id / tenant_id, refresh idle_at
+    #   * Cookie missing / invalid / expired / disabled-operator → reject with 1008
+    #   * Any operator_id in the JSON payload is IGNORED (spoof gap closed)
+    # Reviewer finding C3: lenient-mode (no-cookie → accept-no-bind) was closed
+    # because subscribe frames bypass _operator_sessions and leaked broadcast
+    # observability to unauthenticated connections.  Strict-mode default now.
+    validated_operator_id: str | None = None
+    validated_operator_tenant_id: str | None = None
+    op_cookie_for_touch: str | None = None
+    if viewer_role == "operator":
+        op_cookie = ws.cookies.get(operators.OPERATOR_SESSION_COOKIE_NAME)
+        op_ctx = None
+        if op_cookie:
+            op_conn = operator_routes._get_op_db()
+            op_ctx = operators.lookup_operator_session(op_conn, op_cookie)
+        if op_ctx is None:
+            # Identical payload for missing/invalid/expired/disabled — no oracle
+            await ws.send_json(
+                build_frame(
+                    "error",
+                    make_error_payload(
+                        ERR_AUTH,
+                        "operator_session cookie required",
+                        details={"reason": "invalid_or_missing_session"},
+                    ),
+                    ref=env.id,
+                )
+            )
+            await ws.close(code=1008)  # policy violation
+            return
+        validated_operator_id = op_ctx["operator_id"]
+        validated_operator_tenant_id = op_ctx["tenant_id"]
+        op_cookie_for_touch = op_cookie
+        operators.touch_operator_session(op_conn, op_cookie)
+
     session_id = generate_session_id()
     _ws_connections[session_id] = ws
     if viewer_role == "admin":
         _admin_connections[session_id] = ws
 
-    # Track operator_id → sessions for targeted pushes
-    client_operator_id = env.payload.get("operator_id")
-    if viewer_role == "operator" and client_operator_id:
-        _operator_sessions.setdefault(client_operator_id, set()).add(session_id)
-        ws.state_operator_id = client_operator_id  # for finally cleanup
+    # Track operator_id → sessions for targeted pushes (authenticated only)
+    if viewer_role == "operator" and validated_operator_id:
+        _operator_sessions.setdefault(validated_operator_id, set()).add(session_id)
+        ws.state_operator_id = validated_operator_id  # for finally cleanup
+        ws.state_operator_tenant_id = validated_operator_tenant_id
         # Tell the offline watcher this operator is online
-        ws.app.state.offline_watcher.on_connect(client_operator_id)
+        ws.app.state.offline_watcher.on_connect(validated_operator_id)
 
     await ws.send_json(
         build_frame(
@@ -505,9 +545,16 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
             logger.warning("replay failed for session %s", session_id, exc_info=True)
 
     # --- Frame loop ---
+    # Reviewer finding C1: touch idle_at on every inbound frame (contract §4
+    # "updates operator_sessions.idle_at on every inbound message"). Without
+    # this an idle operator session silently outlives its idle_timeout_min.
     try:
         while True:
             raw = await ws.receive_json()
+            if op_cookie_for_touch is not None:
+                operators.touch_operator_session(
+                    operator_routes._get_op_db(), op_cookie_for_touch
+                )
             frames = await _process_frame(
                 raw, viewer_role=viewer_role, engine=engine, ws=ws,
                 session_id=session_id,
