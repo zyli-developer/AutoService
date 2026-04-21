@@ -34,7 +34,7 @@ export function LoginPage() {
             style={{
               padding: '2px 6px',
               fontSize: 12,
-              border: '1px solid var(--glass-border, #ccc)',
+              border: '1px solid var(--color-border)',
               borderRadius: 4,
               background: 'transparent',
               color: 'inherit',

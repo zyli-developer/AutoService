@@ -1822,3 +1822,11 @@ html, body, #root {
   .op-side-panel { overflow-y: auto; }
   .op-sp-sec { padding: 14px 16px; }
 }
+
+/* Extra-small phones (iPhone SE 1st gen, 320×568): the 276px drawer leaves
+   only ~44px of dimmed backdrop, which feels claustrophobic. Cap the drawer
+   to 80vw so users always see a recognisable strip of dimmed content behind
+   it that they can tap to dismiss. */
+@media (max-width: 460px) {
+  .im-sidebar { width: min(276px, 80vw); }
+}

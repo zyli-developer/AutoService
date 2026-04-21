@@ -63,13 +63,13 @@ export function TakeoverWarning({ conversationId, send }: TakeoverWarningProps) 
     <div
       data-testid={`takeover-warning-${conversationId}`}
       style={{
-        background: '#fff4e5',
-        color: '#8a5000',
+        background: 'var(--gold-50)',
+        color: 'var(--gold-700)',
         padding: '8px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        borderBottom: '1px solid #ffd591',
+        borderBottom: '1px solid var(--gold-200)',
       }}
     >
       <span style={{ flex: 1 }}>

@@ -966,7 +966,10 @@ html, body, #root {
 
 .cs-cmdk-panel {
   position: fixed;
-  top: 120px;
+  /* Pin top:120px on desktop (drops the panel below the topbar), but on
+     small viewports center vertically so it doesn't get clipped by the
+     bottom edge — `max(20px, ...)` keeps it off the very top edge too. */
+  top: max(20px, min(120px, 15vh));
   left: 50%;
   transform: translateX(-50%);
   z-index: 101;
@@ -975,7 +978,7 @@ html, body, #root {
   border-radius: var(--radius-xl);
   box-shadow: 0 24px 60px rgba(46, 53, 69, .18);
   width: 520px;
-  max-width: 90vw;
+  max-width: calc(100vw - 32px);
   padding: 20px 22px;
   font-family: var(--font-sans);
   color: var(--color-text-secondary);
