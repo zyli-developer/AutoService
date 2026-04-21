@@ -40,6 +40,12 @@ interface DreamRun {
   error: string | null;
 }
 
+interface TenantEntry {
+  tenant_id: string;
+  name?: string;
+  status?: string;
+}
+
 const REASON_CODE_STYLE: Record<string, { label: string; bg: string; color: string }> = {
   idle: { label: 'idle', bg: '#e6f4ea', color: '#137333' },
   scheduled_hit: { label: 'scheduled_hit', bg: '#e6f4ea', color: '#137333' },
@@ -72,10 +78,15 @@ function formatTs(ts: string | null | undefined): string {
   }
 }
 
+const MASTER_TENANT_ID = '_master';
+
 export function DreamTab() {
   const { t } = useTranslation();
   const storeTenantId = useAdminStore((s) => s.tenantId);
-  const tenantId = storeTenantId ?? '_master';
+
+  const [tenants, setTenants] = useState<TenantEntry[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>(MASTER_TENANT_ID);
+  const tenantId = selectedTenant;
 
   const [status, setStatus] = useState<DreamStatus | null>(null);
   const [proposals, setProposals] = useState<DreamProposal[]>([]);
@@ -84,6 +95,34 @@ export function DreamTab() {
   const [triggering, setTriggering] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Load the tenant list once on mount.  Prefer the store's tenant if it
+  // matches a real entry; otherwise fall back to _master so the trigger
+  // endpoint (which validates tenant existence) doesn't 404.
+  useEffect(() => {
+    fetchJSON<TenantEntry[]>('/api/master/tenants')
+      .then((list) => {
+        const arr = Array.isArray(list) ? list : [];
+        // Always include _master so platform dream is selectable even
+        // if the backend list omits it.
+        const seen = new Set(arr.map((t) => t.tenant_id));
+        const merged: TenantEntry[] = [...arr];
+        if (!seen.has(MASTER_TENANT_ID)) {
+          merged.unshift({ tenant_id: MASTER_TENANT_ID, name: 'Platform master' });
+        }
+        setTenants(merged);
+        // Seed selection: prefer store tenant if valid, else _master.
+        if (storeTenantId && merged.some((e) => e.tenant_id === storeTenantId)) {
+          setSelectedTenant(storeTenantId);
+        } else {
+          setSelectedTenant(MASTER_TENANT_ID);
+        }
+      })
+      .catch(() => {
+        setTenants([{ tenant_id: MASTER_TENANT_ID, name: 'Platform master' }]);
+        setSelectedTenant(MASTER_TENANT_ID);
+      });
+  }, [storeTenantId]);
 
   const load = useCallback(() => {
     if (!tenantId) return;
@@ -119,7 +158,8 @@ export function DreamTab() {
       await postJSON<unknown>('/api/dream/trigger', { tenant_id: tenantId });
       setTimeout(load, 800);
     } catch (e) {
-      setErrorMsg(t('admin.dream.error.trigger_failed'));
+      const detail = e instanceof Error ? e.message : String(e);
+      setErrorMsg(`${t('admin.dream.error.trigger_failed')} (${detail})`);
     } finally {
       setTriggering(false);
     }
@@ -167,8 +207,30 @@ export function DreamTab() {
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
               {t('admin.dream.status.title')}
             </h3>
-            <div style={{ fontSize: 12, color: 'var(--m600)', marginTop: 4 }}>
-              {t('admin.dream.status.tenant_label')}: <code>{tenantId}</code>
+            <div style={{ fontSize: 12, color: 'var(--m600)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label htmlFor="dream-tenant-select">{t('admin.dream.status.tenant_label')}:</label>
+              <select
+                id="dream-tenant-select"
+                data-testid="dream-tenant-select"
+                value={selectedTenant}
+                onChange={(e) => setSelectedTenant(e.target.value)}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: 4,
+                  border: '1px solid var(--l500)',
+                  background: '#fff',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  minWidth: 180,
+                }}
+              >
+                {tenants.map((entry) => (
+                  <option key={entry.tenant_id} value={entry.tenant_id}>
+                    {entry.tenant_id}
+                    {entry.name && entry.name !== entry.tenant_id ? ` · ${entry.name}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <button

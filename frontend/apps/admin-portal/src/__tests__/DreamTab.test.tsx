@@ -50,8 +50,15 @@ vi.mock('../api', () => ({
   postForm: vi.fn(() => Promise.resolve({})),
 }));
 
+const MOCK_TENANTS = [
+  { tenant_id: '_master', name: 'Platform master', status: 'sandbox' },
+  { tenant_id: 'acme', name: 'Acme Corp', status: 'sandbox' },
+  { tenant_id: 'mystore', name: 'My Store', status: 'sandbox' },
+];
+
 function primeMocks() {
   fetchJSONMock.mockImplementation((path: string) => {
+    if (path.startsWith('/api/master/tenants')) return Promise.resolve(MOCK_TENANTS);
     if (path.startsWith('/api/dream/status')) return Promise.resolve(MOCK_STATUS);
     if (path.startsWith('/api/proposals')) return Promise.resolve(MOCK_PROPOSALS);
     if (path.startsWith('/api/dream/runs'))
@@ -135,6 +142,34 @@ describe('DreamTab', () => {
     await user.click(screen.getByTestId('dream-trigger-btn'));
     await waitFor(() => {
       expect(postJSONMock).toHaveBeenCalledWith('/api/dream/trigger', { tenant_id: 'acme' });
+    });
+  });
+
+  it('tenant selector shows all loaded tenants and defaults to store tenant when valid', async () => {
+    primeMocks();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() => expect(screen.getByTestId('dream-tenant-select')).toBeInTheDocument());
+    const select = screen.getByTestId('dream-tenant-select') as HTMLSelectElement;
+    // store tenantId is 'acme' and 'acme' is in MOCK_TENANTS → preselected
+    expect(select.value).toBe('acme');
+    // All 3 options available
+    expect(select.querySelectorAll('option').length).toBe(3);
+  });
+
+  it('tenant selector change triggers fresh data load for new tenant', async () => {
+    primeMocks();
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() => expect(screen.getByTestId('dream-tenant-select')).toBeInTheDocument());
+    fetchJSONMock.mockClear();
+    await user.selectOptions(screen.getByTestId('dream-tenant-select'), 'mystore');
+    await waitFor(() => {
+      const calls = fetchJSONMock.mock.calls.map((c) => c[0] as string);
+      expect(calls.some((p) => p.includes('tenant_id=mystore'))).toBe(true);
     });
   });
 });
