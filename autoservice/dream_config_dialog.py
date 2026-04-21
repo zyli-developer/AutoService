@@ -1,6 +1,7 @@
 """Dream Engine conversational 4-parameter configuration dialog.
 
 T6E.9 产出 | 2026-04-17
+T4B.3 update | 2026-04-21 — on-confirm hook into DreamScheduler.refresh(tid)
 
 A simple state machine that walks the manager through four configuration
 parameters for the Dream Engine nightly-learning cycle:
@@ -13,14 +14,24 @@ parameters for the Dream Engine nightly-learning cycle:
 Each step presents a question with a recommended default, accepts natural-
 language input, validates, and advances.  After the fourth answer the dialog
 shows a summary and asks for confirmation.
+
+T4B.3 integration: :func:`on_config_confirmed` is called by the HTTP layer
+after ``_persist_dream_config`` writes to disk.  It asks the module-level
+:class:`DreamScheduler` (if one was registered via
+:func:`dream_scheduler.set_scheduler`) to invalidate its cache for the
+tenant.  Safe no-op in test/CLI contexts where no scheduler is running.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -397,3 +408,59 @@ _TRIGGER_RE = re.compile("|".join(_TRIGGER_PATTERNS), re.IGNORECASE)
 def is_dream_config_trigger(text: str) -> bool:
     """Return True if *text* looks like a Dream Engine config request."""
     return bool(_TRIGGER_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
+# T4B.3 — on-confirm hook into DreamScheduler.refresh
+# ---------------------------------------------------------------------------
+
+
+def on_config_confirmed(tenant_id: str) -> None:
+    """Notify the :class:`DreamScheduler` that *tenant_id* has new config.
+
+    Called by the HTTP handler in :mod:`autoservice.api_routes` immediately
+    after :func:`_persist_dream_config` finishes writing the new ``dream``
+    block.  The scheduler's ``refresh`` invalidates its cached config so
+    the very next tick re-reads ``config.json`` from disk.
+
+    This function is intentionally resilient:
+
+    * No scheduler registered (tests, CLI) → silent no-op.
+    * Already inside an event loop → we schedule the refresh as a task
+      so the caller doesn't have to ``await``.
+    * No running loop (sync call path) → use ``asyncio.run`` with a
+      short-lived loop so the refresh still completes.
+    * Any error raised by ``refresh`` is logged and swallowed — a config
+      dialog must never fail because a background scheduler is sick.
+
+    The idempotent design is key: :meth:`DreamScheduler.refresh` only
+    clears a cache entry, so re-calling or calling on a stopped
+    scheduler is cheap and safe.
+    """
+    try:
+        from autoservice.dream_scheduler import get_scheduler
+    except ImportError:  # pragma: no cover — defensive, scheduler should exist
+        return
+    sched = get_scheduler()
+    if sched is None:
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    try:
+        if loop is not None and loop.is_running():
+            # Already inside an async context (FastAPI request handler) —
+            # schedule as fire-and-forget task so we don't block the
+            # response. refresh() is cheap (cache invalidation only).
+            asyncio.ensure_future(sched.refresh(tenant_id))
+        else:
+            # Sync call path — spin up a one-shot loop.
+            asyncio.run(sched.refresh(tenant_id))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "dream_scheduler.refresh dispatch failed for tenant %s (non-fatal)",
+            tenant_id,
+        )

@@ -821,9 +821,16 @@ async def management_chat(message: str = "", tenant_id: str = "default") -> dict
         # confirmed params to sandbox config.json.  Cancel path also returns
         # done=True but _reset()s to IDLE, so checking DONE filters out cancel.
         if done:
-            from autoservice.dream_config_dialog import DreamConfigStep
+            from autoservice.dream_config_dialog import (
+                DreamConfigStep,
+                on_config_confirmed,
+            )
             if dream_session.step == DreamConfigStep.DONE:
                 _persist_dream_config(tenant_id, dream_session.get_config())
+                # T4B.3 — let the DreamScheduler re-read this tenant's
+                # config on its next tick. Safe no-op when no scheduler
+                # is running (tests, CLI).
+                on_config_confirmed(tenant_id)
         return {"role": "dream_engine", "content": response}
 
     # @Dream Engine or /dream-config — start config dialog (T6E.9)

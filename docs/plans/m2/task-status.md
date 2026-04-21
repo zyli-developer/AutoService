@@ -5,11 +5,11 @@
 ## 进度汇总
 
 - **总任务**：38
-- **已完成**：14
+- **已完成**：17
 - **进行中**：0
 - **阻塞**：0
-- **待办**：24
-- **完成率**：37% (14/38)
+- **待办**：21
+- **完成率**：45% (17/38)
 - **最后更新**：2026-04-21
 
 ### 会话日志
@@ -24,6 +24,7 @@
 | 2026-04-21 | 模板修复：m2/cc-prompt-templates.md + CLAUDE.md autorun 约定 | 本次 commit |
 | 2026-04-21 | batch-5 T3B.6 完成（/api/dream/* endpoints）| `475f32f` |
 | 2026-04-21 | batch-5 T3B.5 完成（yellow, inline reviewer APPROVED）| `21ed7bb` |
+| 2026-04-21 | batch-6 完成（P4 DreamScheduler；T4B.1 yellow reviewer APPROVED）| `<pending>` |
 
 ## Artifact 策略 · 选项 B（2026-04-21 修订，替代先前的 C）
 
@@ -89,9 +90,9 @@
 
 | ID | 名称 | 类型 | 工作量 | 状态 | Owner | Artifacts |
 |----|------|------|--------|------|-------|-----------|
-| T4B.1 | should_trigger() logic | 🟡 yellow | medium | ⏳ pending | — | — |
-| T4B.2 | scheduler loop + active-tenant discovery | green | medium | ⏳ pending | — | — |
-| T4B.3 | /dream-config → scheduler.refresh() | green | small | ⏳ pending | — | — |
+| T4B.1 | should_trigger() logic | 🟡 yellow | medium | ✅ done | Subagent batch-6 | `<pending>` (16 tests, inline reviewer APPROVED) |
+| T4B.2 | scheduler loop + active-tenant discovery | green | medium | ✅ done | Subagent batch-6 | `<pending>` (10 tests) |
+| T4B.3 | /dream-config → scheduler.refresh() | green | small | ✅ done | Subagent batch-6 | `<pending>` (7 tests) |
 
 **Gate**：idle 租户自动触发；/dream-config 动态 refresh 生效。
 
@@ -156,7 +157,7 @@
 | batch-3 | P3 | ✅ 完成 | 3 个 dream 工具落盘；34 tests + 0 regression（113 total） |
 | batch-4 | P3 | ✅ 完成 | T3B.4 run_dream 完成；10 tests + 99 regression；inline reviewer APPROVED |
 | batch-5 | P3 | ✅ 完成 | T3B.5 ✅ done (9 tests + 0 regression, yellow) / T3B.6 ✅ done (15 tests + 0 regression) |
-| batch-6 | P4 | ⏳ pending | — |
+| batch-6 | P4 | ✅ 完成 | 3 tasks + 33 tests + 0 regression; inline reviewer APPROVED |
 | batch-7 | P5 | ⏳ pending | — |
 | batch-8 | P5 | ⏳ pending | — |
 | batch-9 | P6 | ⏳ pending | — |

@@ -319,6 +319,46 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         except Exception:
             logger.warning("eager CCPool warm-up failed", exc_info=True)
 
+    @app.on_event("startup")
+    async def _start_dream_scheduler() -> None:
+        """T4B.2 — start the DreamScheduler background loop (spec §2.6).
+
+        Registers the scheduler as the module-level singleton so the
+        ``/dream-config`` confirm path (``on_config_confirmed``) can
+        invalidate cached tenant config on the next tick.
+
+        Disabled when ``DREAM_SCHEDULER_DISABLED=1`` — useful for CI and
+        for the TestClient-based smoke tests that bring the app up
+        without an event loop long enough to service real background work.
+        """
+        if os.environ.get("DREAM_SCHEDULER_DISABLED") == "1":
+            return
+        try:
+            from autoservice.dream_scheduler import (
+                DreamScheduler,
+                set_scheduler,
+            )
+            sched = DreamScheduler()
+            await sched.start()
+            set_scheduler(sched)
+            app.state.dream_scheduler = sched
+            logger.info("DreamScheduler started")
+        except Exception:
+            logger.warning("DreamScheduler startup failed", exc_info=True)
+
+    @app.on_event("shutdown")
+    async def _stop_dream_scheduler() -> None:
+        """Pair of :func:`_start_dream_scheduler` — cancel the loop cleanly."""
+        try:
+            sched = getattr(app.state, "dream_scheduler", None)
+            if sched is None:
+                return
+            await sched.stop()
+            from autoservice.dream_scheduler import set_scheduler
+            set_scheduler(None)
+        except Exception:
+            logger.debug("DreamScheduler shutdown failed", exc_info=True)
+
     @app.on_event("shutdown")
     async def _shutdown_cc_pool() -> None:
         try:
