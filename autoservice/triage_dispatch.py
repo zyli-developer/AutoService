@@ -11,6 +11,7 @@ Flow (one customer message):
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,6 +25,7 @@ from autoservice.model_router import ModelRouter, TriageDecision
 log = logging.getLogger("triage.dispatch")
 
 _HISTORY_FETCH_LIMIT = 20
+_CJK_TOKEN_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
 _TRIAGE_SOURCE_ID = ParticipantRole.TRIAGE.value
 
 
@@ -110,7 +112,15 @@ def _format_triage_side_text(d: TriageDecision) -> str:
 
 
 def _estimate_tokens(text: str) -> int:
-    """Cheap token estimator — 4 chars per token heuristic."""
+    """Cheap token estimator.
+
+    For Latin-script text, ~4 chars per token is a reasonable heuristic.
+    For CJK, tokens are roughly 1 per character — using the Latin ratio
+    would underestimate the budget by ~4x. Fall back to len(text) when
+    any CJK character is present.
+    """
+    if _CJK_TOKEN_RE.search(text):
+        return max(1, len(text))
     return max(1, len(text) // 4)
 
 
