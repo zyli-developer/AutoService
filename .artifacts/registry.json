@@ -743,6 +743,18 @@
       "related_ids": [
         "eval-doc-010"
       ]
+    },
+    {
+      "id": "e2e-report-005",
+      "name": "batch-8 auth gating e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "subagent-batch-8",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-8.md",
+      "created_at": "2026-04-21T00:50:52Z",
+      "updated_at": "2026-04-21T00:50:52Z",
+      "related_ids": []
     }
   ]
 }
