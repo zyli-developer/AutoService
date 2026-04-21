@@ -39,7 +39,7 @@ def isolated_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str
         resolve relative to the temp dir)
 
     Also clears URL env overrides so ``build_urls`` returns the default
-    ``http://localhost:8000/t/<tid>/...`` form.
+    ``http://localhost:8000/tenant/<tid>/...`` form.
     """
     from autoservice import onboarding as onboarding_mod
     from autoservice import publish as publish_mod

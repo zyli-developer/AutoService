@@ -61,7 +61,7 @@ def test_step2_wizard_full_flow(run_wizard) -> None:
     activate = out["activate"]
     assert activate["status"] == "sandbox"
     assert activate["channels"] == ["web", "feishu"]
-    assert activate["urls"]["chat"].endswith(f"/t/{out['tenant_id']}/chat")
+    assert activate["urls"]["chat"].endswith(f"/tenant/{out['tenant_id']}/chat")
 
     rehearsal = out["rehearsal"]
     assert rehearsal["demo_mode"] is True  # mock_claude forces demo fallback
@@ -166,13 +166,13 @@ def test_step4_preview_url_backend_reachable(run_wizard) -> None:
         )
 
     # /upload-generated URLs follow the spec §5.1 path form, so the frontend
-    # iframe's ``src`` resolves onto ``/t/<tid>/chat``.
+    # iframe's ``src`` resolves onto ``/tenant/<tid>/chat``.
     out = run_wizard()
     urls = out["activate"]["urls"]
     tid = out["tenant_id"]
-    assert urls["chat"] == f"http://localhost:8000/t/{tid}/chat"
-    assert urls["operator"] == f"http://localhost:8000/t/{tid}/operator"
-    assert urls["admin"] == f"http://localhost:8000/t/{tid}/admin"
+    assert urls["chat"] == f"http://localhost:8000/tenant/{tid}/chat"
+    assert urls["operator"] == f"http://localhost:8000/tenant/{tid}/operator"
+    assert urls["admin"] == f"http://localhost:8000/tenant/{tid}/admin"
 
 
 # ---------------------------------------------------------------------------

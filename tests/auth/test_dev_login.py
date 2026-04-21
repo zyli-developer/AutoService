@@ -230,7 +230,7 @@ def test_dev_login_mints_tier1_session_and_redirects_to_tenant_admin(
         json={"email": "admin@dev.local", "tenant_id": "acme"},
     )
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "redirect": "/t/acme/admin"}
+    assert r.json() == {"ok": True, "redirect": "/tenant/acme/admin"}
 
     row = auth_conn.execute(
         "SELECT tenant_id FROM sessions"

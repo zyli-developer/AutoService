@@ -2,7 +2,7 @@
  * T6F.1 · useTenantId tests (M2 real impl)
  *
  * Covers:
- *  1. Returns tenantId from the path when matched via /t/:tenantId/*
+ *  1. Returns tenantId from the path when matched via /tenant/:tenantId/*
  *  2. Returns `tenant` query parameter when no path param is present
  *  3. Returns null when neither URL source nor session provides a tenant
  *  4. Path param wins over query string (more specific)
@@ -49,8 +49,8 @@ beforeEach(() => {
 });
 
 describe('useTenantId', () => {
-  it('returns tenantId from the URL path (/t/:tenantId/chat)', () => {
-    const wrapper = makeWrapper('/t/tenant_abc/chat', '/t/:tenantId/chat');
+  it('returns tenantId from the URL path (/tenant/:tenantId/chat)', () => {
+    const wrapper = makeWrapper('/tenant/tenant_abc/chat', '/tenant/:tenantId/chat');
     const { result } = renderHook(() => useTenantId(), { wrapper });
     expect(result.current).toBe('tenant_abc');
   });
@@ -69,8 +69,8 @@ describe('useTenantId', () => {
 
   it('prefers the path param over the query string when both are set', () => {
     const wrapper = makeWrapper(
-      '/t/tenant_from_path/chat?tenant=tenant_from_query',
-      '/t/:tenantId/chat'
+      '/tenant/tenant_from_path/chat?tenant=tenant_from_query',
+      '/tenant/:tenantId/chat'
     );
     const { result } = renderHook(() => useTenantId(), { wrapper });
     expect(result.current).toBe('tenant_from_path');
@@ -129,8 +129,8 @@ describe('useTenantId', () => {
       refetch: () => {},
     });
     const wrapper = makeWrapper(
-      '/t/url_tid/admin',
-      '/t/:tenantId/admin'
+      '/tenant/url_tid/admin',
+      '/tenant/:tenantId/admin'
     );
     const { result } = renderHook(() => useTenantId(), { wrapper });
     expect(result.current).toBe('url_tid');

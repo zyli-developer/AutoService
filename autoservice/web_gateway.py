@@ -29,7 +29,9 @@ from autoservice.gateway.connection import (
     generate_session_id,
 )
 from autoservice.gateway.envelope import ACCEPTED_VERSIONS, parse_envelope
+from autoservice import operator_routes, operators
 from autoservice.gateway.errors import (
+    ERR_AUTH,
     ERR_VALIDATION,
     ERR_VERSION_INCOMPATIBLE,
     make_error_payload,
@@ -129,6 +131,76 @@ async def _push_alert_to_admins(alert) -> None:
         _admin_connections.pop(sid, None)
 
 
+async def _push_alert_to_operators(alert) -> None:
+    """T2S.5: Push a FiredAlert to operator WS scoped to alert.tenant_id.
+
+    Contract docs/contracts/m3/e3-triage.md §1.4.  Reviewer finding
+    (corrected) in original gap-analysis: AlertEngine was already wired
+    to _admin_connections; T2S.5 adds a PARALLEL path for operators.
+
+    Tenant-scope filter (CRITICAL — no cross-tenant leak):
+      * alert.tenant_id is None  → platform-wide alert, skip operators
+      * alert.tenant_id == X     → push to operators whose
+                                    ws.state_operator_tenant_id == X
+    Operator's tenant is set at T1S.3 WS handshake from a validated
+    operator_session cookie — it's the DB-sourced ground truth, not
+    client-claimable.
+    """
+    from autoservice.gateway.connection import build_frame
+    from dataclasses import asdict
+
+    alert_tenant = getattr(alert, "tenant_id", None)
+    if alert_tenant is None:
+        # Platform-wide alert — operators don't see platform-level events.
+        return
+
+    frame = build_frame("sla_alert", asdict(alert))
+    stale_ops: list[tuple[str, str]] = []
+
+    # _operator_sessions: dict[operator_id, set[session_id]]
+    # _ws_connections:    dict[session_id, WebSocket]
+    for op_id, session_ids in list(_operator_sessions.items()):
+        for sid in list(session_ids):
+            ws = _ws_connections.get(sid)
+            if ws is None:
+                stale_ops.append((op_id, sid))
+                continue
+            # Tenant-scope enforcement: only push to operators bound to alert's tenant
+            op_tenant = getattr(ws, "state_operator_tenant_id", None)
+            if op_tenant != alert_tenant:
+                continue
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                logger.debug("operator ws %s unreachable, removing", sid)
+                stale_ops.append((op_id, sid))
+
+    for op_id, sid in stale_ops:
+        session_set = _operator_sessions.get(op_id)
+        if session_set is not None:
+            session_set.discard(sid)
+            if not session_set:
+                _operator_sessions.pop(op_id, None)
+
+
+async def _push_alert_to_all_subscribers(alert) -> None:
+    """Combined notify chain: admin path (existing) + operator path (T2S.5).
+
+    Reviewer fix C2 (2026-04-21): dispatch both paths CONCURRENTLY via
+    asyncio.gather — a single slow admin WS must NOT block operator push
+    (prior sequential-await implementation would head-of-line-block the
+    AlertEngine notify loop under admin connectivity issues).
+    """
+    results = await asyncio.gather(
+        _push_alert_to_admins(alert),
+        _push_alert_to_operators(alert),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            logger.warning("alert dispatch arm failed", exc_info=r)
+
+
 def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     """Build the FastAPI app with 3 WS endpoints + CORS."""
     app = FastAPI(title="autoservice-gateway", version="0.6.0")
@@ -214,8 +286,8 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     # T7B.1 — TenantContext middleware (spec §3.2).
     #
     # Populates request.state.deployment_mode + request.state.tenant_id and
-    # — in tenant mode — rewrites /t/<self>/* to /* (URL-flat fork routing)
-    # while refusing cross-tenant paths /t/<other>/* with 403.
+    # — in tenant mode — rewrites /tenant/<self>/* to /* (URL-flat fork routing)
+    # while refusing cross-tenant paths /tenant/<other>/* with 403.
     #
     # Placement: registered AFTER the CORSMiddleware add_middleware call so
     # Starlette wraps it INSIDE CORS (Starlette chains in reverse registration
@@ -240,14 +312,14 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
         if mode == "tenant":
             self_tid = request.state.tenant_id
             path = request.url.path
-            if self_tid and path.startswith(f"/t/{self_tid}/"):
-                # Strip the /t/<self> prefix so the fork's URL-flat routes
+            if self_tid and path.startswith(f"/tenant/{self_tid}/"):
+                # Strip the /tenant/<self> prefix so the fork's URL-flat routes
                 # receive the request (spec §3.2 "fork 模式 URL-flat").
-                request.scope["path"] = path[len(f"/t/{self_tid}"):] or "/"
-            elif self_tid and path == f"/t/{self_tid}":
+                request.scope["path"] = path[len(f"/tenant/{self_tid}"):] or "/"
+            elif self_tid and path == f"/tenant/{self_tid}":
                 # Trailing-slash-less variant.
                 request.scope["path"] = "/"
-            elif path.startswith("/t/"):
+            elif path.startswith("/tenant/"):
                 # Cross-tenant attempt in single-tenant fork → refuse.
                 return JSONResponse(
                     status_code=403,
@@ -292,7 +364,7 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             aggregator = SLAAggregator()
             app.state.sla_aggregator = aggregator
         alert_engine = AlertEngine(aggregator)
-        alert_engine.set_notify(_push_alert_to_admins)
+        alert_engine.set_notify(_push_alert_to_all_subscribers)  # T2S.5: admin + operator
         app.state.alert_engine = alert_engine
 
         # Per-record breach → immediate sla_alert frame to admins (Issue 5).
@@ -471,18 +543,56 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         await ws.close(code=_CLOSE_CODE_VERSION)
         return
 
+    # T1S.3 — operator role: STRICT cookie validation per contract §4
+    # (docs/contracts/m3/e1-auth-rbac.md).  Closes the M2 spoof gap where
+    # operator_id was trusted blindly from client_hello JSON payload.
+    #   * Valid cookie → bind to session's operator_id / tenant_id, refresh idle_at
+    #   * Cookie missing / invalid / expired / disabled-operator → reject with 1008
+    #   * Any operator_id in the JSON payload is IGNORED (spoof gap closed)
+    # Reviewer finding C3: lenient-mode (no-cookie → accept-no-bind) was closed
+    # because subscribe frames bypass _operator_sessions and leaked broadcast
+    # observability to unauthenticated connections.  Strict-mode default now.
+    validated_operator_id: str | None = None
+    validated_operator_tenant_id: str | None = None
+    op_cookie_for_touch: str | None = None
+    if viewer_role == "operator":
+        op_cookie = ws.cookies.get(operators.OPERATOR_SESSION_COOKIE_NAME)
+        op_ctx = None
+        if op_cookie:
+            op_conn = operator_routes._get_op_db()
+            op_ctx = operators.lookup_operator_session(op_conn, op_cookie)
+        if op_ctx is None:
+            # Identical payload for missing/invalid/expired/disabled — no oracle
+            await ws.send_json(
+                build_frame(
+                    "error",
+                    make_error_payload(
+                        ERR_AUTH,
+                        "operator_session cookie required",
+                        details={"reason": "invalid_or_missing_session"},
+                    ),
+                    ref=env.id,
+                )
+            )
+            await ws.close(code=1008)  # policy violation
+            return
+        validated_operator_id = op_ctx["operator_id"]
+        validated_operator_tenant_id = op_ctx["tenant_id"]
+        op_cookie_for_touch = op_cookie
+        operators.touch_operator_session(op_conn, op_cookie)
+
     session_id = generate_session_id()
     _ws_connections[session_id] = ws
     if viewer_role == "admin":
         _admin_connections[session_id] = ws
 
-    # Track operator_id → sessions for targeted pushes
-    client_operator_id = env.payload.get("operator_id")
-    if viewer_role == "operator" and client_operator_id:
-        _operator_sessions.setdefault(client_operator_id, set()).add(session_id)
-        ws.state_operator_id = client_operator_id  # for finally cleanup
+    # Track operator_id → sessions for targeted pushes (authenticated only)
+    if viewer_role == "operator" and validated_operator_id:
+        _operator_sessions.setdefault(validated_operator_id, set()).add(session_id)
+        ws.state_operator_id = validated_operator_id  # for finally cleanup
+        ws.state_operator_tenant_id = validated_operator_tenant_id
         # Tell the offline watcher this operator is online
-        ws.app.state.offline_watcher.on_connect(client_operator_id)
+        ws.app.state.offline_watcher.on_connect(validated_operator_id)
 
     await ws.send_json(
         build_frame(
@@ -505,9 +615,16 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
             logger.warning("replay failed for session %s", session_id, exc_info=True)
 
     # --- Frame loop ---
+    # Reviewer finding C1: touch idle_at on every inbound frame (contract §4
+    # "updates operator_sessions.idle_at on every inbound message"). Without
+    # this an idle operator session silently outlives its idle_timeout_min.
     try:
         while True:
             raw = await ws.receive_json()
+            if op_cookie_for_touch is not None:
+                operators.touch_operator_session(
+                    operator_routes._get_op_db(), op_cookie_for_touch
+                )
             frames = await _process_frame(
                 raw, viewer_role=viewer_role, engine=engine, ws=ws,
                 session_id=session_id,

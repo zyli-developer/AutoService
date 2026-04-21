@@ -96,7 +96,7 @@ Dev-only session minter. Bypasses `login_tokens` entirely.
   6. Append one JSONL line to `.autoservice/logs/auth-devmail.jsonl`:
      `{"kind": "dev_login", "ts": "...", "email": "...", "tenant_id": "...",
      "session_id_prefix": "abc12345"}`
-  7. Respond `200 {"ok": true, "redirect": "/admin" | "/t/{tid}/admin"}`.
+  7. Respond `200 {"ok": true, "redirect": "/admin" | "/tenant/{tid}/admin"}`.
 - The frontend navigates using the `redirect` field rather than computing it,
   so a future change to the post-login landing page is a single-site edit.
 

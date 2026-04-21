@@ -54,7 +54,7 @@ function getInitialSheet(): SheetState {
 
 /**
  * Chat application. Requires a tenant in the URL:
- *   - `/t/<tenant>/chat` (canonical)
+ *   - `/tenant/<tenant>/chat` (canonical)
  *   - `/chat?tenant=<tenant>` (fork-side fallback, see spec §5.4)
  *
  * When no tenant is resolvable, renders a friendly "select tenant" message
@@ -89,7 +89,7 @@ function TenantFallback() {
           Select a tenant to start chatting
         </h1>
         <p style={{ opacity: 0.75, lineHeight: 1.5 }}>
-          Open this page via <code>/t/&lt;your-tenant&gt;/chat</code> or append{' '}
+          Open this page via <code>/tenant/&lt;your-tenant&gt;/chat</code> or append{' '}
           <code>?tenant=&lt;your-tenant&gt;</code> to the URL.
         </p>
       </div>

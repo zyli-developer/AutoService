@@ -32,11 +32,12 @@ def client():
 
 class TestSlaSummaryPeriod:
     def test_tc01_no_period_defaults_to_5m(self, client: TestClient):
-        """TC-01: No period param → default 5m window, 7 metrics returned."""
+        """TC-01: No period param → default 5m window, 8 metrics returned (M3 T2S.4 added pool_wait_ms)."""
         resp = client.get("/api/sla/summary")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 7
+        # 8 metrics as of M3 T2S.4 (pool_wait_ms added); was 7 in M2
+        assert len(data) == 8
         # Check structure of one metric
         csat = data["csat_score"]
         assert set(csat.keys()) == {"p50", "p95", "count", "min", "max"}
@@ -46,7 +47,8 @@ class TestSlaSummaryPeriod:
         resp = client.get("/api/sla/summary?period=1h")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 7
+        # 8 metrics as of M3 T2S.4 (pool_wait_ms added); was 7 in M2
+        assert len(data) == 8
         assert data["csat_score"]["count"] >= 1
 
     def test_tc03_period_24h(self, client: TestClient):
@@ -54,7 +56,8 @@ class TestSlaSummaryPeriod:
         resp = client.get("/api/sla/summary?period=24h")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 7
+        # 8 metrics as of M3 T2S.4 (pool_wait_ms added); was 7 in M2
+        assert len(data) == 8
         assert data["first_reply_ms"]["count"] >= 1
 
     def test_tc04_invalid_period_returns_400(self, client: TestClient):

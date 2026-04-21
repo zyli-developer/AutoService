@@ -6,13 +6,13 @@
  * batch-9 real impl). Single source of truth for mode.
  *
  * Mode policy (spec §3.6 + eval-doc-015 TenantContext middleware):
- *   - master mode                  → basename="/t/<tid>" if the operator's
+ *   - master mode                  → basename="/tenant/<tid>" if the operator's
  *                                    session carries tenant_id (common — an
  *                                    operator is always scoped to a tenant);
  *                                    otherwise "" and we rely on absolute
- *                                    `/t/:tenantId/operator` URLs.
+ *                                    `/tenant/:tenantId/operator` URLs.
  *   - tenant mode                  → basename="" (URL-flat). The backend
- *                                    middleware rewrites `/t/<self>/*` → `/*`
+ *                                    middleware rewrites `/tenant/<self>/*` → `/*`
  *                                    before the SPA loads, so the URL-flat
  *                                    path is the canonical shape in fork
  *                                    deployments.
@@ -43,7 +43,7 @@ export function deriveBasename(
   tenantId: string | null,
 ): string {
   if (mode === 'tenant') return '';
-  if (mode === 'master' && tenantId) return `/t/${tenantId}`;
+  if (mode === 'master' && tenantId) return `/tenant/${tenantId}`;
   return '';
 }
 
@@ -154,7 +154,7 @@ export function RouteBootstrap({
     <BrowserRouter basename={basename || undefined}>
       <Routes>
         {/* Tenant-scoped entry — master mode primary shape */}
-        <Route path="/t/:tenantId/operator" element={<App />} />
+        <Route path="/tenant/:tenantId/operator" element={<App />} />
         {/* URL-flat — tenant mode primary (backend middleware rewrites) */}
         <Route path="/operator" element={<App />} />
         {/* Legacy / no-tenant entry — show a helpful fallback */}

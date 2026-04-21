@@ -2,7 +2,7 @@
  * T1F.3 — tenant-aware routing + WS URL
  *
  * These tests cover the routing contract introduced by T1F.3:
- *   1. `/t/:tenantId/chat` renders the chat UI
+ *   1. `/tenant/:tenantId/chat` renders the chat UI
  *   2. A URL with no resolvable tenant renders a "select tenant" fallback
  *   3. The WebSocket URL includes `?tenant=<tenantId>` (observed via the
  *      mocked WSClient constructor)
@@ -38,7 +38,7 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/t/:tenantId/chat" element={<App />} />
+        <Route path="/tenant/:tenantId/chat" element={<App />} />
         <Route path="/chat" element={<App />} />
         <Route path="*" element={<App />} />
       </Routes>
@@ -53,8 +53,8 @@ describe('T1F.3 tenant-aware routing', () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it('renders chat UI when URL is /t/tenant_foo/chat', () => {
-    renderAt('/t/tenant_foo/chat');
+  it('renders chat UI when URL is /tenant/tenant_foo/chat', () => {
+    renderAt('/tenant/tenant_foo/chat');
     // MerchantSite only mounts inside ChatApp — so its logo is a stable
     // "chat UI is live" signal that doesn't depend on ChatFAB internals.
     expect(screen.getByTestId('merchant-logo')).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe('T1F.3 tenant-aware routing', () => {
   });
 
   it('builds WS URL with ?tenant=<tenantId> from the path param', () => {
-    renderAt('/t/tenant_foo/chat');
+    renderAt('/tenant/tenant_foo/chat');
     expect(wsConstructorCalls).toHaveLength(1);
     const { url } = wsConstructorCalls[0];
     // Path component must target /ws/customer (not a hardcoded /ws/customer/<id>)
@@ -91,7 +91,7 @@ describe('T1F.3 tenant-aware routing', () => {
   });
 
   it('URL-encodes tenant ids with special characters', () => {
-    renderAt('/t/acme%20corp/chat');
+    renderAt('/tenant/acme%20corp/chat');
     expect(wsConstructorCalls).toHaveLength(1);
     // The raw value decoded by the router is "acme corp"; re-encoded it becomes acme%20corp
     expect(wsConstructorCalls[0].url).toContain('tenant=acme%20corp');

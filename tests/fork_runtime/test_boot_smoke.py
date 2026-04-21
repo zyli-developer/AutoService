@@ -77,7 +77,7 @@ def tenant_fork(tmp_path, monkeypatch):
 
 def _attach_chat_echo(app):
     """Install a `/chat` echo route so the URL-flat rewrite from
-    `/t/<self>/chat` has a concrete handler to land on.  Without this
+    `/tenant/<self>/chat` has a concrete handler to land on.  Without this
     the rewritten path would 404 — which is still a valid pass (framework
     healthy, route unpinned), but adding the route lets us assert the
     *scope path* actually changed."""
@@ -130,16 +130,16 @@ class TestForkModeBootSmoke:
         )
 
     def test_tenant_mode_self_tenant_url_prefix_rewrites(self, tenant_fork):
-        """`/t/B/chat` → `/chat` in tenant-mode fork (URL-flat routing, spec §3.2).
+        """`/tenant/B/chat` → `/chat` in tenant-mode fork (URL-flat routing, spec §3.2).
 
         Asserts the TenantContext middleware did its job: the downstream
         handler sees the rewritten path AND `request.state` is populated.
         This is the pytest surrogate for spec §8 step 4 ("browser hits
-        /chat without /t/<tid>/ prefix").
+        /chat without /tenant/<tid>/ prefix").
         """
         app = _attach_chat_echo(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get(f"/t/{TENANT_ID}/chat")
+            resp = client.get(f"/tenant/{TENANT_ID}/chat")
         assert resp.status_code == 200, (
             f"self-tenant URL was not served: {resp.status_code} {resp.text!r}"
         )
@@ -149,12 +149,12 @@ class TestForkModeBootSmoke:
         assert data["tenant_id"] == TENANT_ID
 
     def test_tenant_mode_cross_tenant_denies(self, tenant_fork):
-        """`/t/other/chat` on tenant B fork → 403 (spec §3.2, cross-tenant
+        """`/tenant/other/chat` on tenant B fork → 403 (spec §3.2, cross-tenant
         refusal).  Exercises the TenantContext middleware's single-tenant
         enforcement in a full boot context."""
         app = _attach_chat_echo(web_gateway.create_app())
         with TestClient(app) as client:
-            resp = client.get("/t/other/chat")
+            resp = client.get("/tenant/other/chat")
         assert resp.status_code == 403
         body = resp.json()
         assert "cross-tenant" in body.get("error", "")

@@ -16,7 +16,7 @@ interface AdminTopbarProps {
   onToggleNav?: () => void;
   /**
    * Override the store's `tenantId` for display. Set when the topbar is
-   * rendered inside a tenant-scoped iframe (/t/<tid>/admin) so the crumb
+   * rendered inside a tenant-scoped iframe (/tenant/<tid>/admin) so the crumb
    * reflects the previewed tenant instead of the host session.
    */
   tenantIdOverride?: string;

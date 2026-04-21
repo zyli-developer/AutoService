@@ -39,6 +39,18 @@ class MetricType(str, Enum):
     DIGEST_RATE = "digest_rate"
     COMPLAINT_RATE = "complaint_rate"
     TTFB_MS = "ttfb_ms"
+    POOL_WAIT_MS = "pool_wait_ms"       # T2S.4 — wait time for cc_pool checkout
+
+
+# Per-OQ-E3-1 (M3 default): only these two metrics accept per-tenant threshold
+# overrides in M3.  Other metrics stay global in M3; M3.5 can extend.
+PER_TENANT_METRICS_M3: frozenset[MetricType] = frozenset({
+    MetricType.POOL_WAIT_MS,
+    MetricType.FIRST_REPLY_MS,
+})
+
+
+GLOBAL_TENANT_KEY = "global"    # sentinel for the default fallback threshold
 
 
 class WindowSize(str, Enum):
@@ -73,7 +85,59 @@ SLA_THRESHOLDS: dict[MetricType, _Threshold] = {
     MetricType.ACCEPT_MS:      _Threshold(limit=30_000.0, comparator="gt", severity="warning"),
     MetricType.TTFB_MS:        _Threshold(limit=5_000.0,  comparator="gt", severity="warning"),
     MetricType.CSAT_SCORE:     _Threshold(limit=3.0,      comparator="lt", severity="critical"),
+    MetricType.POOL_WAIT_MS:   _Threshold(limit=2_000.0,  comparator="gt", severity="warning"),
 }
+
+
+# T2S.4: per-tenant threshold overrides keyed by (tenant_id, metric).  Lookup
+# order in :func:`resolve_threshold` is tenant-first, global-fallback.
+# Only metrics in PER_TENANT_METRICS_M3 can hold per-tenant overrides (OQ-E3-1).
+PER_TENANT_THRESHOLDS: dict[tuple[str, MetricType], _Threshold] = {}
+
+
+def set_tenant_threshold(
+    tenant_id: str, metric: MetricType, threshold: _Threshold
+) -> None:
+    """Set a per-tenant SLA threshold override (T2S.4).
+
+    Raises:
+        ValueError: if *metric* is not in :data:`PER_TENANT_METRICS_M3`
+                    (OQ-E3-1 scope limit).  M3.5 can widen the set.
+    """
+    if metric not in PER_TENANT_METRICS_M3:
+        raise ValueError(
+            f"Per-tenant override for {metric.value!r} is not enabled in M3. "
+            f"Allowed: {sorted(m.value for m in PER_TENANT_METRICS_M3)}. "
+            "Extending to more metrics: OQ-E3-1 / M3.5."
+        )
+    PER_TENANT_THRESHOLDS[(tenant_id, metric)] = threshold
+
+
+def clear_tenant_threshold(tenant_id: str, metric: MetricType) -> None:
+    """Remove a per-tenant override; restores global fallback for this tenant."""
+    PER_TENANT_THRESHOLDS.pop((tenant_id, metric), None)
+
+
+def clear_all_tenant_thresholds() -> None:
+    """Test helper — clear all per-tenant overrides."""
+    PER_TENANT_THRESHOLDS.clear()
+
+
+def resolve_threshold(
+    tenant_id: str | None, metric: MetricType
+) -> _Threshold | None:
+    """Return the effective threshold for (tenant, metric) or None.
+
+    Resolution order (T2S.4):
+        1. Per-tenant override (only for PER_TENANT_METRICS_M3)
+        2. Global default from SLA_THRESHOLDS
+        3. None (no threshold → no breach reporting for this metric)
+    """
+    if tenant_id is not None and metric in PER_TENANT_METRICS_M3:
+        t = PER_TENANT_THRESHOLDS.get((tenant_id, metric))
+        if t is not None:
+            return t
+    return SLA_THRESHOLDS.get(metric)
 
 
 def _is_breach(value: float, thr: _Threshold) -> bool:

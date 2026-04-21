@@ -876,38 +876,29 @@ async def _acquire_dream(
     """
     pool = await _get_dream_pool()
 
-    # Work out the desired soul up front — if it matches the warm
-    # instance's existing soul, no recycle needed. We stamp
-    # ``_dream_tenant_id`` on the PooledInstance the first time we
-    # acquire for a given tenant; subsequent acquires compare against
-    # that stamp.
-    desired_tenant_id = tenant_id  # None means "use fallback"
-
     instance = await pool.checkout(timeout=timeout)
     try:
+        # Dream pool uses its own tag name for backward-compat; translate
+        # to the generic ``_pool_tenant_id`` sentinel the helper expects.
+        # An instance warmed by the pool factory has neither tag set, so
+        # the helper's ``_UNSET`` path still fires — rebuilding with the
+        # target tenant's soul. The recycle only happens when the tenant
+        # actually changed (or on first real use of a warm instance), so
+        # repeat acquires for the same tenant are zero-cost hot-path
+        # lookups.
         existing_tid = getattr(instance, "_dream_tenant_id", _UNSET)
-        if existing_tid is _UNSET or existing_tid != desired_tenant_id:
-            # Tenant boundary crossed (or this is the first real use of
-            # the warm instance). Recycle with the correct soul injected.
-            log.info(
-                "dream pool: recycling instance %s for tenant switch "
-                "(%r -> %r)",
-                instance.id,
-                existing_tid if existing_tid is not _UNSET else "<unset>",
-                desired_tenant_id,
-            )
-            await pool._destroy_instance(instance)  # noqa: SLF001 — internal API
-            # Build the replacement directly so we can override the
-            # system prompt (the pool's warmup factory always uses the
-            # fallback; acquire-time factory override is the cleanest
-            # way to inject a tenant-specific soul without a second
-            # pool).
-            instance = await _make_tenant_dream_instance(
-                pool, desired_tenant_id,
-            )
+        if existing_tid is not _UNSET:
+            instance._pool_tenant_id = existing_tid  # type: ignore[attr-defined]
+
+        instance = await _recycle_instance_for_tenant(
+            pool, instance,
+            role="dream",
+            tenant_id=tenant_id,
+            config=pool._config,  # noqa: SLF001
+        )
         # Tag the instance so release / leak-detection can identify it.
         instance._pool_role = "dream"  # type: ignore[attr-defined]
-        instance._dream_tenant_id = desired_tenant_id  # type: ignore[attr-defined]
+        instance._dream_tenant_id = tenant_id  # type: ignore[attr-defined]
         yield instance
     finally:
         await pool.checkin(instance)
@@ -918,19 +909,37 @@ async def _acquire_dream(
 _UNSET: Any = object()
 
 
-async def _make_tenant_dream_instance(
-    pool: AsyncPool[CCClient], tenant_id: str | None,
+async def _make_tenant_instance(
+    pool: AsyncPool[CCClient],
+    *,
+    role: str,
+    tenant_id: str | None,
 ) -> PooledInstance[CCClient]:
-    """Build + track a fresh dream :class:`PooledInstance` for *tenant_id*.
+    """Build + track a fresh ``PooledInstance[CCClient]`` for (role, tenant_id).
 
     Mirrors :meth:`AsyncPool._create_instance` but bypasses the stored
-    factory so we can inject a per-tenant system prompt. The resulting
-    instance IS tracked by the pool so status/health reporting still works.
+    factory so we can inject the correct per-(role, tenant) soul. The
+    resulting instance IS tracked by the pool so status/health reporting
+    still works.
+
+    - ``role == "dream"`` uses the legacy :func:`_load_dream_soul` path so
+      the fallback-on-missing-file behaviour is preserved byte-for-byte.
+    - Any other role (``"customer"`` today, more later) delegates soul
+      resolution to :func:`create_cc_client` via the ``role`` + ``tenant_id``
+      kwargs — same plumbing the per-(role, tenant) sub-pools already use.
     """
-    dream_cfg = pool._config  # noqa: SLF001
-    client = await create_cc_client(
-        dream_cfg, system_prompt=_load_dream_soul(tenant_id),
-    )
+    cfg = pool._config  # noqa: SLF001
+    if role == "dream":
+        client = await create_cc_client(
+            cfg, system_prompt=_load_dream_soul(tenant_id),
+        )
+    else:
+        # customer + any future role: let create_cc_client resolve soul
+        # via role + tenant_id.
+        # TODO(task-2): enable_kb_tool=(role == "customer" and tenant_id is not None)
+        client = await create_cc_client(
+            cfg, role=role, tenant_id=tenant_id,
+        )
     pool._instance_counter += 1  # noqa: SLF001
     instance_id = (
         f"{pool._instance_prefix}-{pool._instance_counter:03d}"  # noqa: SLF001
@@ -938,9 +947,44 @@ async def _make_tenant_dream_instance(
     instance = PooledInstance(client=client, id=instance_id)
     pool._track(instance)  # noqa: SLF001
     log.debug(
-        "dream pool: created instance %s for tenant=%r", instance_id, tenant_id,
+        "pool: created instance %s for role=%s tenant=%r",
+        instance_id, role, tenant_id,
     )
     return instance
+
+
+async def _recycle_instance_for_tenant(
+    pool: AsyncPool[CCClient],
+    instance: PooledInstance[CCClient],
+    *,
+    role: str,
+    tenant_id: str | None,
+    config: PoolConfig,  # accepted for API symmetry; currently unused
+) -> PooledInstance[CCClient]:
+    """Ensure *instance* has the right soul for (role, tenant_id); rebuild if not.
+
+    Reads the stamped ``_pool_tenant_id`` sentinel. If it matches the
+    requested ``tenant_id`` (including both being ``None``), returns the
+    instance unchanged. Otherwise destroys and rebuilds via
+    :func:`_make_tenant_instance`, stamps the new instance, and returns
+    it. Rebuild failures propagate — callers decide the degrade path.
+    """
+    existing = getattr(instance, "_pool_tenant_id", _UNSET)
+    if existing is not _UNSET and existing == tenant_id:
+        return instance
+
+    log.info(
+        "pool recycle: role=%s instance=%s tenant %r -> %r",
+        role, instance.id,
+        existing if existing is not _UNSET else "<unset>",
+        tenant_id,
+    )
+    await pool._destroy_instance(instance)  # noqa: SLF001
+    new_instance = await _make_tenant_instance(
+        pool, role=role, tenant_id=tenant_id,
+    )
+    new_instance._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
+    return new_instance
 
 
 async def shutdown_pool() -> None:

@@ -48,10 +48,10 @@ def test_valid_token_302s_with_set_cookie_and_creates_session(
 
     r = app_client.get(
         "/api/auth/verify",
-        params={"token": token, "redirect": "/t/acme/admin"},
+        params={"token": token, "redirect": "/tenant/acme/admin"},
     )
     assert r.status_code == 302
-    assert r.headers["location"] == "/t/acme/admin"
+    assert r.headers["location"] == "/tenant/acme/admin"
     set_cookie = r.headers.get("set-cookie", "")
     assert f"{api_routes.AUTH_SESSION_COOKIE}=" in set_cookie
     lower = set_cookie.lower()

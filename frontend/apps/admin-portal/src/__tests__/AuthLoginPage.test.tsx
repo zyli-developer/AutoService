@@ -286,7 +286,7 @@ describe('components/auth/LoginPage — dev panel', () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, redirect: '/t/ghost/admin' }),
+          json: async () => ({ ok: true, redirect: '/tenant/ghost/admin' }),
         } as unknown as Response);
       }
       return Promise.reject(new Error('unexpected url ' + url));
@@ -305,7 +305,7 @@ describe('components/auth/LoginPage — dev panel', () => {
     await user.type(screen.getByTestId('dev-login-tenant-custom'), 'ghost');
     await user.click(screen.getByTestId('dev-login-submit'));
 
-    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/t/ghost/admin'));
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/tenant/ghost/admin'));
     expect(capturedBody).toEqual({ email: 'admin@dev.local', tenant_id: 'ghost' });
   });
 

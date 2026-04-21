@@ -6,12 +6,12 @@
  * batch-9 real impl). Single source of truth for mode.
  *
  * Mode policy (spec §3.6 + eval-doc-015 TenantContext middleware):
- *   - master mode                  → basename="/t/<tid>" if session.tenant_id
+ *   - master mode                  → basename="/tenant/<tid>" if session.tenant_id
  *                                    is known (rare for a public chat viewer);
  *                                    otherwise "" and we rely on absolute
- *                                    `/t/:tenantId/chat` URLs.
+ *                                    `/tenant/:tenantId/chat` URLs.
  *   - tenant mode                  → basename="" (URL-flat). The backend
- *                                    middleware rewrites `/t/<self>/*` → `/*`
+ *                                    middleware rewrites `/tenant/<self>/*` → `/*`
  *                                    before the SPA loads, so the URL-flat
  *                                    path is the canonical shape in fork
  *                                    deployments.
@@ -46,7 +46,7 @@ export function deriveBasename(
   tenantId: string | null,
 ): string {
   if (mode === 'tenant') return '';
-  if (mode === 'master' && tenantId) return `/t/${tenantId}`;
+  if (mode === 'master' && tenantId) return `/tenant/${tenantId}`;
   return '';
 }
 
@@ -157,7 +157,7 @@ export function RouteBootstrap({
     <BrowserRouter basename={basename || undefined}>
       <Routes>
         {/* Canonical tenant-scoped route — master mode primary shape */}
-        <Route path="/t/:tenantId/chat" element={<App />} />
+        <Route path="/tenant/:tenantId/chat" element={<App />} />
         {/* URL-flat — tenant mode primary (backend middleware rewrites) */}
         <Route path="/chat" element={<App />} />
         {/* Legacy/root entrypoint — App renders tenant-selection fallback */}

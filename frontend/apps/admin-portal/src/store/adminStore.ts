@@ -98,7 +98,7 @@ export interface AdminState {
   // Master variant continues to use 'notifications'/'dashboard'/'wizard'/
   // 'proposals'/'billing'; tenant variant adds 'chat'. The union is honest
   // so AdminRail variant switching no longer needs a cast at the call site.
-  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing' | 'chat';
+  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'dream' | 'billing' | 'chat';
   notifications: Notification[];
 
   wizardStep: number;

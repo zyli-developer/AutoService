@@ -858,7 +858,7 @@ EOF
 6. **Smoke test**:
 
    Visit `http://localhost:8000/chat` (fork is single-tenant — **no**
-   `/t/<tenant_id>/` prefix).
+   `/tenant/<tenant_id>/` prefix).
 
 7. **Deploy** per infra docs.
 

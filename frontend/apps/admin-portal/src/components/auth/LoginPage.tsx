@@ -122,7 +122,7 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
     // tests/auth/test_request_login.py::test_redirect_override_*).
     const redirect =
       typeof window !== 'undefined'
-        ? `${window.location.origin}${tenantId ? `/t/${tenantId}/admin` : '/admin'}`
+        ? `${window.location.origin}${tenantId ? `/tenant/${tenantId}/admin` : '/admin'}`
         : undefined;
     try {
       const resp = await fetch('/api/auth/request-login', {

@@ -666,27 +666,30 @@ async def dream_trigger(payload: dict[str, Any] = Body(...)) -> Any:
 
 
 async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
-    """Schedule ``run_dream`` for an already-opened ``dream_runs`` row.
+    """Schedule the right dream entry for an already-opened ``dream_runs`` row.
 
-    ``run_dream`` always calls ``dream_runs.start_run`` itself — so when the
-    trigger endpoint pre-opens the row (to return ``run_id`` in the 202),
-    the actual agent run lands with a DIFFERENT row id.  That's acceptable
-    for M2: the trigger-row records the "requested" state (and blocks the
-    concurrency guard while the run is active); the run_dream-row records
-    the "observed" state with tokens / tool_calls.  Both are visible via
-    ``GET /api/dream/runs`` ordered by ``started_at DESC``.
+    Routing (M3 T2S.8 mirrors ``dream_scheduler._dispatch``):
+    * ``tenant_id == bootstrap.MASTER_TENANT_ID`` → ``run_platform_dream``
+      (cross-tenant aggregate; does NOT open its own ``dream_runs`` row, so
+      the pre-opened trigger-row IS the agent row → 1 row per trigger).
+    * otherwise → per-tenant ``dream_agent.run_dream``, which opens its own
+      ``dream_runs`` row internally (2 rows per trigger — the pre-opened
+      trigger-row records the "requested" state, the run_dream-row the
+      "observed" state; both visible via ``GET /api/dream/runs``).
 
     A future refactor may let ``run_dream`` accept a pre-opened ``run_id``
-    — out of scope for T3B.6.  The end_run hook below is best-effort: if
-    the run completes normally the row gets finalised by ``run_dream``'s
-    own row; our trigger-row stays as 'running' only until the background
-    coroutine's ``finally`` block updates it.
+    — out of scope for T3B.6.
+
+    The ``finally`` block records the REAL outcome (completed / failed)
+    on the trigger-row so the UI doesn't show a misleading green row next
+    to the actual failed agent row.
 
     Tests monkey-patch this function to a no-op so they can assert the
     trigger endpoint's HTTP behaviour without touching cc_pool.
     """
     from autoservice.cc_pool import get_pool
     from autoservice.memory_pool import MemoryPool
+    from autoservice import bootstrap as _bootstrap
 
     pool = await get_pool()
     pp = _get_proposal_pipeline()
@@ -694,27 +697,161 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     runs_conn = _get_dream_runs_db()
     mempool = getattr(pp, "_memory_pool", None) or MemoryPool()
 
+    # M3 T2S.8 routing: for the master tenant, dispatch to run_platform_dream
+    # (cross-tenant aggregate dream) — mirrors dream_scheduler._dispatch logic.
+    # Per-tenant run_dream requires llm_send + cc_pool capabilities that the
+    # master tenant deliberately doesn't have.
+    is_master = tenant_id == _bootstrap.MASTER_TENANT_ID
+
     async def _run_and_mark():
-        """Wrap run_dream so the pre-opened trigger-row gets finalised."""
+        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised."""
+        agent_status = "completed"
+        agent_error: str | None = None
         try:
-            await dream_agent.run_dream(
-                tenant_id,
-                pool,
-                mempool,
-                proposals_conn,
-                runs_conn,
-                max_tool_turns=10,
-            )
+            if is_master:
+                from autoservice import master_dream_agent as _master_dream
+                await _master_dream.run_platform_dream(
+                    tenant_id,
+                    pool,
+                    mempool,
+                    proposals_conn,
+                    runs_conn,
+                    max_tool_turns=10,
+                )
+            else:
+                await dream_agent.run_dream(
+                    tenant_id,
+                    pool,
+                    mempool,
+                    proposals_conn,
+                    runs_conn,
+                    max_tool_turns=10,
+                )
+        except Exception as exc:  # noqa: BLE001
+            agent_status = "failed"
+            agent_error = f"{type(exc).__name__}: {exc}"
+            logger.exception("dream run failed for tenant=%s", tenant_id)
         finally:
-            # Always close the trigger-row so the concurrency guard releases.
+            # Close the trigger-row with the REAL outcome (completed vs failed)
+            # so the UI doesn't show a misleading green "completed" row next
+            # to the actual failed agent-row.
             try:
-                dream_runs.end_run(runs_conn, run_id, status="completed")
+                dream_runs.end_run(
+                    runs_conn, run_id, status=agent_status, error=agent_error,
+                )
             except Exception:
                 logger.exception(
                     "dream_runs.end_run cleanup for trigger row %s failed", run_id,
                 )
 
     asyncio.create_task(_run_and_mark())
+
+
+@api_router.get("/dream/status")
+async def dream_status(tenant_id: str) -> Any:
+    """Return this tenant's current Dream scheduler status (M3 T4S.3b).
+
+    Consumed by admin-portal's Dream status band (M3.5 D1 UI).  Exposes
+    the ``should_trigger`` reason_code vocabulary so the UI can render
+    idle / cool_down / running / never_active / scheduled / manual_off
+    states without scraping logs.
+
+    Query params:
+        tenant_id: required, non-empty.
+
+    Response::
+
+        {
+          "tenant_id": "<tid>",
+          "running": bool,
+          "reason_code": "<snake_case>",
+          "last_run_summary": {
+              "run_id": "<id>",
+              "started_at": "<iso>",
+              "ended_at": "<iso|null>",
+              "status": "<running|completed|failed>",
+              "proposals_emitted": int,
+              "tool_calls": int,
+          } | null,
+          "next_eligible_at": "<iso|null>"
+        }
+
+    An unknown tenant / no-config returns reason_code='never_active' with
+    200 OK — the UI treats it as "waiting for first dream tick".
+    """
+    from fastapi.responses import JSONResponse
+    if not tenant_id or not tenant_id.strip():
+        return JSONResponse(
+            status_code=422, content={"error": "tenant_id required"},
+        )
+
+    tid = tenant_id.strip()
+
+    # Pull last run summary (may be empty — return null gracefully)
+    runs_conn = _get_dream_runs_db()
+    last_runs = dream_runs.list_runs(runs_conn, tid, limit=1)
+    last_run_summary = None
+    if last_runs:
+        r = last_runs[0]
+        last_run_summary = {
+            "run_id": r.get("id"),
+            "started_at": r.get("started_at"),
+            "ended_at": r.get("ended_at"),
+            "status": r.get("status"),
+            "proposals_emitted": r.get("proposals_emitted"),
+            "tool_calls": r.get("tool_calls"),
+        }
+
+    # Compute reason_code via should_trigger — reuse scheduler's tenant config
+    # reader + memory_pool to avoid duplicating config-parsing logic.
+    from autoservice import dream_scheduler as _ds
+    from autoservice.memory_pool import MemoryPool
+
+    # Lightweight tenant_dream_cfg read (inlined — scheduler's reader is a
+    # bound method; we only need the 'dream' sub-dict).
+    tenant_dream_cfg: dict = {}
+    try:
+        from pathlib import Path
+        import json as _json
+        cfg_path = (
+            Path(".autoservice/sandbox") / tid / "config.json"
+        )
+        if cfg_path.exists():
+            with cfg_path.open(encoding="utf-8") as f:
+                full_cfg = _json.load(f)
+            tenant_dream_cfg = full_cfg.get("dream") or {}
+    except Exception:  # noqa: BLE001
+        tenant_dream_cfg = {}
+
+    mempool = MemoryPool()
+    try:
+        _is_running, reason = _ds.should_trigger(
+            tid, tenant_dream_cfg, mempool, runs_conn,
+        )
+    except Exception:  # noqa: BLE001
+        # Defensive: any scheduler-side error → treat as never_active so UI
+        # shows a sane default instead of a 500.
+        reason = "never_active"
+        _is_running = False
+
+    # "running" is distinct from is_running-eligible — check the DB directly
+    # for an in-flight row.
+    running_now = False
+    try:
+        for r in dream_runs.list_runs(runs_conn, tid, limit=5):
+            if r.get("status") == "running":
+                running_now = True
+                break
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "tenant_id": tid,
+        "running": running_now,
+        "reason_code": reason,
+        "last_run_summary": last_run_summary,
+        "next_eligible_at": None,  # reserved for M3.5 — compute from cool_down window
+    }
 
 
 @api_router.get("/dream/runs")
@@ -932,6 +1069,13 @@ async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
         * 200  ``{"reply": "<text>"}``
         * 422  ``{"error": "message required"}`` for missing/empty/non-str
         * 503  ``{"error": "cc_pool unavailable (POOL_MODE disabled?)"}``
+
+    M2 design invariant guarded by tests/api/test_management_chat.py::
+    test_management_chat_regression_no_stub_llm — this handler must not
+    contain legacy dialog logic.  Slash-command and dream-config dialog
+    are handled by the companion ``/api/management/chat-legacy`` endpoint
+    until the unified dialog migration lands in M3.5 (see
+    docs/plans/m3.5-mini-sprint.md D3 · im-block renderer work).
     """
     message = body.get("message") if isinstance(body, dict) else None
     if not isinstance(message, str) or not message.strip():
@@ -950,16 +1094,10 @@ async def management_chat(body: dict = Body(...)) -> dict[str, Any]:
         )
 
     # Spec §2.7 — ManagementChat routes to _master.
-    # tenant_id is passed verbatim even though the current customer path in
-    # cc_pool.acquire ignores it (see cc_pool.py:440-444); the kwarg pins
-    # the spec contract at the call site for the soul-injection PR.
     reply_parts: list[str] = []
     async with pool.acquire(role="customer", tenant_id="_master") as instance:
         await instance.client.query(message)
         async for msg in instance.client.receive_response():
-            # Extract text blocks from the SDK Message envelope. The SDK
-            # returns a Message with a ``.content`` list of blocks that
-            # have a ``.text`` attribute for text blocks; we join them.
             content = getattr(msg, "content", None)
             if isinstance(content, str):
                 reply_parts.append(content)
@@ -1893,9 +2031,9 @@ async def auth_request_login(
         token = auth.issue_login_token(conn, email, tenant_id=tenant_id)
 
         # Default redirect target: _master tier-0 goes to /admin, a tenant
-        # session goes to /t/<tid>/admin.  Caller can override via the
+        # session goes to /tenant/<tid>/admin.  Caller can override via the
         # verify endpoint's ?redirect= query param.
-        redirect = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+        redirect = f"/tenant/{tenant_id}/admin" if tenant_id else "/admin"
 
         # Dev UX: when vite (:5175) and uvicorn (:8000) run on different
         # ports, the browser-built `redirect` (absolute URL on the frontend
@@ -2058,7 +2196,7 @@ async def auth_dev_login(
 
     Response (200)::
 
-        {"ok": true, "redirect": "/admin" | "/t/<tid>/admin"}
+        {"ok": true, "redirect": "/admin" | "/tenant/<tid>/admin"}
 
     Side effects on success:
       • Row inserted into the ``sessions`` table.
@@ -2101,7 +2239,7 @@ async def auth_dev_login(
     with _DEV_MAIL_LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(audit_record, ensure_ascii=False) + "\n")
 
-    redirect_target = f"/t/{tenant_id}/admin" if tenant_id else "/admin"
+    redirect_target = f"/tenant/{tenant_id}/admin" if tenant_id else "/admin"
 
     response = JSONResponse(content={"ok": True, "redirect": redirect_target})
     secure_flag = request.url.scheme == "https"
@@ -2115,3 +2253,13 @@ async def auth_dev_login(
         path="/",
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# Mount operator routes (M3 T1S.2 + T1S.4)
+# ---------------------------------------------------------------------------
+# Must be at module bottom so all api_router.* definitions above are complete
+# before include_router merges operator_router's paths in.
+from autoservice.operator_routes import operator_router as _operator_router  # noqa: E402
+
+api_router.include_router(_operator_router)

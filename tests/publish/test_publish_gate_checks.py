@@ -9,7 +9,7 @@ Covers
 - Freeze: sandbox moves to archived/ and config.status updates
 - Runbook: auto-generated markdown contains fork + tar instructions
 - 410 status flag: after publish, config shows archived status so Master
-  runtime can reject /t/<tid>/* requests (actual HTTP 410 routing is
+  runtime can reject /tenant/<tid>/* requests (actual HTTP 410 routing is
   outside publish.py).
 """
 
@@ -412,7 +412,7 @@ class TestFreezeArchive:
     def test_410_on_sandbox_url_after_publish(self, isolated_layout):
         """After publish, the archived config.json carries status=archived.
 
-        The HTTP layer uses this flag to return 410 Gone on `/t/<tid>/*` —
+        The HTTP layer uses this flag to return 410 Gone on `/tenant/<tid>/*` —
         we test only the data flag here; actual 410 routing is outside
         publish.py's responsibility.
         """

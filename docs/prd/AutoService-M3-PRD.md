@@ -295,6 +295,69 @@ E6.2 Playwright ─────（独立，依赖 E1 完成——需要登录态
 
 ---
 
+## 8.1 Errata · 2026-04-21（Epic E2 全量 descope 到 M4+）
+
+> **最终结论（A 2026-04-21 确认）**：**整个 Epic E2（所有 E2.1–E2.6）从 M3 移出，推迟到 M4+**。
+>
+> **证据链**：
+> - [AutoService-PRD-v1.1.md](AutoService-PRD-v1.1.md) §8 Out of Scope 第 5 条：**"白标"明确不做**
+> - [AutoService-UserStories-v1.1.md](AutoService-UserStories-v1.1.md) 17 个 user story **零条涉及 subtenant / tier_2 / 白标 / referral**
+> - 源 v1.1 §5.2 AutoService 模块构成 A–E **无任何多层租户模块**
+> - 本 M3 PRD（v1.0，2026-04-21）的 Epic E2 是**超 v1.1 范围的 scope 扩张**，未经 v1.2 PRD 或正式 addendum 授权
+> - 按"PRD 没有就不做"原则（与 revshare% / B 端颗粒度同样处理），整个 E2 应当 descope
+>
+> **E2 拟过渡方案（平级 referral + Admin 审批）亦不采用**。M4+ 如需重启 whitelabel，必须先出 v1.2 PRD 或 M3 addendum 明确覆盖 v1.1 §8 的白标 OoS 条款。
+
+### 过程记录（两阶段修正）
+
+本次 errata 经历两步。先标记"架构修正"（嵌套→平级 referral），随后在查阅源 PRD v1.1 时发现 **Epic E2 整体就不在 v1.1 范围内**，故升级为**整体 descope**。以下记录供追溯：
+
+**第一次修正（被第二次取代）**：Epic E2 从 "嵌套 tier_2" 改为 "平级 peer + referral 关系表 + Admin 审批"，消除 `/t/<b>/t/<c>/`、`plugins/B/plugins/C/`、ControlLayout、revshare% 等组件。
+
+**第二次修正（最终决定）**：整个 Epic E2 descope 到 M4+，即便是平级 referral 方案也不在 M3 范围内。
+
+### E2 处置总览（最终）
+
+| Story | 原描述 | 处置 |
+|----|----|----|
+| **E2.1** | B admin-portal "Enable subtenant" 开关 | **DEFERRED_M4** |
+| **E2.2** | B 升级 ControlLayout | **DEFERRED_M4** |
+| **E2.3** | B 跑 subtenant 创建 wizard | **DEFERRED_M4** |
+| **E2.4** | fork-内 emplace `plugins/B/plugins/C/` | **DEFERRED_M4** |
+| **E2.5** | C 用量归 B、按 tier_2 费率 | **DEFERRED_M4** |
+| **E2.6** | C 合规独立于 B | **DEFERRED_M4**（即便保留也天然被 E4.1 覆盖） |
+
+### 决策覆盖
+
+- **§5 决策 1（全部 P0+P1+P2）隐式收窄**：从 22 story 降为 **16 in-scope story**（E1:6 + E3:4 + E4:2 + E5:2 + E6:2），P0 仍 3、P1 从 9 降到 **5**、P2 从 10 降到 **8**
+- **§5 决策 4（URL `/t/<b>/t/<c>/`）撤销**（随 E2 整体 descope）
+- **§5 决策 5（tier_2 计费归 B）撤销**（v1.1 §8 白标 OoS）
+- **CON-03 / CON-07 / CON-09 全部 DEFERRED_M4**（E2 衍生约束）
+- **§4 批次表 B-M3-3（Subtenant 核心 3 天）删除**
+- **§6.1 功能验收的 E2 相关 5 条删除**（operator 看 C、subtenant 创建、月账单 C 用量、handoff 不相关于 E2、合规按 countries 仍保留在 E4.1）
+
+### 架构影响（最终）
+
+- **关键路径缩短**：原预估 12-14 天 → **7-9 天**
+- **Red-tier 任务清零**（原 E2.4 唯一 Red-tier 任务消失）
+- **E1 RBAC 不再被 E2 阻塞**
+- **§8 parking lot 新增条目**：`Subtenant / Whitelabel / Referral（完整 Epic E2 内容）`
+
+### M4+ 重启前置条件
+
+任何重启 subtenant / whitelabel / referral 的需求（包括本 errata 第一次修正提出的"平级 peer + Admin 审批"方案），必须满足：
+1. 出 **v1.2 PRD** 或 **M3 addendum** 明确**覆盖 v1.1 §8 白标 OoS 条款**
+2. 新增至少 3-5 个正式 user story（加入 UserStories v1.2）
+3. 商业模型明确 revshare 计算公式 / 合同签约主体 / 合规归属 / 售卖合约
+4. 架构决策：平级 + referral 表（本次方案）默认作为起点，但可被 v1.2 重新评估
+
+### 下游文档修正（已完成）
+
+- [docs/plans/m3/2026-04-21-prd-structure.yaml](../plans/m3/2026-04-21-prd-structure.yaml) —— E2 stories 全部 DEFERRED_M4，summary counts 更新
+- [docs/plans/m3/2026-04-21-gap-analysis.yaml](../plans/m3/2026-04-21-gap-analysis.yaml) —— GAP-E2.* 全部标 DEFERRED_M4，critical path 移除 E2 依赖
+
+---
+
 ## 9. 下一步
 
 1. **M3 brainstorm**：针对每个 Epic 的关键设计点（比如 RBAC schema、Subtenant URL 路由机制、SLA metrics schema）走 `superpowers:brainstorming`→`writing-plans` 流程

@@ -39,6 +39,14 @@ class AlertRule:
     message_zh: str
     message_en: str
     direction: str = "above"  # "above" (default) or "below"
+    # T2S.5 (reviewer C1): optional tenant_id so rules can be platform-wide
+    # (None) or tenant-scoped.  Propagated to FiredAlert.tenant_id for the
+    # operator-WS push filter (web_gateway._push_alert_to_operators).
+    # NOTE: AlertEngine currently evaluates against a single global aggregator
+    # snapshot; full per-tenant evaluation (one buffer per tenant) is a T4S.4
+    # follow-up.  For M3: tenant_id here is metadata-only — operators receive
+    # alerts whose rule is tagged with their tenant, admins receive all.
+    tenant_id: str | None = None
 
 
 @dataclass
@@ -52,6 +60,9 @@ class FiredAlert:
     threshold: float
     message: str
     timestamp: float = field(default_factory=time.time)
+    # T2S.5: tenant_id for operator-WS scope filtering.  None = platform-wide
+    # (admin-only visibility; operators do not see platform alerts).
+    tenant_id: str | None = None
 
 
 # Notification callback type
@@ -151,6 +162,7 @@ class AlertEngine:
                     threshold=rule.threshold,
                     message=msg,
                     timestamp=now,
+                    tenant_id=rule.tenant_id,  # T2S.5: propagate rule's scope to alert
                 )
                 fired.append(alert)
                 self._last_fired[rule.id] = now

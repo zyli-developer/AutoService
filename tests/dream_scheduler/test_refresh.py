@@ -151,11 +151,11 @@ async def test_module_refresh_swallows_scheduler_errors(fake_roots):
 
 def _walk_dialog_to_confirm(client: TestClient, tenant_id: str) -> None:
     """Step a DreamConfigSession from IDLE to the CONFIRM step using defaults."""
-    client.post("/api/management/chat", params={
+    client.post("/api/management/chat-legacy", params={
         "message": "/dream-config", "tenant_id": tenant_id,
     })
     for answer in ("1", "1", "0.3", "1"):
-        client.post("/api/management/chat", params={
+        client.post("/api/management/chat-legacy", params={
             "message": answer, "tenant_id": tenant_id,
         })
 
@@ -190,7 +190,7 @@ def test_dream_config_confirm_calls_refresh(tmp_path, monkeypatch):
             # Final confirmation — triggers _persist_dream_config +
             # on_config_confirmed.
             r = client.post(
-                "/api/management/chat",
+                "/api/management/chat-legacy",
                 params={"message": "yes", "tenant_id": "acme"},
             )
             assert r.status_code == 200
@@ -226,7 +226,7 @@ def test_dream_config_cancel_does_not_call_refresh(tmp_path, monkeypatch):
         with TestClient(app) as client:
             _walk_dialog_to_confirm(client, "acme")
             r = client.post(
-                "/api/management/chat",
+                "/api/management/chat-legacy",
                 params={"message": "no", "tenant_id": "acme"},
             )
             assert r.status_code == 200

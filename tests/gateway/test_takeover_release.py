@@ -1,4 +1,5 @@
 """E2E-ish gateway test for takeover auto-release flow via WebSocket."""
+import sqlite3
 import time
 import uuid
 from datetime import datetime, timezone
@@ -6,8 +7,38 @@ from datetime import datetime, timezone
 import pytest
 from starlette.testclient import TestClient
 
-from autoservice.web_gateway import create_app
+from autoservice import auth, operator_routes, operators
 from autoservice.takeover_config import TakeoverConfig
+from autoservice.web_gateway import create_app
+
+
+def _setup_operator_auth(operator_id: str = "op42", tenant_id: str = "acme") -> str:
+    """Seed operator + session into operator_routes DB, return cookie value.
+
+    T1S.3 requires a valid operator_session cookie for WS operator binding.
+    This helper prepares the minimal auth state so existing takeover tests
+    can connect as an authenticated operator with the expected ID.
+    """
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    auth.apply_schema(conn)
+    operators.apply_operators_schema(conn)
+    operators.migrate_login_tokens_add_role(conn)
+
+    # Insert operator directly with the fixed ID the tests expect
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO operators (id, tenant_id, email, role, status, created_at) "
+        "VALUES (?, ?, ?, 'responder', 'active', ?)",
+        (operator_id, tenant_id, f"{operator_id}@{tenant_id}", now_iso),
+    )
+    conn.commit()
+
+    operator_routes._reset_op_db_for_tests(conn)
+    return operators.issue_operator_session(
+        conn, operator_id=operator_id, tenant_id=tenant_id
+    )
 
 
 def _ts() -> str:
@@ -32,7 +63,14 @@ def fast_takeover_app(monkeypatch):
     import autoservice.web_gateway as wg
     fast = TakeoverConfig(idle_timeout_ms=150, warning_ms=50, offline_grace_ms=200)
     monkeypatch.setattr(wg, "_TAKEOVER_CONFIG_OVERRIDE", fast, raising=False)
-    return create_app()
+    yield create_app()
+    operator_routes._reset_op_db_for_tests(None)
+
+
+@pytest.fixture
+def operator_cookie() -> str:
+    """Seeded operator session cookie (T1S.3 — required for operator WS binding)."""
+    return _setup_operator_auth()
 
 
 # ── Helpers ────────────────────────────────────────────────
@@ -99,8 +137,9 @@ def _wait_frame(ws, frame_type, timeout=1.0):
 
 
 # ── Tests ──────────────────────────────────────────────────
-def test_warning_frame_pushed_to_operator_after_hijack(fast_takeover_app):
+def test_warning_frame_pushed_to_operator_after_hijack(fast_takeover_app, operator_cookie):
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -114,8 +153,9 @@ def test_warning_frame_pushed_to_operator_after_hijack(fast_takeover_app):
             assert warning["payload"]["reason"] == "idle"
 
 
-def test_client_ack_continue_resets_timer(fast_takeover_app):
+def test_client_ack_continue_resets_timer(fast_takeover_app, operator_cookie):
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -135,7 +175,7 @@ def test_client_ack_continue_resets_timer(fast_takeover_app):
             assert cancelled is not None
 
 
-def test_client_ack_continue_from_customer_does_not_reset(fast_takeover_app):
+def test_client_ack_continue_from_customer_does_not_reset(fast_takeover_app, operator_cookie):
     """Customer WS client_ack continue cannot reset the operator's takeover timer.
 
     The actor_id inference only works for operator connections (state_operator_id
@@ -144,6 +184,7 @@ def test_client_ack_continue_from_customer_does_not_reset(fast_takeover_app):
     should prevent any mode state leakage.
     """
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -179,11 +220,12 @@ def offline_watcher_app(monkeypatch):
     return create_app()
 
 
-def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_app):
+def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_app, operator_cookie):
     """Closing the operator WS causes all their TAKEOVER conversations to go AUTO after grace."""
     import asyncio
 
     with TestClient(offline_watcher_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws:
             with client.websocket_connect("/ws/operator") as ows:
                 _setup(cws, ows)
@@ -204,9 +246,10 @@ def test_operator_disconnect_after_grace_switches_conv_to_auto(offline_watcher_a
     assert conv.takeover_operator_id is None
 
 
-def test_takeover_timer_armed_frame_sent_after_hijack(fast_takeover_app):
+def test_takeover_timer_armed_frame_sent_after_hijack(fast_takeover_app, operator_cookie):
     """Operator receives takeover_timer_armed frame immediately after /hijack."""
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -223,7 +266,7 @@ def test_takeover_timer_armed_frame_sent_after_hijack(fast_takeover_app):
             assert p["armed_at"]
 
 
-def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_app):
+def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_app, operator_cookie):
     """Before /hijack the conversation is COPILOT (auto-flipped on operator_join).
     In that state operator_message is a SIDE suggestion for the agent — it must
     NOT be pushed to the customer WS (conversation-engine.md §4 Gate + Q9).
@@ -232,6 +275,7 @@ def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_
     leaking coaching/drafts into the customer chat window.
     """
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -253,7 +297,7 @@ def test_operator_message_in_copilot_mode_does_not_reach_customer(fast_takeover_
             )
 
 
-def test_history_snapshot_carries_per_message_source_display(fast_takeover_app):
+def test_history_snapshot_carries_per_message_source_display(fast_takeover_app, operator_cookie):
     """history_request must attach source_display.role to each message so
     reloaded conversations render with the same badges as live broadcasts
     (customer / operator / agent).
@@ -264,6 +308,7 @@ def test_history_snapshot_carries_per_message_source_display(fast_takeover_app):
     the frontend's substring heuristic misclassified them as "agent".
     """
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
@@ -297,13 +342,14 @@ def test_history_snapshot_carries_per_message_source_display(fast_takeover_app):
             assert by_source["op42"]["source_display"]["id"] == "op42"
 
 
-def test_operator_message_reaches_customer_ws(fast_takeover_app):
+def test_operator_message_reaches_customer_ws(fast_takeover_app, operator_cookie):
     """After hijack, operator_message frames must push to the customer WS.
 
     Regression: the handler used to only echo back to the sender; customer
     never saw the operator's reply during TAKEOVER.
     """
     with TestClient(fast_takeover_app) as client:
+        client.cookies.set(operators.OPERATOR_SESSION_COOKIE_NAME, operator_cookie)
         with client.websocket_connect("/ws/customer") as cws, \
              client.websocket_connect("/ws/operator") as ows:
             _setup(cws, ows)
