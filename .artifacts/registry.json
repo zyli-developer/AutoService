@@ -1132,6 +1132,18 @@
       "created_at": "2026-04-21T02:21:31Z",
       "updated_at": "2026-04-21T02:21:31Z",
       "related_ids": []
+    },
+    {
+      "id": "test-diff-022",
+      "name": "batch-15 ForkCreator tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-15.md",
+      "created_at": "2026-04-21T02:43:52Z",
+      "updated_at": "2026-04-21T02:43:52Z",
+      "related_ids": []
     }
   ]
 }
