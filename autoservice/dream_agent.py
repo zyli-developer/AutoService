@@ -86,22 +86,71 @@ def _resolve_tenant_root(
 # ── FTS helpers ────────────────────────────────────────────────────────────
 
 
-def _tokenize_fts_query(query: str) -> str:
-    """Convert a natural-language query to a broad FTS5 OR query.
+_FTS_SPLIT_RE = re.compile(
+    # FTS5 metacharacters + ASCII and CJK punctuation + whitespace, all treated
+    # as token separators. Splitting on these produces the base fragments we
+    # then quote as phrases and optionally fan out into trigram windows.
+    r'["\(\)\*:\^，。；！？、：“”‘’「」『』\s,.;!?]+'
+)
 
-    Duplicated from :func:`autoservice.soul_generator._tokenize_fts_query` on
-    purpose: per the T3B.4 design, the Dream tools are a self-contained
-    surface that T3B.4 will wrap for Claude tool-use. Pulling the helper in
-    via an internal import would couple the tool layer to soul generation's
-    private API — which the spec explicitly wants to keep decoupled so the
-    tools can be extracted into their own package later (spec §2.5 notes
-    "dream tools may run in a separate process from soul_generator").
+
+def _tokenize_fts_query(query: str) -> str:
+    """Format *query* for FTS5 MATCH against a trigram-tokenised index.
+
+    The KB uses the ``trigram`` FTS5 tokenizer (see KBStore._migrate_fts_tokenizer),
+    which indexes every 3-character substring of content. The old unicode61
+    strategy — whitespace-split and OR-join plain tokens — works for short
+    ASCII words but falls over on long CJK runs because a natural-language
+    query rarely appears verbatim in content (e.g. a user asks "你好，你们
+    提供什么服务" but the KB only contains "提供什么服务").
+
+    This is a hybrid tokenizer that works against **both** tokenizer backends
+    the codebase currently uses (trigram on KBStore-migrated KBs; unicode61 on
+    legacy ``_init_sandbox_kb`` fixtures):
+
+      1. Split the query on FTS5 metacharacters, ASCII punctuation, CJK
+         punctuation, and whitespace — producing a list of fragments.
+      2. Drop fragments shorter than 2 chars.
+      3. For every fragment, emit it as a quoted phrase (this is what lets
+         unicode61 find ``refund`` from query ``refund`` and lets trigram
+         match any substring ≤ ~4 chars).
+      4. For fragments longer than 4 chars, ALSO emit overlapping 3-char
+         windows so trigram can catch partial-substring matches when the full
+         fragment doesn't appear verbatim in content.
+      5. OR-join all emitted terms.
+
+    Returns an empty string when no usable fragment survives; callers
+    short-circuit to ``[]`` in that case.
     """
-    clean = re.sub(r'["\(\)\*\:\^]', " ", query)
-    tokens = [t for t in clean.split() if len(t) >= 2]
-    if not tokens:
-        return query
-    return " OR ".join(tokens)
+    raw_fragments = _FTS_SPLIT_RE.split(query)
+    fragments = [f for f in raw_fragments if len(f) >= 2]
+    if not fragments:
+        return ""
+
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str) -> None:
+        if term and term not in seen:
+            seen.add(term)
+            terms.append(term)
+
+    for frag in fragments:
+        # Keep the whole fragment as a phrase first — this is what makes
+        # unicode61 match short ASCII words (e.g. phrase "refund" matches
+        # token "refund" under unicode61, which phrase-level matches ignore
+        # case after remove_diacritics).
+        _add(frag)
+        # Fan out long fragments into trigram windows so partial-substring
+        # matching works on the trigram-tokenised KB even when the whole
+        # fragment doesn't appear as a contiguous substring of any chunk.
+        if len(frag) > 4:
+            for i in range(len(frag) - 2):
+                _add(frag[i : i + 3])
+
+    # Quote every term so FTS5 MATCH treats it as a literal phrase, avoiding
+    # any further tokenization of CJK content or metachar-adjacent strings.
+    return " OR ".join(f'"{term}"' for term in terms)
 
 
 def _sandbox_kb_path(tenant_id: str, sandbox_root: Path | None = None) -> Path | None:
