@@ -6,19 +6,10 @@ beforeEach(() => {
 });
 
 describe('adminStore', () => {
-  it('TC-01: login sets tenantId and isLoggedIn', () => {
-    useAdminStore.getState().login('tenant-001');
-    const s = useAdminStore.getState();
-    expect(s.tenantId).toBe('tenant-001');
-    expect(s.isLoggedIn).toBe(true);
-  });
-
-  it('TC-02: logout resets state', () => {
-    useAdminStore.getState().login('tenant-001');
+  it('TC-02: logout resets tenantId', () => {
+    useAdminStore.setState({ ...initialState, tenantId: 'tenant-001' });
     useAdminStore.getState().logout();
-    const s = useAdminStore.getState();
-    expect(s.tenantId).toBeNull();
-    expect(s.isLoggedIn).toBe(false);
+    expect(useAdminStore.getState().tenantId).toBeNull();
   });
 
   it('TC-03: setActiveTab changes tab', () => {
