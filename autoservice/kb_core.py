@@ -40,6 +40,12 @@ class KBStore:
     def close(self) -> None:
         self._conn.close()
 
+    def __enter__(self) -> "KBStore":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
     # ── schema ──────────────────────────────────────────────────────────
 
     def _init_schema(self) -> None:
@@ -81,8 +87,12 @@ class KBStore:
         ]:
             try:
                 c.execute(f"ALTER TABLE kb_chunks ADD COLUMN {col_def}")
-            except sqlite3.OperationalError:
-                pass  # already present (fresh DB from CREATE, or previously migrated)
+            except sqlite3.OperationalError as e:
+                # Only expected error here is the idempotent no-op when the column
+                # already exists (fresh DB from CREATE, or previously migrated).
+                # Anything else (I/O error, lock, SQL typo in col_def) should bubble.
+                if "duplicate column name" not in str(e).lower():
+                    raise
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_source_id ON kb_chunks(source_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_domain ON kb_chunks(domain)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_region ON kb_chunks(region)")
@@ -144,3 +154,46 @@ class KBStore:
         # Populate FTS index from existing kb_chunks (no-op on empty DBs).
         c.execute("INSERT INTO kb_fts(kb_fts) VALUES('rebuild')")
         c.commit()
+
+    # ── writes ─────────────────────────────────────────────────────────
+
+    def save_chunk(self, chunk: dict, *, debug_dir: Path | None = None) -> None:
+        """Insert-or-replace one chunk row; FTS is kept in sync via trigger."""
+        c = self._conn
+        c.execute(
+            """
+            INSERT OR REPLACE INTO kb_chunks
+                (id, source_id, source_type, source_name, source_url, file_path,
+                 section, content, created_at, domain, region, language, page_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                chunk["id"], chunk.get("source_id", ""), chunk.get("source_type", ""),
+                chunk.get("source_name", ""), chunk.get("source_url"),
+                chunk.get("file_path"), chunk.get("section", ""),
+                chunk["content"], chunk["created_at"],
+                chunk.get("domain", ""), chunk.get("region", ""),
+                chunk.get("language", "en"), chunk.get("page_number"),
+            ),
+        )
+        c.commit()
+        if debug_dir is not None:
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            (debug_dir / f"{chunk['id']}.json").write_text(
+                json.dumps(chunk, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+
+    def clear_source(self, source_id: str) -> None:
+        """Remove all chunks for a given source_id (for idempotent re-ingest)."""
+        self._conn.execute("DELETE FROM kb_chunks WHERE source_id = ?", (source_id,))
+        self._conn.commit()
+
+    def count(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM kb_chunks").fetchone()[0]
+
+    def by_source(self) -> dict[str, int]:
+        return dict(
+            self._conn.execute(
+                "SELECT source_id, COUNT(*) FROM kb_chunks GROUP BY source_id"
+            ).fetchall()
+        )

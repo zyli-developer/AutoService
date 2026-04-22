@@ -84,3 +84,74 @@ class TestInit:
             assert len(rows) == 1
         finally:
             store.close()
+
+
+class TestSaveAndClear:
+    def _chunk(self, source_id: str, idx: int, content: str) -> dict:
+        return {
+            "id": f"{source_id}_{idx:04d}",
+            "source_id": source_id,
+            "source_type": "text",
+            "source_name": "Unit Test Source",
+            "source_url": None,
+            "file_path": None,
+            "section": f"section-{idx}",
+            "content": content,
+            "created_at": "2026-04-22T00:00:00+00:00",
+            "domain": "contact_center",
+            "region": "HK",
+            "language": "zh",
+            "page_number": None,
+        }
+
+    def test_save_chunk_persists_row_and_indexes_fts(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            store.save_chunk(self._chunk("src_a", 0, "Hello world"))
+            assert store.count() == 1
+            # FTS-visible via substring match (trigram tokenizer)
+            conn = sqlite3.connect(str(store.db_path))
+            rows = conn.execute(
+                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("Hello",)
+            ).fetchall()
+            conn.close()
+            assert len(rows) == 1 and rows[0][0] == "Hello world"
+        finally:
+            store.close()
+
+    def test_clear_source_removes_only_that_source(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            store.save_chunk(self._chunk("src_a", 0, "from A"))
+            store.save_chunk(self._chunk("src_a", 1, "from A again"))
+            store.save_chunk(self._chunk("src_b", 0, "from B"))
+            store.clear_source("src_a")
+            assert store.count() == 1
+            assert store.by_source() == {"src_b": 1}
+        finally:
+            store.close()
+
+    def test_save_chunk_or_replace_is_idempotent(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            c = self._chunk("src_a", 0, "original")
+            store.save_chunk(c)
+            c["content"] = "updated"
+            store.save_chunk(c)  # same id → REPLACE
+            assert store.count() == 1
+            conn = sqlite3.connect(str(store.db_path))
+            row = conn.execute("SELECT content FROM kb_chunks").fetchone()
+            conn.close()
+            assert row[0] == "updated"
+        finally:
+            store.close()
+
+    def test_context_manager_closes_connection(self, tmp_path: Path):
+        """KBStore should work as a context manager; exit closes the connection."""
+        db = tmp_path / "kb.db"
+        with KBStore(db) as store:
+            store.save_chunk(self._chunk("src_ctx", 0, "context managed"))
+            assert store.count() == 1
+        # After exit, further writes on the stored connection should error.
+        with pytest.raises(sqlite3.ProgrammingError):
+            store._conn.execute("SELECT 1")
