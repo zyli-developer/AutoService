@@ -29,19 +29,8 @@ class SoothePicker:
 
     Templates are held in memory after construction; ``pick()`` performs
     no I/O. The bank can be supplied directly (tests) or loaded from YAML
-    (production — see Task 2).
+    (production — see from_yaml).
     """
-
-    @classmethod
-    def from_yaml(
-        cls,
-        path: Path,
-        rng: random.Random | None = None,
-    ) -> "SoothePicker":
-        """Load template bank from a YAML file."""
-        with path.open("r", encoding="utf-8") as fh:
-            bank = yaml.safe_load(fh)
-        return cls(bank=bank, rng=rng)
 
     def __init__(
         self,
@@ -57,6 +46,17 @@ class SoothePicker:
         self._fallback_by_lang: dict[str, list[str]] = dict(
             bank.get("defaults", {}).get("fallback", {})
         )
+
+    @classmethod
+    def from_yaml(
+        cls,
+        path: Path,
+        rng: random.Random | None = None,
+    ) -> "SoothePicker":
+        """Load template bank from a YAML file."""
+        with path.open("r", encoding="utf-8") as fh:
+            bank = yaml.safe_load(fh)
+        return cls(bank=bank, rng=rng)
 
     def pick(self, *, intent: str | None, lang: str | None) -> SoothePick:
         lang_norm = "en" if (lang and lang.lower().startswith("en")) else "zh"

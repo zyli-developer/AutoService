@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
+
+import yaml
 
 from autoservice.gateway.soothe_picker import SoothePick, SoothePicker
 
@@ -48,10 +51,6 @@ def test_pick_exact_match_en():
     assert pick.text == "So sorry — checking now…"
 
 
-import yaml
-from pathlib import Path
-
-
 def test_load_from_yaml(tmp_path: Path):
     yaml_path = tmp_path / "soothe.yaml"
     yaml_path.write_text(
@@ -61,3 +60,4 @@ def test_load_from_yaml(tmp_path: Path):
     picker = SoothePicker.from_yaml(yaml_path, rng=random.Random(0))
     pick = picker.pick(intent="complaint", lang="zh")
     assert pick.template_id == "complaint_zh"
+    assert pick.text == "很抱歉给您添麻烦，我这就核实…"
