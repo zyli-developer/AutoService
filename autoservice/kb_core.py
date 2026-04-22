@@ -334,3 +334,222 @@ class KBStore:
             for i, chunk_text in enumerate(texts)
         ]
         return self.save_chunks(chunks, debug_dir=debug_dir)
+
+    # ── PDF ingestion (port of kb_ingest.ingest_pdf + _semantic_chunk_pages) ─
+
+    @staticmethod
+    def _is_heading(line: str) -> bool:
+        import re
+        stripped = line.strip()
+        if not stripped or len(stripped) > 120:
+            return False
+        if stripped.isupper() and len(stripped) >= 3 and re.search(r"[A-Z]{3}", stripped):
+            return True
+        if re.match(r"^\d+(\.\d+)*\.?\s+\S", stripped):
+            return True
+        return False
+
+    @staticmethod
+    def _is_table_line(line: str) -> bool:
+        return line.count("|") >= 2 or line.count("\t") >= 2
+
+    @classmethod
+    def _semantic_chunk_pages(
+        cls, pages: list[tuple[int, str]], max_chars: int
+    ) -> list[dict]:
+        segments: list[dict] = []
+        current_section = ""
+        current_lines: list[str] = []
+        current_page_start = 1
+        current_page_end = 1
+        in_table = False
+
+        for page_num, page_text in pages:
+            for raw_line in page_text.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if cls._is_heading(line) and not in_table:
+                    if current_lines:
+                        segments.append({
+                            "text": "\n".join(current_lines),
+                            "section": current_section,
+                            "page_start": current_page_start,
+                            "page_end": current_page_end,
+                            "is_table": False,
+                        })
+                    current_section = line
+                    current_lines = []
+                    current_page_start = page_num
+                    current_page_end = page_num
+                    continue
+                if cls._is_table_line(line):
+                    if not in_table and current_lines:
+                        segments.append({
+                            "text": "\n".join(current_lines),
+                            "section": current_section,
+                            "page_start": current_page_start,
+                            "page_end": current_page_end,
+                            "is_table": False,
+                        })
+                        current_lines = []
+                        current_page_start = page_num
+                    in_table = True
+                    current_lines.append(line)
+                    current_page_end = page_num
+                else:
+                    if in_table and current_lines:
+                        segments.append({
+                            "text": "\n".join(current_lines),
+                            "section": current_section,
+                            "page_start": current_page_start,
+                            "page_end": current_page_end,
+                            "is_table": True,
+                        })
+                        current_lines = []
+                        current_page_start = page_num
+                        in_table = False
+                    current_lines.append(line)
+                    current_page_end = page_num
+
+        if current_lines:
+            segments.append({
+                "text": "\n".join(current_lines),
+                "section": current_section,
+                "page_start": current_page_start,
+                "page_end": current_page_end,
+                "is_table": in_table,
+            })
+
+        if sum(1 for s in segments if s["section"]) == 0:
+            return []  # no headings found — caller will fall back to page-buffered
+
+        result: list[dict] = []
+        for seg in segments:
+            if len(seg["text"]) <= max_chars:
+                if len(seg["text"].strip()) >= CHUNK_MIN_CHARS:
+                    result.append({
+                        "text": seg["text"],
+                        "section": seg["section"],
+                        "page_start": seg["page_start"],
+                        "page_end": seg["page_end"],
+                    })
+            else:
+                for sub in cls._chunk_paragraphs(seg["text"]):
+                    result.append({
+                        "text": sub,
+                        "section": seg["section"],
+                        "page_start": seg["page_start"],
+                        "page_end": seg["page_end"],
+                    })
+        return result
+
+    def ingest_pdf(
+        self,
+        file_path: Path,
+        *,
+        source_id: str,
+        source_name: str,
+        domain: str = "",
+        region: str = "",
+        language: str = "en",
+        debug_dir: Path | None = None,
+    ) -> int:
+        """Extract, semantic-chunk (or page-buffer fallback), and persist.
+
+        Uses pypdf for extraction. Tries heading/table-aware semantic chunking
+        first; falls back to page-buffered ``CHUNK_MAX_CHARS`` slicing when
+        no headings are detected. Returns # chunks written. Clears existing
+        rows for *source_id* first for idempotent re-ingest.
+        """
+        import pypdf
+
+        fp = Path(file_path)
+        if not fp.exists():
+            raise FileNotFoundError(file_path)
+
+        self.clear_source(source_id)
+        now = datetime.now(timezone.utc).isoformat()
+        reader = pypdf.PdfReader(str(fp))
+
+        pages: list[tuple[int, str]] = []
+        for page_num, page in enumerate(reader.pages, start=1):
+            t = (page.extract_text() or "").strip()
+            if t:
+                pages.append((page_num, t))
+
+        semantic = self._semantic_chunk_pages(pages, CHUNK_MAX_CHARS)
+        chunks_to_save: list[dict] = []
+
+        if semantic:
+            for i, sc in enumerate(semantic):
+                section = sc["section"] or f"Page {sc['page_start']}"
+                if sc["page_end"] != sc["page_start"]:
+                    section += f" (p{sc['page_start']}–{sc['page_end']})"
+                chunks_to_save.append({
+                    "id": f"{source_id}_{i:04d}",
+                    "source_id": source_id,
+                    "source_type": "pdf",
+                    "source_name": source_name,
+                    "source_url": None,
+                    "file_path": str(fp),
+                    "section": section,
+                    "content": sc["text"],
+                    "created_at": now,
+                    "domain": domain,
+                    "region": region,
+                    "language": language,
+                    "page_number": sc["page_start"],
+                })
+        else:
+            # Page-buffered fallback when no headings detected.
+            buffer = ""
+            buffer_start: int | None = None
+            idx = 0
+            for page_num, text in pages:
+                if buffer_start is None:
+                    buffer_start = page_num
+                buffer += f"\n\n{text}"
+                if len(buffer) >= CHUNK_MAX_CHARS:
+                    section = f"Page {buffer_start}"
+                    if page_num != buffer_start:
+                        section += f"–{page_num}"
+                    chunks_to_save.append({
+                        "id": f"{source_id}_{idx:04d}",
+                        "source_id": source_id,
+                        "source_type": "pdf",
+                        "source_name": source_name,
+                        "source_url": None,
+                        "file_path": str(fp),
+                        "section": section,
+                        "content": buffer.strip(),
+                        "created_at": now,
+                        "domain": domain,
+                        "region": region,
+                        "language": language,
+                        "page_number": buffer_start,
+                    })
+                    idx += 1
+                    buffer = ""
+                    buffer_start = None
+            if buffer.strip():
+                section = f"Page {buffer_start}" if buffer_start else "Document"
+                chunks_to_save.append({
+                    "id": f"{source_id}_{idx:04d}",
+                    "source_id": source_id,
+                    "source_type": "pdf",
+                    "source_name": source_name,
+                    "source_url": None,
+                    "file_path": str(fp),
+                    "section": section,
+                    "content": buffer.strip(),
+                    "created_at": now,
+                    "domain": domain,
+                    "region": region,
+                    "language": language,
+                    "page_number": buffer_start,
+                })
+
+        if not chunks_to_save:
+            return 0
+        return self.save_chunks(chunks_to_save, debug_dir=debug_dir)

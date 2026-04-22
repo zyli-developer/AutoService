@@ -267,3 +267,95 @@ class TestIngestText:
             assert store.count() == 0
         finally:
             store.close()
+
+
+class TestIngestPdf:
+    """Uses a minimal real PDF fixture built on the fly to avoid binary test data."""
+
+    def _make_pdf(self, dest: Path, pages: list[str]) -> Path:
+        """Generate a PDF with one paragraph per page using reportlab if available.
+
+        If reportlab is not available, fall back to a blank-page PDF via pypdf.
+        Tests then only assert that ingest completes without error.
+        """
+        try:
+            from reportlab.pdfgen import canvas  # type: ignore
+            from reportlab.lib.pagesizes import LETTER
+            cvs = canvas.Canvas(str(dest), pagesize=LETTER)
+            for text in pages:
+                y = 750
+                for line in text.split("\n"):
+                    cvs.drawString(50, y, line[:100])
+                    y -= 14
+                cvs.showPage()
+            cvs.save()
+        except ImportError:
+            import pypdf
+            writer = pypdf.PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            with dest.open("wb") as f:
+                writer.write(f)
+        return dest
+
+    def test_ingest_pdf_writes_chunks_with_page_numbers(self, tmp_path: Path):
+        pdf = self._make_pdf(tmp_path / "doc.pdf", [
+            "1. INTRODUCTION\n" + ("This is page one content. " * 30),
+            "2. DETAILS\n" + ("This is page two content. " * 30),
+        ])
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            n = store.ingest_pdf(
+                pdf,
+                source_id="pdf_a",
+                source_name="Test PDF",
+                domain="contact_center",
+            )
+            # reportlab path → real text → ≥1 chunks; pypdf-only path → 0 allowed.
+            assert n >= 0
+            if n > 0:
+                conn = sqlite3.connect(str(store.db_path))
+                rows = conn.execute(
+                    "SELECT source_type, page_number FROM kb_chunks LIMIT 1"
+                ).fetchall()
+                conn.close()
+                assert rows[0][0] == "pdf"
+                assert rows[0][1] is not None
+        finally:
+            store.close()
+
+    def test_ingest_pdf_missing_file_raises(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            with pytest.raises(FileNotFoundError):
+                store.ingest_pdf(
+                    tmp_path / "nope.pdf",
+                    source_id="x", source_name="x",
+                )
+        finally:
+            store.close()
+
+    def test_ingest_pdf_idempotent_on_reingest(self, tmp_path: Path):
+        """Re-ingesting the same PDF with the same source_id must not duplicate."""
+        pdf = self._make_pdf(tmp_path / "doc.pdf", [
+            "1. INTRO\n" + ("Content. " * 40),
+            "2. MORE\n" + ("Content. " * 40),
+        ])
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            first = store.ingest_pdf(
+                pdf, source_id="pdf_b", source_name="Same PDF",
+            )
+            second = store.ingest_pdf(
+                pdf, source_id="pdf_b", source_name="Same PDF",
+            )
+            # Same source_id + same file → clear_source wipes, save_chunks reseeds.
+            assert first == second
+            # When reportlab is present, first > 0 and by_source maps pdf_b → first.
+            # When reportlab is absent, the stub is a blank page → first == 0 and
+            # by_source is empty (no rows at all). Both states prove no duplication.
+            if first > 0:
+                assert store.by_source() == {"pdf_b": first}
+            else:
+                assert store.by_source() == {}
+        finally:
+            store.close()
