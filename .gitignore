@@ -34,3 +34,29 @@ autoservice.local.sh
 
 # Superpowers-style isolated worktrees
 .worktrees/
+
+# Superpowers local session state (brainstorm notes, etc.)
+.superpowers/
+
+# Root-level npm tooling from local dev installs; frontend/ and recording/
+# have their own package.json which MUST stay tracked.
+/node_modules/
+/package.json
+/package-lock.json
+
+# Playwright outputs at repo root
+/test-results/
+
+# E2E evidence — binaries are transient; md reports stay tracked.
+e2e-evidence/**/*.png
+e2e-evidence/**/*.jpg
+e2e-evidence/**/*.jpeg
+e2e-evidence/**/*.mp4
+e2e-evidence/**/*.webm
+e2e-evidence/**/*.mov
+e2e-evidence/**/*.zip
+
+# Video demo binaries — SCRIPT.md / recording-plan.json etc. stay tracked.
+docs/videos/**/*.mp4
+docs/videos/**/*.webm
+docs/videos/**/*.mov
