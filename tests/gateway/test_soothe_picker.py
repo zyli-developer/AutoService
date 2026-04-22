@@ -46,3 +46,18 @@ def test_pick_exact_match_en():
     pick = picker.pick(intent="complaint", lang="en")
     assert pick.template_id == "complaint_en"
     assert pick.text == "So sorry — checking now…"
+
+
+import yaml
+from pathlib import Path
+
+
+def test_load_from_yaml(tmp_path: Path):
+    yaml_path = tmp_path / "soothe.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(_bank()),
+        encoding="utf-8",
+    )
+    picker = SoothePicker.from_yaml(yaml_path, rng=random.Random(0))
+    pick = picker.pick(intent="complaint", lang="zh")
+    assert pick.template_id == "complaint_zh"

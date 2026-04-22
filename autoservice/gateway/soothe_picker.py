@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,17 @@ class SoothePicker:
     no I/O. The bank can be supplied directly (tests) or loaded from YAML
     (production — see Task 2).
     """
+
+    @classmethod
+    def from_yaml(
+        cls,
+        path: Path,
+        rng: random.Random | None = None,
+    ) -> "SoothePicker":
+        """Load template bank from a YAML file."""
+        with path.open("r", encoding="utf-8") as fh:
+            bank = yaml.safe_load(fh)
+        return cls(bank=bank, rng=rng)
 
     def __init__(
         self,
