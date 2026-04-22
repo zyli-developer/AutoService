@@ -203,7 +203,21 @@ class KBStore:
             )
             """
         )
+        # ALTER TABLE migrations for EVERY column that may be absent on legacy DBs.
+        # Two legacy variants to handle:
+        #   * onboarding._init_sandbox_kb (pre-refactor) created only
+        #     (id, content, source_name, section, domain, created_at) — missing 7 cols.
+        #   * kb_ingest.init_db originally had the 9 CREATE TABLE columns above but
+        #     lacked domain/region/language/page_number, which it added later via a
+        #     similar ALTER loop. Reproducing the full set here lets KBStore open
+        #     either legacy file and reach the unified 13-col shape.
+        # On fresh DBs, CREATE TABLE already added all 13, so every ALTER below
+        # raises "duplicate column name" and is silently skipped.
         for col_def in [
+            "source_id TEXT NOT NULL DEFAULT ''",
+            "source_type TEXT NOT NULL DEFAULT ''",
+            "source_url TEXT",
+            "file_path TEXT",
             "domain TEXT DEFAULT ''",
             "region TEXT DEFAULT ''",
             "language TEXT DEFAULT 'en'",
@@ -212,7 +226,7 @@ class KBStore:
             try:
                 c.execute(f"ALTER TABLE kb_chunks ADD COLUMN {col_def}")
             except sqlite3.OperationalError:
-                pass  # already present (old schema or already migrated)
+                pass  # already present (fresh DB from CREATE, or previously migrated)
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_source_id ON kb_chunks(source_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_domain ON kb_chunks(domain)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_region ON kb_chunks(region)")
