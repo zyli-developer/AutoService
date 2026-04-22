@@ -106,12 +106,22 @@ d672ec43  2026-04-22T06:32:52Z  Install tenant tenant_bca09a90   ← smoke test
 
 **个人倾向 B**：`gh repo create --template` 是 GitHub 为"一模板多实例"场景设计的原生机制，语义对齐"租户实例化"；社区/官方都有 `gh repo sync` 作为上游同步的配套能力。但这是**架构决策**，应由产品 + 架构层面共同决定，不由 implementer 单方拍板。
 
+## 5.1 初步决定（2026-04-22）
+
+**采纳方案 B（template repo）作为前进方向。** 不是 final — 待 M2 §3.4 spec 正式 revision 确认。
+
+这个初步结论对当前交付的影响：
+- PR #78（`feat/publish-fork-creator-wiring`）**照常合入** `dev`；`GitHubApiForkCreator` 作为"interim asset"保留
+- 后续不继续加固 `GitHubApiForkCreator`（不加新功能、仅 bug fix）
+- 立独立 tracking issue，设计 `GitHubTemplateCreator`（平行于 `GitHubApiForkCreator`）+ `auto-sync-pr.yml` 的同步逻辑改造
+
 ## 6. 行动项
 
 - [ ] 本文作为 M2 §3.4 的附注，被 spec 引用
-- [ ] 架构层面决定走 A / B / C / D；立 issue 追踪
-- [ ] `GitHubApiForkCreator` 当前实装（feat 分支 `feat/publish-fork-creator-wiring`）**不删**——选项 A 下它是可用资产，选项 C 下它是"fork 路径"的实现
-- [ ] 若选 B：新立 task 设计 `GitHubTemplateCreator`（平行于 `GitHubApiForkCreator`）+ 修 `auto-sync-pr.yml`
+- [x] 架构层面初步决定走 B（2026-04-22，见 §5.1）
+- [x] `GitHubApiForkCreator` 当前实装保留为 interim asset（PR #78）
+- [ ] Spec M2 §3.4 正式 revision 确认 B 方案
+- [ ] 立 tracking issue：`GitHubTemplateCreator` 设计 + `auto-sync-pr.yml` 重写
 
 ## 附录 A · 查询命令
 
