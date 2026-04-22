@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../store/adminStore';
 import { fetchJSON, postJSON } from '../api';
@@ -302,26 +302,13 @@ export function DreamTab() {
         </div>
       )}
 
-      {/* ── Canary Panel (mounts when a pending proposal is selected) ─ */}
-      {/* When an action transitions the proposal out of pending (applied/
-          rejected), `pending.find(...)` returns undefined on the next
-          render and `selectedProposal` becomes null — the panel unmounts
-          naturally. No explicit `setSelectedProposalId(null)` needed. */}
-      {selectedProposal && (
-        <CanaryPanel
-          key={selectedProposal.id}
-          proposal={{
-            id: selectedProposal.id,
-            title: selectedProposal.title,
-            category: selectedProposal.category,
-            status: selectedProposal.status,
-            suggestion: selectedProposal.suggestion,
-          }}
-          onReload={load}
-        />
-      )}
-
       {/* ── Pending Proposals ─────────────────────────────────────── */}
+      {/* CanaryPanel mounts inline as an accordion row directly under the
+          clicked proposal row — keeps the visual tie between selection
+          and panel, no scroll-away on rows at the bottom of the table.
+          When an action transitions the proposal out of pending
+          (applied/rejected), `pending.find(...)` returns undefined on
+          the next render and the expanded row unmounts naturally. */}
       <section data-testid="dream-proposals-section" style={{ marginBottom: 24 }}>
         <div className="cs-ct" style={{ marginBottom: 12 }}>
           {t('admin.dream.proposals.title')}
@@ -354,47 +341,74 @@ export function DreamTab() {
             <tbody>
               {pending.map((p) => {
                 const isSelected = p.id === selectedProposalId;
+                const rowBg = isSelected
+                  ? 'var(--color-accent-subtle, var(--color-bg-surface-tinted))'
+                  : undefined;
                 return (
-                  <tr
-                    key={p.id}
-                    data-testid={`dream-proposal-row-${p.id}`}
-                    onClick={() =>
-                      setSelectedProposalId(isSelected ? null : p.id)
-                    }
-                    style={{
-                      borderBottom: '1px solid var(--color-border-subtle, var(--color-border))',
-                      cursor: 'pointer',
-                      background: isSelected
-                        ? 'var(--color-accent-subtle, var(--color-bg-surface-tinted))'
-                        : undefined,
-                    }}
-                  >
-                    <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                      {formatTs(p.created_at)}
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.category}</code>
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ fontWeight: 500 }}>{p.title}</div>
-                      {p.suggestion && (
-                        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                          {p.suggestion.slice(0, 120)}
-                          {p.suggestion.length > 120 ? '…' : ''}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <span
+                  <Fragment key={p.id}>
+                    <tr
+                      data-testid={`dream-proposal-row-${p.id}`}
+                      onClick={() =>
+                        setSelectedProposalId(isSelected ? null : p.id)
+                      }
+                      style={{
+                        borderBottom: isSelected
+                          ? 'none'
+                          : '1px solid var(--color-border-subtle, var(--color-border))',
+                        cursor: 'pointer',
+                        background: rowBg,
+                      }}
+                    >
+                      <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                        {formatTs(p.created_at)}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.category}</code>
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ fontWeight: 500 }}>{p.title}</div>
+                        {p.suggestion && (
+                          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                            {p.suggestion.slice(0, 120)}
+                            {p.suggestion.length > 120 ? '…' : ''}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span
+                          style={{
+                            color: STATUS_COLOR[p.status] || 'var(--color-text-secondary)',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                    {isSelected && selectedProposal && (
+                      <tr
+                        data-testid={`dream-proposal-expansion-${p.id}`}
                         style={{
-                          color: STATUS_COLOR[p.status] || 'var(--color-text-secondary)',
-                          fontWeight: 500,
+                          background: rowBg,
+                          borderBottom: '1px solid var(--color-border-subtle, var(--color-border))',
                         }}
                       >
-                        {p.status}
-                      </span>
-                    </td>
-                  </tr>
+                        <td colSpan={4} style={{ padding: '0 10px 10px' }}>
+                          <CanaryPanel
+                            key={selectedProposal.id}
+                            proposal={{
+                              id: selectedProposal.id,
+                              title: selectedProposal.title,
+                              category: selectedProposal.category,
+                              status: selectedProposal.status,
+                              suggestion: selectedProposal.suggestion,
+                            }}
+                            onReload={load}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

@@ -139,6 +139,47 @@ describe('DreamTab', () => {
     expect(screen.getByTestId('canary-panel-title')).toHaveTextContent('Increase pool size');
   });
 
+  it('CanaryPanel mounts as an accordion row directly under the clicked row (not above the table)', async () => {
+    primeMocks();
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-row-prop_a')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('dream-proposal-row-prop_a'));
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-expansion-prop_a')).toBeInTheDocument(),
+    );
+    // The expansion row lives inside the same <tbody> as the row it follows —
+    // guards against regression to a "panel floats above the table" layout
+    // that loses the visual tie between selection and panel.
+    const row = screen.getByTestId('dream-proposal-row-prop_a');
+    const expansion = screen.getByTestId('dream-proposal-expansion-prop_a');
+    expect(row.parentElement).toBe(expansion.parentElement);
+    expect(expansion.previousElementSibling).toBe(row);
+    // And CanaryPanel itself is nested inside that expansion row's td.
+    expect(expansion.contains(screen.getByTestId('canary-panel'))).toBe(true);
+  });
+
+  it('clicking the selected row again collapses the CanaryPanel', async () => {
+    primeMocks();
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-row-prop_a')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('dream-proposal-row-prop_a'));
+    await waitFor(() => expect(screen.getByTestId('canary-panel')).toBeInTheDocument());
+    await user.click(screen.getByTestId('dream-proposal-row-prop_a'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('canary-panel')).not.toBeInTheDocument(),
+    );
+  });
+
   it('CanaryPanel Apply is enabled for status=accepted, posts to /api/admin/proposals/{id}/apply', async () => {
     primeMocks();
     const user = userEvent.setup();
