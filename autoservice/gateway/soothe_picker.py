@@ -60,15 +60,21 @@ class SoothePicker:
 
     def pick(self, *, intent: str | None, lang: str | None) -> SoothePick:
         lang_norm = "en" if (lang and lang.lower().startswith("en")) else "zh"
+        # 1. Exact (intent, lang)
         if intent:
             entry = self._index.get((intent, lang_norm))
             if entry:
                 tid, lines = entry
                 return SoothePick(template_id=tid, text=self._rng.choice(lines))
-        # Fallback: language-level defaults. Empty fallback is a bank
-        # authoring bug — Task 4 validation will raise at load time,
-        # but until then return a benign empty-text sentinel rather
-        # than letting random.choice([]) raise IndexError.
+        # 2. Wildcard ("*", lang)
+        wildcard = self._index.get(("*", lang_norm))
+        if wildcard:
+            tid, lines = wildcard
+            return SoothePick(template_id=tid, text=self._rng.choice(lines))
+        # 3. defaults.fallback[lang]. Empty fallback is a bank authoring
+        # bug — Task 4 validation will raise at load time, but until
+        # then return a benign empty-text sentinel rather than letting
+        # random.choice([]) raise IndexError.
         fb_lines = self._fallback_by_lang.get(lang_norm, [])
         text = self._rng.choice(fb_lines) if fb_lines else ""
         return SoothePick(
