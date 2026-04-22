@@ -22,8 +22,12 @@ from autoservice.conversation_engine.types import (
 pytestmark = pytest.mark.slow
 
 
+# The prompt hardcodes "DID" in its <kb_context> block, so the regex must
+# NOT include it — otherwise a reply that merely echoes the prompt would
+# pass without proving the tenant soul or KB MCP tool actually loaded.
+# These remaining terms only appear in the seeded mystore KB / customer soul.
 _KB_KEYWORDS = re.compile(
-    r"(CINNOX|DID|IVR|PSTN|套餐|Essentials|Professional|Enterprise)",
+    r"(CINNOX|IVR|PSTN|套餐|Essentials|Professional|Enterprise)",
     re.IGNORECASE,
 )
 
