@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import random
 
-import pytest
-
 from autoservice.gateway.soothe_picker import SoothePick, SoothePicker
 
 

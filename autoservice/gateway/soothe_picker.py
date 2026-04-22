@@ -51,9 +51,13 @@ class SoothePicker:
             if entry:
                 tid, lines = entry
                 return SoothePick(template_id=tid, text=self._rng.choice(lines))
-        # Fallback: language-level defaults
+        # Fallback: language-level defaults. Empty fallback is a bank
+        # authoring bug — Task 4 validation will raise at load time,
+        # but until then return a benign empty-text sentinel rather
+        # than letting random.choice([]) raise IndexError.
         fb_lines = self._fallback_by_lang.get(lang_norm, [])
+        text = self._rng.choice(fb_lines) if fb_lines else ""
         return SoothePick(
             template_id=f"fallback_{lang_norm}",
-            text=self._rng.choice(fb_lines),
+            text=text,
         )
