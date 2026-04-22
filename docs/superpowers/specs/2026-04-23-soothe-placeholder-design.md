@@ -8,7 +8,7 @@ Replace the generic 1.5s-delayed static placeholder (`"正在为您查询，请�
 
 ## 2. Current state (2026-04-22 baseline)
 
-- Placeholder emission lives in [`autoservice/gateway/message_router.py`](../../../autoservice/gateway/message_router.py) inside `_drain_and_stream(...)`.
+- Placeholder emission lives in [`autoservice/gateway/message_router.py`](../../../autoservice/gateway/message_router.py) inside `_drain_with_placeholder(...)`.
 - `PLACEHOLDER_DELAY_S = 1.5` — race: if first token arrives within 1.5s, no placeholder is sent; otherwise a static bubble is written, later replaced via `message_edited` when the real reply streams in.
 - Static text constants: `_PLACEHOLDER_TEXT_ZH` / `_PLACEHOLDER_TEXT_EN`.
 - Eligibility gate: `PLACEHOLDER_ELIGIBLE_ROLES = frozenset({"customer", "lead"})`. Fast-tier roles (`translate`, `direct`) skip the placeholder entirely — keep this.
@@ -29,7 +29,7 @@ message_router (gateway)
   ↓
 triage_and_route → TriageDecision{role, intent, confidence, detected_language, tier, ...}
   ↓
-_drain_and_stream(..., intent=decision.intent)
+_drain_with_placeholder(..., intent=decision.intent)
   ↓                              (eligible = target_role in {customer, lead})
   ├── soothe_picker.pick(intent, lang)   ← new, <5ms, in-process
   │     ↓ returns SoothePick(template_id, text)
@@ -50,7 +50,7 @@ _drain_and_stream(..., intent=decision.intent)
 
 **Modified (1)**:
 - [`autoservice/gateway/message_router.py`](../../../autoservice/gateway/message_router.py):
-  - `_drain_and_stream(...)` — new `intent: str | None = None` kwarg; swap static text lookup for `soothe_picker.pick()`
+  - `_drain_with_placeholder(...)` — new `intent: str | None = None` kwarg; swap static text lookup for `soothe_picker.pick()`
   - Call site (~L1430) — pass `intent=decision.intent`
   - Default `PLACEHOLDER_DELAY_S: 1.5 → 0.0`
 
@@ -109,7 +109,7 @@ Log `WARNING` (do not raise) when:
 
 ### 5.3 Runtime safety
 
-Any exception during `pick()` (e.g., unexpected KeyError from a malformed in-memory template map) is caught at the call site in `_drain_and_stream`, logged via `log.exception`, and the code falls back to the existing `_PLACEHOLDER_TEXT_ZH / _PLACEHOLDER_TEXT_EN` constants. The picker does no I/O at pick time — templates are already in memory from `__init__`. **`pick()` must never break the main reply pipeline.**
+Any exception during `pick()` (e.g., unexpected KeyError from a malformed in-memory template map) is caught at the call site in `_drain_with_placeholder`, logged via `log.exception`, and the code falls back to the existing `_PLACEHOLDER_TEXT_ZH / _PLACEHOLDER_TEXT_EN` constants. The picker does no I/O at pick time — templates are already in memory from `__init__`. **`pick()` must never break the main reply pipeline.**
 
 ## 6. Template bank schema
 
@@ -133,32 +133,39 @@ templates:
     intent: complaint
     lang: zh
     lines:
-      - "非常抱歉给您带来困扰，我马上帮您核实情况…"
-      - "理解您的着急，我这就查一下具体原因…"
-      - "很抱歉让您不愉快，容我先看一下订单状态…"
+      - "非常抱歉给您带来困扰，我这就核实…"
+      - "理解您的着急，我马上查原因…"
+      - "很抱歉让您不愉快，先看一下状态…"
 
   - id: complaint_en
     intent: complaint
     lang: en
     lines:
-      - "I'm sorry to hear that — let me check what happened right away…"
-      - "That's frustrating, I understand. Looking into it now…"
+      - "So sorry — let me check that right away…"
+      - "That's frustrating, looking into it now…"
 
-  - id: technical_inquiry_zh
-    intent: technical_inquiry
+  - id: product_inquiry_zh
+    intent: product_inquiry
     lang: zh
     lines:
-      - "这个我帮您细看一下规格要求…"
-      - "好问题，我先确认一下具体参数…"
+      - "好的，我帮您看看具体功能…"
+      - "这个我先确认一下细节…"
 
-  # … (one block per intent × lang)
+  - id: purchase_intent_zh
+    intent: purchase_intent
+    lang: zh
+    lines:
+      - "好的，我帮您整理一下方案…"
+      - "了解您的需求，正在查…"
+
+  # one block per (intent × lang); see plan for full roster
 ```
 
 ### 6.1 Dimensions
 
 | Dimension | Source of values | Count |
 |---|---|---|
-| `intent` | intents defined in `classify_intent.yaml` + `"*"` wildcard | ~7 (complaint / technical_inquiry / pricing / after_sales / delivery_inquiry / promotion / multi_turn — subject to final classify_intent.yaml roster) |
+| `intent` | intents defined in `classify_intent.yaml` + `"*"` wildcard | 4 intents reach eligible roles: `product_inquiry` / `complaint` (customer+slow), `purchase_intent` (lead+slow), `general_question` (customer+fast). `language_barrier` routes to translate (not eligible); `greeting/thanks/bye` route to direct (not eligible) |
 | `lang` | `zh` / `en` | 2 |
 | `lines` per entry | 3-5 rotated via `rng.choice` | — |
 
@@ -181,10 +188,10 @@ Template line constraints:
 
 ## 7. Backend integration diff
 
-### 7.1 `_drain_and_stream` signature
+### 7.1 `_drain_with_placeholder` signature
 
 ```python
-async def _drain_and_stream(
+async def _drain_with_placeholder(
     ...,
     detected_language: str | None = None,
     eligible: bool = True,
@@ -193,7 +200,7 @@ async def _drain_and_stream(
 ) -> tuple[str, Any | None]:
 ```
 
-### 7.2 Text-source swap (inside `_drain_and_stream`)
+### 7.2 Text-source swap (inside `_drain_with_placeholder`)
 
 ```python
 # Before
@@ -227,7 +234,7 @@ target_role = decision.role
 detected_language = decision.detected_language
 intent = decision.intent                      # NEW (local capture)
 ...
-reply_text, placeholder_msg = await _drain_and_stream(
+reply_text, placeholder_msg = await _drain_with_placeholder(
     ...,
     detected_language=detected_language,
     eligible=(target_role in PLACEHOLDER_ELIGIBLE_ROLES),
@@ -305,7 +312,7 @@ Rationale parallels the project's existing env-flag conventions (`DREAM_DEV_STUB
 | Unit | `tests/unit/test_soothe_picker.py` (new) | exact match / fallback to wildcard / fallback to defaults / unknown intent / unknown lang / empty `lines` rejection / fixed-seed determinism |
 | Contract | `tests/contract/test_soothe_templates.py` (new) | `defaults.fallback.{zh,en}` exist and non-empty; every `templates[].intent` exists in `classify_intent.yaml` (warn-not-fail at runtime, fail in test); no line exceeds 30 chars; language is `zh` or `en` |
 | Integration | `tests/integration/test_message_router_placeholder.py` (new or extend) | triage returns `intent=complaint, lang=zh` → placeholder text is one of the 3 complaint_zh lines; triage returns `intent=unknown` → falls to `*_zh` or `fallback_zh`; flag off → static text path |
-| Regression | existing `_drain_and_stream` coverage | `message_edited` still fires; `placeholder_msg` cleanup on empty reply unchanged |
+| Regression | existing `_drain_with_placeholder` coverage | `message_edited` still fires; `placeholder_msg` cleanup on empty reply unchanged |
 
 ### 12.1 Performance budget (guidance, not hard test)
 
