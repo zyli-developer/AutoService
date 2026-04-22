@@ -25,6 +25,10 @@ export function useWebSocket(url: string, clientApp: string) {
 
       onOpen: (hello: ServerHelloPayload) => {
         useChatStore.getState().setSessionId(hello.session_id);
+        // Tenant brand arrives on the handshake for the customer role only;
+        // undefined means "tenant has no brand configured" → widget uses
+        // i18n fallback (see ChatModal / MessageBubble).
+        useChatStore.getState().setBrandName(hello.brand_name ?? null);
         useChatStore.getState().setConnectionStatus('open');
         if (wasReconnectRef.current) {
           useChatStore.getState().setReplaying(true);

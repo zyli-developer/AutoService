@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { MarkdownText } from '@autoservice/ui-components';
 import { useTranslation } from '@autoservice/i18n';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
@@ -22,6 +23,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   const { t } = useTranslation();
   const [imgError, setImgError] = useState(false);
   const role = resolveRole(message);
+  const brandName = useChatStore((s) => s.brandName);
   const attachmentUrl = message.metadata?.attachment_url as string | undefined;
   const isImage = !!attachmentUrl && !imgError;
 
@@ -49,8 +51,18 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     );
   }
 
-  const avatarLabel = t(`customer.chat.avatar.${role === 'customer' ? 'me' : role === 'operator' ? 'operator' : 'agent'}`);
-  const name = t(`customer.chat.sender.${role === 'customer' ? 'me' : role === 'operator' ? 'operator' : 'agent'}`);
+  // Agent (AI) bubble: when the tenant has a configured brand, substitute
+  // it into the sender label + avatar so the widget reads as the
+  // merchant's brand rather than a hardcoded placeholder.  Customer and
+  // operator roles keep their fixed i18n strings.
+  const avatarLabel = role === 'agent' && brandName
+    ? Array.from(brandName)[0] ?? t('customer.chat.avatar.agent')
+    : t(`customer.chat.avatar.${role === 'customer' ? 'me' : role === 'operator' ? 'operator' : 'agent'}`);
+  const name = role === 'agent'
+    ? (brandName
+        ? t('customer.chat.sender.agent', { brand: brandName })
+        : t('customer.chat.sender.agent_generic'))
+    : t(`customer.chat.sender.${role === 'customer' ? 'me' : 'operator'}`);
   const tag = role === 'operator' ? t('customer.chat.tag.operator') : role === 'agent' ? t('customer.chat.tag.agent') : null;
   const tagKind = role === 'operator' ? 'op' : role === 'agent' ? 'ai' : '';
 
@@ -80,7 +92,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
               {t('image.error')}
             </div>
           ) : (
-            <span>{message.content}</span>
+            <MarkdownText>{message.content}</MarkdownText>
           )}
           {message.status === 'sending' && (
             <span data-testid="sending-indicator" style={{ fontSize: 10, opacity: 0.6 }}> ...</span>

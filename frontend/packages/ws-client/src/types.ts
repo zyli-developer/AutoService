@@ -88,6 +88,13 @@ export interface ServerHelloPayload {
   viewer_role: ViewerRole;
   accepted_subscriptions: string[];
   server_capabilities: string[];
+  /**
+   * Tenant-scoped brand name surfaced for the customer widget so it can
+   * render tenant-specific branding without a separate HTTP fetch.
+   * Absent when the tenant has no brand configured — the widget falls
+   * back to its i18n default.  Only emitted for `viewer_role: "customer"`.
+   */
+  brand_name?: string;
 }
 
 /** T0.2 §6 error payload */

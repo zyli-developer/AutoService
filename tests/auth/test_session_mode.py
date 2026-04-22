@@ -89,6 +89,14 @@ def _write_plugin_config(tmp_path: Path, tid: str, cfg: dict) -> Path:
     return p
 
 
+def _write_sandbox_config(tmp_path: Path, tid: str, cfg: dict) -> Path:
+    sandbox = tmp_path / ".autoservice" / "sandbox" / tid
+    sandbox.mkdir(parents=True, exist_ok=True)
+    p = sandbox / "config.json"
+    p.write_text(json.dumps(cfg), encoding="utf-8")
+    return p
+
+
 # ── Tests ─────────────────────────────────────────────────────────────────
 
 
@@ -172,3 +180,57 @@ def test_session_mode_brand_name_from_tenant_config(app_client, clean_cwd):
     # authenticated.
     assert body["authenticated"] is False
     assert body["tier"] is None
+
+
+def test_session_mode_brand_name_falls_back_to_sandbox(app_client, clean_cwd):
+    """Tenant mode with no plugins/ config → sandbox brand_name is used.
+
+    Covers the wizard-authored-but-not-L3-published state (cinnox today):
+    sandbox/<tid>/config.json is the canonical brand source until publish
+    copies it into plugins/<tid>/.
+    """
+    _write_sandbox_config(
+        clean_cwd, "acme", {"tenant_id": "acme", "brand_name": "Acme Sandbox"},
+    )
+    _write_local_config(
+        clean_cwd, "deployment_mode: tenant\ntenant_id: acme\n",
+    )
+
+    r = app_client.get("/api/session/mode")
+    assert r.status_code == 200
+    assert r.json()["brand_name"] == "Acme Sandbox"
+
+
+def test_session_mode_brand_name_plugins_precedes_sandbox(app_client, clean_cwd):
+    """When both plugins/ and sandbox/ exist, plugins/ (published) wins."""
+    _write_plugin_config(
+        clean_cwd, "acme", {"tenant_id": "acme", "brand_name": "Published Brand"},
+    )
+    _write_sandbox_config(
+        clean_cwd, "acme", {"tenant_id": "acme", "brand_name": "Draft Brand"},
+    )
+    _write_local_config(
+        clean_cwd, "deployment_mode: tenant\ntenant_id: acme\n",
+    )
+
+    r = app_client.get("/api/session/mode")
+    assert r.status_code == 200
+    assert r.json()["brand_name"] == "Published Brand"
+
+
+def test_resolve_brand_name_for_tenant_unknown_falls_back(clean_cwd):
+    """Unknown tenant → platform default, never raises."""
+    from autoservice.api_routes import (
+        _resolve_brand_name_for_tenant,
+        _try_resolve_brand_name,
+    )
+
+    # With-default helper always returns a string.
+    assert _resolve_brand_name_for_tenant("never_existed") == "AutoService"
+    assert _resolve_brand_name_for_tenant(None) == "AutoService"
+    assert _resolve_brand_name_for_tenant("") == "AutoService"
+    # Nullable helper returns None so the WS handshake can omit the key
+    # (avoids surfacing "AutoService" as if it were a tenant brand).
+    assert _try_resolve_brand_name("never_existed") is None
+    assert _try_resolve_brand_name(None) is None
+    assert _try_resolve_brand_name("") is None

@@ -623,10 +623,33 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
     if viewer_role == "customer":
         ws.state_customer_tenant_id = validated_customer_tenant_id
 
+    # Resolve brand_name for customer role so the widget can show
+    # tenant-scoped branding without a separate HTTP fetch.  We emit only
+    # when a brand is actually configured — an unset tenant yields None
+    # and the widget falls back to its own i18n default (rather than
+    # surfacing "AutoService" as if it were the merchant's brand).
+    hello_brand_name: str | None = None
+    if viewer_role == "customer" and validated_customer_tenant_id:
+        from autoservice.api_routes import _try_resolve_brand_name
+        try:
+            hello_brand_name = _try_resolve_brand_name(
+                validated_customer_tenant_id,
+            )
+        except Exception:
+            logger.warning(
+                "brand_name resolution failed for customer tenant %s",
+                validated_customer_tenant_id,
+                exc_info=True,
+            )
+
     await ws.send_json(
         build_frame(
             "server_hello",
-            build_server_hello(viewer_role=viewer_role, session_id=session_id),
+            build_server_hello(
+                viewer_role=viewer_role,
+                session_id=session_id,
+                brand_name=hello_brand_name,
+            ),
             ref=env.id,
         )
     )

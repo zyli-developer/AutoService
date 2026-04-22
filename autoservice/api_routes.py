@@ -216,28 +216,74 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 _PLATFORM_BRAND_NAME = "AutoService"
 
 
+def _read_brand_from_config(cfg_path: Path) -> str | None:
+    """Read ``brand_name`` from a config.json; ``None`` if absent/invalid.
+
+    I/O and parse errors are logged and swallowed — brand resolution must
+    never 500.
+    """
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("brand_name lookup failed for %s: %s", cfg_path, exc)
+        return None
+    brand = cfg.get("brand_name")
+    if isinstance(brand, str) and brand.strip():
+        return brand.strip()
+    return None
+
+
+def _try_resolve_brand_name(tenant_id: str | None) -> str | None:
+    """Return the tenant-configured brand_name, or ``None`` if unset.
+
+    Never falls back to the platform default — callers who want that
+    must wrap the result themselves.  The customer-chat WS handshake
+    relies on the ``None`` signal so it can defer to the widget's i18n
+    fallback (avoids rendering ``"AutoService 客服"`` as a fake brand).
+
+    Lookup order:
+      1. ``plugins/<tid>/config.json["brand_name"]`` — L3 deploy snapshot.
+      2. ``.autoservice/sandbox/<tid>/config.json["brand_name"]`` —
+         wizard-authored sandbox state (not yet published).
+
+    Both paths are CWD-relative so they stay aligned under tests that
+    ``chdir`` into a tmp dir.  At runtime the server is started from the
+    project root, matching :data:`autoservice.onboarding.SANDBOX_ROOT`.
+    """
+    if not tenant_id:
+        return None
+    brand = _read_brand_from_config(Path("plugins") / tenant_id / "config.json")
+    if brand:
+        return brand
+    return _read_brand_from_config(
+        Path(".autoservice") / "sandbox" / tenant_id / "config.json"
+    )
+
+
+def _resolve_brand_name_for_tenant(tenant_id: str | None) -> str:
+    """Tenant-scoped brand_name with platform-default fallback.
+
+    Used by the admin top-bar (``/api/session/mode``) where a non-empty
+    string is always required.  See :func:`_try_resolve_brand_name` for
+    the nullable variant used by the customer WS handshake.
+    """
+    return _try_resolve_brand_name(tenant_id) or _PLATFORM_BRAND_NAME
+
+
 def _resolve_brand_name(mode: str, self_tid: str | None) -> str:
     """Resolve the brand_name shown in the top bar (spec §4.5).
 
     Lookup order:
-      1. Tenant-mode fork: ``plugins/<self_tid>/config.json["brand_name"]``
-         when present; otherwise fall back to the platform default.
+      1. Tenant-mode fork: delegate to :func:`_resolve_brand_name_for_tenant`
+         (plugins → sandbox → platform default).
       2. Master mode: always the platform default ("AutoService").  Tenant
          admins visiting the master host will see their brand surfaced by
          the session-level tenant lookup in a later milestone (M3 scope).
     """
     if mode == "tenant" and self_tid:
-        cfg_path = Path("plugins") / self_tid / "config.json"
-        if cfg_path.exists():
-            try:
-                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-                brand = cfg.get("brand_name")
-                if isinstance(brand, str) and brand.strip():
-                    return brand.strip()
-            except (OSError, json.JSONDecodeError) as exc:
-                logger.warning(
-                    "brand_name lookup failed for tenant %s: %s", self_tid, exc,
-                )
+        return _resolve_brand_name_for_tenant(self_tid)
     return _PLATFORM_BRAND_NAME
 
 
