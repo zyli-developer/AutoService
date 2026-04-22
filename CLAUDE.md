@@ -11,8 +11,12 @@ AutoService is a three-layer fork-based framework for building AI-powered social
 - **L3 `plugins/<tenant>/`** — Tenant instance: customer-specific plugins and data
 
 **Two channels:**
-- **Feishu IM** (primary) — MCP-based, runs as `channels/feishu/channel.py`
-- **Web chat** (secondary) — FastAPI app at `channels/web/app:app`
+- **Web chat** — FastAPI app at `channels/web/app:app`. **Canonical
+  customer message path** for M2/M3+ (triage, multi-role, tenant sandbox,
+  KB pre-fetch all live here).
+- **Feishu IM** — MCP-based, runs as `channels/feishu/channel.py`. M1
+  legacy entry; **not kept in sync** with M2/M3 features. See "Channel
+  feature parity" below before touching it.
 
 ## Glossary
 
@@ -90,6 +94,28 @@ from autoservice import generate_id, load_config  # re-exported from socialware
 > (CRM integration, business_mode, admin commands). When a second L2 application needs channel
 > adapters, the generic parts (~40% of code: WebSocket routing, pub/sub bridge, message dispatch)
 > should be extracted to `socialware/` as an L1 channel framework. See analysis below.
+
+### Channel feature parity (as of M3)
+
+The web channel is the canonical customer message path. Feishu was the M1
+primary channel and has not been kept in sync with M2/M3 features. New
+customer-flow work should land in `channels/web` (or `autoservice/gateway/`
+which it delegates to). Touching Feishu only makes sense if it returns to
+the active product roadmap.
+
+| Feature                                          | Web (`channels/web` + `autoservice/gateway/`) | Feishu (`channels/feishu`) |
+|--------------------------------------------------|-----------------------------------------------|----------------------------|
+| `ModelRouter` / `triage_and_route` dispatch       | ✅ `gateway/message_router.py`                 | ❌ direct `session_query` |
+| Multi-role sub-pools (lead / translate / triage) | ✅ via `cc_pool.acquire(role=…)`                | ❌ customer sticky only   |
+| Per-tenant sticky binding (`tenant_id`)           | ✅ via `session_query(tenant_id=…)`            | ❌ no tenant injection     |
+| KB pre-fetch (`_build_customer_prompt`)           | ✅                                             | ❌                          |
+| Cross-role history reseed                         | ✅ `_build_reseeded_prompt`                    | ❌                          |
+| Per-role model tier (fast/slow/dream)             | ✅ flows through cc_pool                       | ⚠️ only customer pool's `slow_model` is reachable |
+
+The Feishu channel still works for single-tenant customer chat with M1
+semantics. If/when Feishu re-enters scope, the alignment work is roughly
+"port the call site at `channels/feishu/channel_server.py:432` and `:1361`
+to the same triage + tenant flow as `gateway/message_router.py`".
 
 ### channels/ L1 extraction roadmap (deferred)
 

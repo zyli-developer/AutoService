@@ -759,6 +759,196 @@ def _message_frame(msg: Any, *, event_type: str = "message") -> dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Placeholder-then-stream (strategy 1 + 3 — design discussion 2026-04-22)
+# ---------------------------------------------------------------------------
+
+#: Roles eligible to trigger a placeholder bubble. fast-tier roles
+#: (triage/translate) run haiku and return sub-second, so emitting a
+#: "正在为您查询..." bubble would be noise. Sticky customer + lead roles
+#: run sonnet and routinely wait 5–15 s — those are the ones worth
+#: masking with an instant placeholder.
+PLACEHOLDER_ELIGIBLE_ROLES: frozenset[str] = frozenset({"customer", "lead"})
+
+#: Time window (seconds) we allow the model to produce its first token
+#: before we decide to show a placeholder. Anything faster than this and
+#: the customer never sees a placeholder at all — the final reply is sent
+#: as a normal `message` frame.
+PLACEHOLDER_DELAY_S: float = 1.5
+
+_PLACEHOLDER_TEXT_ZH = "正在为您查询，请稍候..."
+_PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."
+
+
+def _placeholder_text(detected_language: str | None) -> str:
+    """Localize the placeholder bubble.
+
+    Falls back to Chinese when language is unknown — most production
+    tenants serve Chinese by default, and a mismatched fallback is
+    cosmetically preferable to mixing languages mid-conversation.
+    """
+    if detected_language and detected_language.lower().startswith("en"):
+        return _PLACEHOLDER_TEXT_EN
+    return _PLACEHOLDER_TEXT_ZH
+
+
+async def _drain_with_placeholder(
+    iterator: Any,
+    *,
+    engine: ConversationEngine,
+    conv_id: str,
+    target_role: str,
+    ws: "WebSocket",
+    detected_language: str | None = None,
+    eligible: bool = True,
+    delay_s: float = PLACEHOLDER_DELAY_S,
+) -> tuple[str, Any | None]:
+    """Drain the CC SDK stream and — if eligible and slow — emit a
+    placeholder bubble that the caller can later replace via
+    ``engine.edit_message``.
+
+    Behavior contract (test-pinned):
+
+    * **Eligibility gate (strategy 1)** — ``eligible=False`` fully
+      disables the placeholder path; no timer is scheduled and no engine
+      write occurs. Used for fast-tier roles (translate/triage) where
+      the full reply is already sub-second.
+
+    * **Timer gate (strategy 3)** — when eligible, a timer runs in
+      parallel with the stream drain. If ``delay_s`` elapses before any
+      assistant token, a placeholder message is persisted
+      (``metadata={"is_placeholder": True}``) and pushed via
+      ``ws.send_json`` + squad broadcast. If the first token arrives
+      first, the timer cancels silently.
+
+    * **Failure isolation** — engine/ws exceptions during placeholder
+      send are logged and swallowed; the stream drain continues and
+      returns ``placeholder_msg=None`` so the caller falls back to the
+      normal "send final reply as a fresh message" path.
+
+    * **Cleanup** — the timer task is always awaited before return, so
+      no dangling placeholder sends can race with the reply edit.
+
+    Returns ``(reply_text, placeholder_msg)``. ``placeholder_msg`` is
+    ``None`` whenever no placeholder was persisted — the caller uses
+    this to decide between ``edit_message`` + ``message_edited`` frame
+    vs. ``send_message`` + ``message`` frame.
+    """
+    # Imported lazily so the gateway module stays import-cheap for tests
+    # that don't exercise the CC stream.
+    from claude_agent_sdk.types import AssistantMessage, ResultMessage
+
+    reply_text = ""
+    first_token_seen = asyncio.Event()
+    placeholder_msg: Any = None
+
+    async def _placeholder_worker() -> None:
+        nonlocal placeholder_msg
+        try:
+            await asyncio.wait_for(first_token_seen.wait(), timeout=delay_s)
+            return  # token beat the timer; nothing to do
+        except asyncio.TimeoutError:
+            pass
+        # Re-check after the wait — the event may have fired between the
+        # timeout and this line (tight race on fast machines).
+        if first_token_seen.is_set():
+            return
+        try:
+            msg = await engine.send_message(
+                conv_id,
+                source="agent",
+                content=_placeholder_text(detected_language),
+                metadata={"is_placeholder": True},
+            )
+        except Exception:
+            logger.exception("Placeholder send failed conv=%s", conv_id)
+            return
+        placeholder_msg = msg
+        frame = _message_frame(msg)
+        try:
+            await ws.send_json(frame)
+        except Exception:
+            logger.warning("Placeholder ws push failed conv=%s", conv_id)
+        try:
+            await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+        except Exception:
+            logger.debug("Placeholder squad broadcast failed conv=%s", conv_id)
+
+    placeholder_task: asyncio.Task | None = None
+    if eligible and target_role in PLACEHOLDER_ELIGIBLE_ROLES:
+        placeholder_task = asyncio.create_task(
+            _placeholder_worker(), name=f"placeholder-{conv_id}",
+        )
+
+    try:
+        async for item in iterator:
+            if not first_token_seen.is_set():
+                if isinstance(item, AssistantMessage) and item.content:
+                    first_token_seen.set()
+                elif isinstance(item, ResultMessage) and item.result:
+                    first_token_seen.set()
+            if isinstance(item, AssistantMessage) and item.content:
+                for block in item.content:
+                    if hasattr(block, "text"):
+                        reply_text += block.text
+            elif isinstance(item, ResultMessage) and item.result:
+                reply_text = item.result
+    finally:
+        # Wake the timer so it exits cleanly even if the stream ended
+        # without any token (e.g. upstream exception).
+        first_token_seen.set()
+        if placeholder_task is not None:
+            try:
+                await placeholder_task
+            except Exception:
+                logger.exception(
+                    "Placeholder worker raised for conv=%s", conv_id,
+                )
+
+    return reply_text, placeholder_msg
+
+
+async def _cleanup_stranded_placeholder(
+    engine: ConversationEngine,
+    ws: "WebSocket",
+    conv_id: str,
+    placeholder_msg: Any | None,
+    *,
+    reason: str,
+    edited_by: str,
+) -> None:
+    """Replace a placeholder bubble when the agent reply won't arrive.
+
+    Without this, the frontend leaves ``isStreaming=true`` forever on the
+    customer's screen — the "正在查询..." dots animate indefinitely. Used
+    when the CC SDK returns empty or when operator takeover races the
+    reply. All errors are swallowed: cleanup is best-effort and must not
+    mask the upstream reason we're returning.
+    """
+    if placeholder_msg is None:
+        return
+    try:
+        edited = await engine.edit_message(
+            conv_id, placeholder_msg.id,
+            new_content=reason, edited_by=edited_by,
+        )
+    except Exception:
+        logger.exception(
+            "Placeholder cleanup edit failed conv=%s msg=%s",
+            conv_id, getattr(placeholder_msg, "id", "?"),
+        )
+        return
+    frame = _message_frame(edited, event_type="message_edited")
+    try:
+        await ws.send_json(frame)
+    except Exception:
+        logger.debug("Placeholder cleanup push failed conv=%s", conv_id)
+    try:
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+    except Exception:
+        logger.debug("Placeholder cleanup broadcast failed conv=%s", conv_id)
+
+
 async def _broadcast_to_squad(
     frame: dict[str, Any],
     conv_id: str,
@@ -1078,6 +1268,7 @@ async def _generate_agent_reply(
 
         target_role = "customer"
         previous_role = None
+        detected_language: str | None = None
         if triage_enabled:
             try:
                 decision = await triage_and_route(
@@ -1086,6 +1277,7 @@ async def _generate_agent_reply(
                 )
                 target_role = decision.role
                 previous_role = decision.previous_role
+                detected_language = decision.detected_language
             except Exception:
                 logger.exception("triage_and_route failed; falling back to customer")
 
@@ -1125,8 +1317,13 @@ async def _generate_agent_reply(
                 )
             prompt = "\n".join(prompt_parts)
 
-        # Collect response
+        # Collect response. Placeholder-then-stream (strategy 1 + 3, design
+        # 2026-04-22): eligible roles get a "正在查询..." bubble if the model
+        # hasn't emitted a token within PLACEHOLDER_DELAY_S; fast-tier roles
+        # (translate) skip the timer entirely.
         reply_text = ""
+        placeholder_msg: Any = None
+        placeholder_eligible = target_role in PLACEHOLDER_ELIGIBLE_ROLES
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
         async def _role_stream():
@@ -1179,15 +1376,12 @@ async def _generate_agent_reply(
         )
 
         try:
-            async for msg in iterator:
-                cls = type(msg).__name__
-                logger.debug("Agent reply: stream msg type=%s", cls)
-                if isinstance(msg, AssistantMessage) and msg.content:
-                    for block in msg.content:
-                        if hasattr(block, "text"):
-                            reply_text += block.text
-                elif isinstance(msg, ResultMessage) and msg.result:
-                    reply_text = msg.result
+            reply_text, placeholder_msg = await _drain_with_placeholder(
+                iterator,
+                engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
+                detected_language=detected_language,
+                eligible=placeholder_eligible,
+            )
         except StickyTenantMismatch as exc:
             logger.warning("Sticky tenant mismatch conv=%s: %s", conv_id, exc)
             try:
@@ -1206,6 +1400,11 @@ async def _generate_agent_reply(
 
         if not reply_text.strip():
             logger.warning("Agent reply: empty response from CC SDK")
+            await _cleanup_stranded_placeholder(
+                engine, ws, conv_id, placeholder_msg,
+                reason="(抱歉,本次未生成有效回复)",
+                edited_by="system:empty_reply",
+            )
             return
 
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
@@ -1221,12 +1420,29 @@ async def _generate_agent_reply(
             current_mode = None
         if current_mode == ConversationMode.TAKEOVER:
             logger.info("Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id)
+            await _cleanup_stranded_placeholder(
+                engine, ws, conv_id, placeholder_msg,
+                reason="(客服已接管对话)",
+                edited_by="system:takeover",
+            )
             return
 
-        # Store agent reply in engine (PUBLIC visibility for customer)
-        agent_msg = await engine.send_message(
-            conv_id, source="agent", content=reply_text.strip(),
-        )
+        # Store + push agent reply. Two paths:
+        #   1. Placeholder was sent → edit it in place (emits message_edited
+        #      frame; frontend clears isStreaming via chatStore.updateMessage).
+        #   2. No placeholder → normal send_message + "message" frame.
+        if placeholder_msg is not None:
+            agent_msg = await engine.edit_message(
+                conv_id, placeholder_msg.id,
+                new_content=reply_text.strip(),
+                edited_by=f"agent:{target_role}",
+            )
+            frame = _message_frame(agent_msg, event_type="message_edited")
+        else:
+            agent_msg = await engine.send_message(
+                conv_id, source="agent", content=reply_text.strip(),
+            )
+            frame = _message_frame(agent_msg)
 
         # Record SLA first_reply_ms (T6D.1)
         try:
@@ -1243,9 +1459,9 @@ async def _generate_agent_reply(
             logger.warning("Failed to record first_reply SLA for conv=%s", conv_id)
 
         # Push to customer via WebSocket
-        frame = _message_frame(agent_msg)
         await ws.send_json(frame)
-        logger.info("Agent reply pushed: conv=%s len=%d", conv_id, len(reply_text))
+        logger.info("Agent reply pushed: conv=%s len=%d placeholder=%s",
+                    conv_id, len(reply_text), placeholder_msg is not None)
 
         # Broadcast to operator connections subscribed to this squad (T6A.2)
         await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
