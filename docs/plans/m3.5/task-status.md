@@ -24,7 +24,7 @@
 |-------|------|-------|-------|------|
 | batch-0 | D5 Dream LLM real-wire (T5S.14, yellow) | **done** | 2026-04-22 | ✅ 201 mock green + live LLM PASSED 30s via local SDK + reviewer APPROVED |
 | batch-1 | D2 Canary panel + 3-button Apply (T5S.12, yellow) | **done** | 2026-04-22 | ✅ 32/32 vitest (22 canary-panel + 10 DreamTab) + reviewer APPROVED-WITH-FIXUP (2 rounds) |
-| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | **staged — awaiting user GO for tag+push+PR** | 2026-04-22 | ✅ 201/201 Dream pytest + 32/32 Dream vitest + 1872/1886 broad regression (14 failures triaged as pre-existing/env) · ⏳ manual walkthrough + tag push need user confirmation |
+| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | **done** | 2026-04-22 | ✅ smoke GO · ✅ user-attested manual walkthrough · ✅ tag `v1.2.1-dream` (cbfacf3 → e6db57b) pushed to origin · PR opening deferred to user |
 
 ## Active tasks (Dream cut)
 
@@ -32,7 +32,7 @@
 |---|----|-------|------|-------|------|-------|-------------|--------|--------|
 | 1 | T5S.14 | D5 | Dream LLM real-wire (T3B.5 + T4S.4b) | batch-0 | 🟡 | **done** | orchestrator (opus) | ✅ APPROVED (code-reviewer subagent, 13/13) | `m3.5 batch-0` |
 | 2 | T5S.12 | D2/U4 | Canary panel w/ 3-button Apply + Advance/Rollback | batch-1 | 🟡 | **done** | orchestrator (opus, autopilot-all) | ✅ APPROVED-WITH-FIXUP (code-reviewer ×2 — round 1 caught chat-vs-chat-legacy routing bug, round 2 all 8 CON-04 items PASS) | `m3.5 batch-1` |
-| 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | **staged** | orchestrator (opus, autopilot-all) | n/a (Green) | smoke report `m3.5/smoke-report.md` |
+| 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | **done** | orchestrator (opus, autopilot-all) | n/a (Green) | tag `v1.2.1-dream` @ e6db57b |
 
 ## Deferred — Phase 2 mini-sprint (artifacts kept, not executed this cut)
 
@@ -72,6 +72,11 @@ Landed in M3 batch-10.5 (commit `2e50ac1`):
 
 (most recent at top — updated at every batch boundary)
 
+- 2026-04-22 — **batch-2 done · M3.5 Dream-first cut shipped**. Tag `v1.2.1-dream`
+  (annotated, sha cbfacf3) attached to commit e6db57b and pushed to `origin`. User
+  attested both manual walkthroughs (D5 cinnox/master production trigger + D2 canary
+  panel UX). PR `dev-a → dev` deferred to user (will be opened separately, body
+  templated in `batch-2-kickoff.md` step 5).
 - 2026-04-22 — **batch-2 staged (smoke GO; awaiting user authorization for tag + push + PR)**.
   - Dream-scope pytest: 201 passed, 1 deselected (live, opt-in) — `tests/dream_agent`,
     `tests/dream_runs`, `tests/dream`, `tests/api/test_dream_api.py`, `tests/cc_pool`,
