@@ -89,11 +89,12 @@ class SoothePicker:
         cls,
         path: Path,
         rng: random.Random | None = None,
+        known_intents: set[str] | None = None,
     ) -> "SoothePicker":
         """Load template bank from a YAML file."""
         with path.open("r", encoding="utf-8") as fh:
             bank = yaml.safe_load(fh)
-        return cls(bank=bank, rng=rng)
+        return cls(bank=bank, rng=rng, known_intents=known_intents)
 
     def pick(self, *, intent: str | None, lang: str | None) -> SoothePick:
         lang_norm = "en" if (lang and lang.lower().startswith("en")) else "zh"
@@ -117,3 +118,37 @@ class SoothePicker:
             template_id=f"fallback_{lang_norm}",
             text=text,
         )
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_TEMPLATES_PATH: Path = _PROJECT_ROOT / "autoservice" / "soothe_templates.yaml"
+
+_singleton: SoothePicker | None = None
+
+
+def _load_known_intents() -> set[str]:
+    """Read intent names from classify_intent.yaml for load-time validation."""
+    path = _PROJECT_ROOT / "autoservice" / "classify_intent.yaml"
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        return set((data.get("intents") or {}).keys())
+    except OSError:
+        log.warning("classify_intent.yaml not readable at %s", path)
+        return set()
+
+
+def get_picker() -> SoothePicker:
+    """Return the process-level singleton picker.
+
+    First call loads ``soothe_templates.yaml``; subsequent calls reuse
+    the same instance. Use ``monkeypatch.setattr(..., _singleton, None)``
+    in tests to force a fresh load.
+    """
+    global _singleton
+    if _singleton is None:
+        _singleton = SoothePicker.from_yaml(
+            _DEFAULT_TEMPLATES_PATH,
+            known_intents=_load_known_intents(),
+        )
+    return _singleton

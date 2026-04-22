@@ -179,3 +179,31 @@ def test_duplicate_intent_lang_warns(caplog):
         "duplicate" in rec.message.lower() and "complaint" in rec.message.lower()
         for rec in caplog.records
     )
+
+
+def test_get_picker_returns_singleton(monkeypatch, tmp_path):
+    from autoservice.gateway import soothe_picker as sp
+
+    yaml_path = tmp_path / "soothe.yaml"
+    yaml_path.write_text(yaml.safe_dump(_bank()), encoding="utf-8")
+
+    monkeypatch.setattr(sp, "_DEFAULT_TEMPLATES_PATH", yaml_path)
+    monkeypatch.setattr(sp, "_singleton", None)  # reset cache
+
+    a = sp.get_picker()
+    b = sp.get_picker()
+    assert a is b
+
+
+def test_get_picker_loads_default_yaml(monkeypatch, tmp_path):
+    from autoservice.gateway import soothe_picker as sp
+
+    yaml_path = tmp_path / "soothe.yaml"
+    yaml_path.write_text(yaml.safe_dump(_bank()), encoding="utf-8")
+
+    monkeypatch.setattr(sp, "_DEFAULT_TEMPLATES_PATH", yaml_path)
+    monkeypatch.setattr(sp, "_singleton", None)
+
+    picker = sp.get_picker()
+    pick = picker.pick(intent="complaint", lang="zh")
+    assert pick.template_id == "complaint_zh"
