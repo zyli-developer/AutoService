@@ -21,11 +21,11 @@ from pathlib import Path
 from typing import Literal
 
 from autoservice import soul_generator
+from autoservice.kb_core import KBStore
 from autoservice.onboarding import (
     DEFAULT_COMPLIANCE,
     DEFAULT_DREAM_CFG,
     DEFAULT_SOUL_CFG,
-    _init_sandbox_kb,
 )
 
 
@@ -116,8 +116,11 @@ def _ensure_internal_tenant(
     )
     kb_dir = root / "kb"
     kb_dir.mkdir(exist_ok=True)
-    conn = _init_sandbox_kb(kb_dir / "kb.db")
-    conn.close()
+    # Initialize an empty KB with the unified 13-col schema + trigram FTS.
+    # Constructing KBStore runs _init_schema/_migrate_fts_tokenizer; context
+    # manager closes the connection when the block exits.
+    with KBStore(kb_dir / "kb.db"):
+        pass
     return True
 
 

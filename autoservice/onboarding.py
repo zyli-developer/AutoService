@@ -21,11 +21,9 @@ import logging
 import os
 import re
 import shutil
-import sqlite3
-import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 log = logging.getLogger("onboarding")
 
@@ -45,99 +43,8 @@ def sandbox_dir(tenant_id: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Sandbox KB helpers (per-tenant SQLite + FTS5)
+# Sandbox config & soul helpers
 # ---------------------------------------------------------------------------
-
-def _init_sandbox_kb(db_path: Path) -> sqlite3.Connection:
-    """Initialize a per-tenant sandbox KB SQLite DB with FTS5.
-
-    Schema mirrors the minimum fields required by the spec §2.4
-    (kb_chunks: id, content, source_name, section, domain) and
-    provides an FTS5 virtual table `kb_fts` that mirrors `content`.
-    Content-synced FTS keeps writes cheap and search consistent.
-    """
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS kb_chunks (
-            id          TEXT PRIMARY KEY,
-            content     TEXT NOT NULL,
-            source_name TEXT DEFAULT '',
-            section     TEXT DEFAULT '',
-            domain      TEXT DEFAULT '',
-            created_at  TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
-            content,
-            source_name,
-            section,
-            domain,
-            content=kb_chunks,
-            content_rowid=rowid,
-            tokenize="unicode61 remove_diacritics 1"
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TRIGGER IF NOT EXISTS kb_ai AFTER INSERT ON kb_chunks BEGIN
-            INSERT INTO kb_fts(rowid, content, source_name, section, domain)
-            VALUES (new.rowid, new.content, new.source_name, new.section, new.domain);
-        END
-        """
-    )
-    conn.execute(
-        """
-        CREATE TRIGGER IF NOT EXISTS kb_ad AFTER DELETE ON kb_chunks BEGIN
-            INSERT INTO kb_fts(kb_fts, rowid, content, source_name, section, domain)
-            VALUES ('delete', old.rowid, old.content, old.source_name, old.section, old.domain);
-        END
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def _ingest_chunks_into_sandbox_kb(
-    tenant_id: str,
-    file_results: Iterable[dict],
-    *,
-    domain: str = "",
-) -> int:
-    """Write extracted chunks into `.autoservice/sandbox/<tid>/kb/kb.db`.
-
-    Returns the number of chunks written.
-    """
-    db_path = sandbox_dir(tenant_id) / "kb" / "kb.db"
-    conn = _init_sandbox_kb(db_path)
-    now = datetime.now(timezone.utc).isoformat()
-    written = 0
-    try:
-        for r in file_results:
-            if r.get("status") != "ok":
-                continue
-            source_name = r.get("original_name") or r.get("file_name") or ""
-            for chunk in r.get("chunks", []) or []:
-                text = (chunk or "").strip()
-                if not text:
-                    continue
-                conn.execute(
-                    "INSERT INTO kb_chunks (id, content, source_name, section, domain, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (_uuid.uuid4().hex, text, source_name, "", domain, now),
-                )
-                written += 1
-        conn.commit()
-    finally:
-        conn.close()
-    return written
-
 
 def _write_sandbox_config_skeleton(
     tenant_id: str,

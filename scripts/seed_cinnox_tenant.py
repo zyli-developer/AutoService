@@ -37,13 +37,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "skills" / "knowledge-base" / "scripts"))
 
-from kb_ingest import init_db, clear_source, save_chunk, make_chunk_id  # noqa: E402
+from autoservice.kb_core import KBStore  # noqa: E402
 
 SANDBOX = PROJECT_ROOT / ".autoservice" / "sandbox" / "cinnox"
 KB_DB = SANDBOX / "kb" / "kb.db"
-DEBUG_DIR = SANDBOX / "kb" / "chunks"
 GLOSSARY_PATH = PROJECT_ROOT / "plugins" / "cinnox" / "references" / "glossary.json"
 
 TENANT_ID = "cinnox"
@@ -167,34 +165,6 @@ note: Hand-authored seed to restore runtime KB retrieval for cinnox tenant.
 """
 
 
-# ─── KB content: glossary → chunks ───────────────────────────────────────────
-
-def glossary_chunks() -> list[dict]:
-    data = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
-    out: list[dict] = []
-    for i, (term, info) in enumerate(sorted(data.items())):
-        desc = (info or {}).get("description", "").strip()
-        if not desc:
-            continue
-        content = f"**{term}**\n\n{desc}"
-        out.append({
-            "id": make_chunk_id("glossary", i),
-            "source_id": "glossary",
-            "source_type": "json",
-            "source_name": "CINNOX Glossary",
-            "source_url": None,
-            "file_path": "plugins/cinnox/references/glossary.json",
-            "section": term,
-            "content": content,
-            "created_at": NOW,
-            "domain": "contact_center",
-            "region": "global",
-            "language": "en",
-            "page_number": None,
-        })
-    return out
-
-
 # ─── Demo-facts chunks (covers common scripted questions) ────────────────────
 
 DEMO_FACTS: list[tuple[str, str, str, str]] = [
@@ -288,27 +258,6 @@ DEMO_FACTS: list[tuple[str, str, str, str]] = [
 ]
 
 
-def demo_chunks() -> list[dict]:
-    out: list[dict] = []
-    for i, (section, content, domain, region) in enumerate(DEMO_FACTS):
-        out.append({
-            "id": make_chunk_id("demo", i),
-            "source_id": "demo",
-            "source_type": "md",
-            "source_name": "cinnox Demo Knowledge",
-            "source_url": None,
-            "file_path": "scripts/seed_cinnox_tenant.py#DEMO_FACTS",
-            "section": section,
-            "content": content,
-            "created_at": NOW,
-            "domain": domain,
-            "region": region,
-            "language": "en",
-            "page_number": None,
-        })
-    return out
-
-
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -316,10 +265,8 @@ def main() -> int:
         print(f"[err] glossary not found: {GLOSSARY_PATH}", file=sys.stderr)
         return 2
 
-    # 1) Tenant sandbox
     SANDBOX.mkdir(parents=True, exist_ok=True)
     (SANDBOX / "souls").mkdir(parents=True, exist_ok=True)
-    (SANDBOX / "kb").mkdir(parents=True, exist_ok=True)
     (SANDBOX / "config.json").write_text(
         json.dumps(CONFIG, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -327,35 +274,61 @@ def main() -> int:
     (SANDBOX / "souls" / "_generation_meta.yaml").write_text(GENERATION_META, encoding="utf-8")
     print(f"[ok] wrote sandbox: {SANDBOX}")
 
-    # 2) Tenant-scoped KB at runtime-aligned path
-    conn = init_db(KB_DB)
-    try:
-        for src in ("glossary", "demo"):
-            clear_source(conn, src)
+    with KBStore(KB_DB) as store:
+        # Glossary — one chunk per term.
+        cleared_g = store.clear_source("glossary")
+        now = datetime.now(timezone.utc).isoformat()
+        glossary = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
+        glossary_chunks = []
+        for i, (term, info) in enumerate(sorted(glossary.items())):
+            desc = (info or {}).get("description", "").strip()
+            if not desc:
+                continue
+            glossary_chunks.append({
+                "id": f"glossary_{i:04d}",
+                "source_id": "glossary",
+                "source_type": "json",
+                "source_name": "CINNOX Glossary",
+                "source_url": None,
+                "file_path": "plugins/cinnox/references/glossary.json",
+                "section": term,
+                "content": f"**{term}**\n\n{desc}",
+                "created_at": now,
+                "domain": "contact_center",
+                "region": "global",
+                "language": "en",
+                "page_number": None,
+            })
+        n_glossary = store.save_chunks(glossary_chunks)
 
-        debug_dir = DEBUG_DIR / "glossary"
-        g_chunks = glossary_chunks()
-        for chunk in g_chunks:
-            save_chunk(conn, chunk, debug_dir)
+        # Demo facts — hand-curated rich paragraphs.
+        cleared_d = store.clear_source("demo")
+        demo_chunks = [
+            {
+                "id": f"demo_{i:04d}",
+                "source_id": "demo",
+                "source_type": "md",
+                "source_name": "cinnox Demo Knowledge",
+                "source_url": None,
+                "file_path": "scripts/seed_cinnox_tenant.py#DEMO_FACTS",
+                "section": section,
+                "content": content,
+                "created_at": now,
+                "domain": domain,
+                "region": region,
+                "language": "en",
+                "page_number": None,
+            }
+            for i, (section, content, domain, region) in enumerate(DEMO_FACTS)
+        ]
+        n_demo = store.save_chunks(demo_chunks)
 
-        debug_dir = DEBUG_DIR / "demo"
-        d_chunks = demo_chunks()
-        for chunk in d_chunks:
-            save_chunk(conn, chunk, debug_dir)
-
-        conn.commit()
-
-        total = conn.execute("SELECT count(*) FROM kb_chunks").fetchone()[0]
-        by_src = list(conn.execute(
-            "SELECT source_id, count(*) FROM kb_chunks GROUP BY source_id"
-        ).fetchall())
+        total = store.count()
         print(f"[ok] wrote tenant KB: {KB_DB}")
-        print(f"[ok] total kb_chunks = {total}")
-        for sid, n in by_src:
+        print(f"[ok] cleared previous: glossary={cleared_g} demo={cleared_d}")
+        print(f"[ok] total chunks = {total}")
+        for sid, n in store.by_source().items():
             print(f"       {sid}: {n}")
-    finally:
-        conn.close()
-
     return 0
 
 
