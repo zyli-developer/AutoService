@@ -1,10 +1,11 @@
 ---
 type: test-plan
 id: test-plan-004
-status: confirmed
+status: executed
 producer: skill-2
 created_at: "2026-04-22"
 confirmed_at: "2026-04-22"
+executed_at: "2026-04-22"
 trigger: "eval-doc-022 (customer-chat voice call FAB) — confirmed on 2026-04-22"
 related:
   - eval-doc-022
