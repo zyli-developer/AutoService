@@ -243,6 +243,7 @@ def test_create_fork_empty_tenant_id_rejected() -> None:
 # ---------------------------------------------------------------------------
 
 import tarfile as _tarfile  # noqa: E402
+import tempfile  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
 
 import autoservice.publish as pub_mod  # noqa: E402
@@ -480,3 +481,145 @@ def test_create_never_calls_gh_repo_delete() -> None:
     assert "repo delete" not in src
     assert '"delete"' not in src
     assert "'delete'" not in src
+
+
+# ---------------------------------------------------------------------------
+# create() — review fixes: regex validation, tar safety, cleanup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_tid",
+    [
+        "../evil",
+        "foo bar",
+        "foo/slash",
+        "foo\nmalicious: true",
+        "-leading-dash",
+        "",
+        "   ",
+    ],
+)
+def test_create_fork_rejects_invalid_tenant_id(bad_tid) -> None:
+    """Invalid identifiers must raise ValueError BEFORE any subprocess runs.
+
+    Spec §9 red line + defense-in-depth: ``create_fork`` is a public API
+    surface; even though the HTTP route validates tenant_id, CLI / test
+    callers don't, and an unvalidated tenant_id would land in argv + fork
+    name + commit message.
+    """
+    creator = GitHubApiForkCreator()
+    with patch("subprocess.run") as mock_run:
+        with pytest.raises(ValueError):
+            creator.create_fork(bad_tid)
+    assert mock_run.call_count == 0, (
+        "subprocess must not run for invalid tenant_id"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_tid",
+    [
+        "../evil",
+        "foo bar",
+        "foo/slash",
+        "foo\nmalicious: true",
+        "",
+        "   ",
+    ],
+)
+def test_create_rejects_invalid_tenant_id(tmp_path, bad_tid) -> None:
+    """create() must reject bad tenant_id BEFORE gh fork / git push run.
+
+    Previously the regex was only enforced at step 4 (config.local.yaml
+    write), meaning a malformed tenant_id would pass through fork + clone +
+    extract first.  Now fail-fast.
+    """
+    # A syntactically valid artifact so reaching step 3 would otherwise work.
+    artifact = tmp_path / "x.tar.gz"
+    artifact.write_bytes(b"")
+    creator = GitHubApiForkCreator()
+    with patch("subprocess.run") as mock_run:
+        with pytest.raises(ValueError):
+            creator.create(bad_tid, artifact)
+    assert mock_run.call_count == 0
+
+
+def test_create_extracts_with_data_filter_safely(tmp_path, monkeypatch) -> None:
+    """Tarball members with ``..`` traversal MUST NOT escape the clone dir.
+
+    Python 3.12+ ships ``tarfile.extractall(filter="data")`` which refuses
+    absolute paths, ``..`` components, and links outside the dest.  3.14
+    makes the unsafe default a hard error.  This test pins the behavior by
+    shipping a tarball whose sole member is ``../escape.txt`` and asserting:
+      1. create() raises ForkCreationError(phase="tar-extract"), OR
+      2. the escape file is NEVER materialised outside clone_dir.
+    """
+    monkeypatch.setattr(pub_mod, "PUBLISHED_ROOT", tmp_path / "published")
+
+    # Craft an evil tarball: one member named "../escape.txt"
+    artifact = tmp_path / "evil.tar.gz"
+    with _tarfile.open(artifact, "w:gz") as tf:
+        info = _tarfile.TarInfo(name="../escape.txt")
+        info.size = 0
+        tf.addfile(info, fileobj=None)
+
+    creator = GitHubApiForkCreator()
+    call_log: list = []
+    try:
+        with patch(
+            "subprocess.run",
+            side_effect=_make_subprocess_dispatcher(call_log),
+        ):
+            creator.create("acme", artifact)
+    except ForkCreationError as e:
+        # Acceptable — tar-extract refused the unsafe member.
+        assert e.phase == "tar-extract"
+
+    # Regardless of whether extract raised or silently dropped the member,
+    # no file named "escape.txt" must exist ANYWHERE outside the clone.
+    clone_argv = next(a for (k, a, _k) in call_log if k == "gh-clone")
+    clone_dir = _Path(clone_argv[-1])
+    # Traversal target would be clone_dir.parent / "escape.txt"
+    escape_path = clone_dir.parent / "escape.txt"
+    assert not escape_path.exists(), (
+        f"tarfile escaped the clone dir: {escape_path} was created"
+    )
+
+
+def test_clone_failure_cleans_up_temp_parent(tmp_path, monkeypatch) -> None:
+    """On clone failure, the empty temp parent dir must be cleaned up.
+
+    Otherwise every failed publish leaks an empty dir under %TEMP%/
+    /tmp/.  Spec §9 is about remote forks; local temp cleanup is just
+    tidiness.
+    """
+    monkeypatch.setattr(pub_mod, "PUBLISHED_ROOT", tmp_path / "published")
+    artifact = _make_fake_artifact(tmp_path, "acme")
+
+    # Capture the temp parent that create() will mkdir.
+    created_temps: list[_Path] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def recording_mkdtemp(prefix=""):
+        path = real_mkdtemp(prefix=prefix)
+        created_temps.append(_Path(path))
+        return path
+
+    creator = GitHubApiForkCreator()
+    call_log: list = []
+    with patch("tempfile.mkdtemp", side_effect=recording_mkdtemp):
+        with patch(
+            "subprocess.run",
+            side_effect=_make_subprocess_dispatcher(
+                call_log, fail_on="gh-clone", fail_stderr="boom"
+            ),
+        ):
+            with pytest.raises(ForkCreationError):
+                creator.create("acme", artifact)
+
+    assert len(created_temps) == 1, "create() must call mkdtemp exactly once"
+    assert not created_temps[0].exists(), (
+        f"clone failure should leave no temp dir behind; "
+        f"found: {created_temps[0]}"
+    )

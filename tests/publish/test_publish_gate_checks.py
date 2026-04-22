@@ -619,6 +619,17 @@ class TestSelectForkCreator:
             result = select_fork_creator_from_config(cfg)
         assert result is None
 
+    def test_empty_yaml_returns_none(self, tmp_path):
+        """Empty config file → yaml.safe_load returns None → selector returns None.
+
+        Regression guard for the ``or {}`` fallback in the helper.
+        """
+        from autoservice.publish import select_fork_creator_from_config
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("", encoding="utf-8")
+        assert select_fork_creator_from_config(cfg) is None
+
 
 class TestRouteSelectsForkCreator:
     """Integration — `/api/onboard/publish` passes the selected creator to publish()."""

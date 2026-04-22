@@ -317,12 +317,23 @@ class GitHubApiForkCreator:
             The fork URL as reported by ``gh`` on stdout.
 
         Raises:
-            ForkCreationError: on any failure.  Inspect ``.phase`` and
-                ``.fork_name`` to decide on cleanup.
+            ValueError: tenant_id empty / whitespace / fails the
+                identifier regex (rejected before any subprocess runs).
+            ForkCreationError: on any subprocess failure.  Inspect
+                ``.phase`` and ``.fork_name`` to decide on cleanup.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError("tenant_id must be a non-empty string")
         tenant_id = tenant_id.strip()
+        # Defense-in-depth: even though the HTTP route validates tenant_id,
+        # this method is a public API surface that CLI / test callers may
+        # reach directly.  An unvalidated tenant_id lands in argv, the fork
+        # name, and (via `create()`) a git commit message.
+        if not _VALID_TENANT_ID_RE.match(tenant_id):
+            raise ValueError(
+                f"tenant_id {tenant_id!r} is not a valid identifier — "
+                f"must match {_VALID_TENANT_ID_RE.pattern}"
+            )
 
         fork_name = f"AutoService-{tenant_id}"
         # Target: org-qualified when org set; else bare fork name (user
@@ -432,6 +443,13 @@ class GitHubApiForkCreator:
         if not tenant_id or not tenant_id.strip():
             raise ValueError("tenant_id must be a non-empty string")
         tenant_id = tenant_id.strip()
+        # Fail-fast on unsafe identifiers BEFORE fork / clone / git — see
+        # create_fork() for rationale.
+        if not _VALID_TENANT_ID_RE.match(tenant_id):
+            raise ValueError(
+                f"tenant_id {tenant_id!r} is not a valid identifier — "
+                f"must match {_VALID_TENANT_ID_RE.pattern}"
+            )
 
         fork_name = f"AutoService-{tenant_id}"
         full_fork_ref = f"{self.org}/{fork_name}" if self.org else fork_name
@@ -440,10 +458,20 @@ class GitHubApiForkCreator:
         repo_url = self.create_fork(tenant_id)
 
         # Step 2: clone into a fresh dir under the system temp root.
-        # mkdtemp creates the parent; gh repo clone will create the child.
+        # mkdtemp creates the parent with 0700 on POSIX (random name — not
+        # predictable, not world-readable); gh repo clone creates the
+        # child.  On Windows the TMP dir is already under the per-user
+        # %LOCALAPPDATA%, so no cross-user risk either.
         clone_parent = Path(tempfile.mkdtemp(prefix="autoservice-fork-"))
         clone_dir = clone_parent / fork_name
-        self._run_gh_clone(full_fork_ref, clone_dir, fork_name)
+        try:
+            self._run_gh_clone(full_fork_ref, clone_dir, fork_name)
+        except ForkCreationError:
+            # Tidy up the empty parent so repeated publish failures don't
+            # leak scaffold dirs.  NOT "auto-delete" in the spec §9 sense —
+            # §9 is about remote GitHub forks, not local temp.
+            shutil.rmtree(clone_parent, ignore_errors=True)
+            raise
 
         # Step 3: extract tarball.
         self._extract_tarball(artifact_path, clone_dir, fork_name)
@@ -537,11 +565,18 @@ class GitHubApiForkCreator:
     def _extract_tarball(
         self, artifact_path: Path, clone_dir: Path, fork_name: str
     ) -> None:
-        """Extract ``artifact_path`` into ``clone_dir`` with phased errors."""
+        """Extract ``artifact_path`` into ``clone_dir`` with phased errors.
+
+        Uses ``filter="data"`` (PEP 706) — refuses absolute paths, ``..``
+        traversal, symlinks pointing outside the dest, and unexpected
+        owners/modes.  Python 3.14+ requires an explicit filter; earlier
+        versions warn.  ``data`` is the tightest built-in filter and
+        appropriate for trusted-but-verify tarballs like ours.
+        """
         try:
             with tarfile.open(artifact_path, "r:gz") as tf:
-                tf.extractall(clone_dir)
-        except (tarfile.TarError, OSError) as exc:
+                tf.extractall(clone_dir, filter="data")
+        except (tarfile.TarError, OSError, ValueError) as exc:
             log.warning(
                 "tarball extraction failed for fork %s (artifact=%s): %s",
                 fork_name,
