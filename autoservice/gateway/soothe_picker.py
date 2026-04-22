@@ -133,8 +133,8 @@ def _load_known_intents() -> set[str]:
         with path.open("r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         return set((data.get("intents") or {}).keys())
-    except OSError:
-        log.warning("classify_intent.yaml not readable at %s", path)
+    except (OSError, yaml.YAMLError):
+        log.warning("classify_intent.yaml not readable or malformed at %s", path)
         return set()
 
 
