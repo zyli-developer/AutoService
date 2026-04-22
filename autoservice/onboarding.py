@@ -325,23 +325,6 @@ async def upload_and_parse(
 
     pipeline = OnboardingPipeline()
     results: list[dict] = []
-    file_payloads: list[tuple[dict, bytes, str]] = []  # (result, raw_bytes, detected_type)
-
-    for f in files:
-        content = await f.read()
-        suffix = Path(f.filename or "").suffix or ".txt"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-        try:
-            result = pipeline.ingest(str(tmp_path))
-            result["original_name"] = f.filename
-            results.append(result)
-            file_payloads.append((result, content, result.get("file_type", "text")))
-        except UnsupportedFileType as exc:
-            results.append({"status": "skipped", "file_name": f.filename, "reason": str(exc)})
-        finally:
-            tmp_path.unlink(missing_ok=True)
 
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
@@ -352,32 +335,102 @@ async def upload_and_parse(
         log.warning("Failed to write sandbox config skeleton: %s", exc)
 
     # -- KB ingest via KBStore --------------------------------------
+    # Route each file by extension BEFORE extracting text:
+    #   .pdf  -> KBStore.ingest_pdf  (preserves page_number + semantic chunking)
+    #   .xlsx -> KBStore.ingest_xlsx (previously dropped as UnsupportedFileType)
+    #   else  -> OnboardingPipeline.ingest -> KBStore.ingest_text (text-ish files)
     kb_chunks_written = 0
     kb_errors: list[str] = []
     url_result: dict | None = None
     sandbox_kb = sandbox_dir(tenant_id) / "kb" / "kb.db"
-    with KBStore(sandbox_kb) as store:
-        # 1. Files -- one source per file, source_id = sha256 prefix of bytes.
-        for result, raw_bytes, ftype in file_payloads:
-            if result.get("status") != "ok":
-                continue
-            source_id = f"file:{hashlib.sha256(raw_bytes).hexdigest()[:16]}"
-            source_name = result.get("original_name") or result.get("file_name") or "uploaded"
-            text = result.get("text") or ""
-            try:
-                n = store.ingest_text(
-                    text,
-                    source_id=source_id,
-                    source_name=source_name,
-                    source_type=ftype,
-                    file_path=source_name,
-                    domain=industry or "",
-                )
-                kb_chunks_written += n
-            except Exception as exc:
-                kb_errors.append(f"{source_name}: {exc}")
 
-        # 2. Website URL -- crawl 1 page, ingest into KB (bug fix).
+    with KBStore(sandbox_kb) as store:
+        for f in files:
+            content = await f.read()
+            filename = f.filename or "uploaded"
+            suffix = Path(filename).suffix.lower()
+            source_id = f"file:{hashlib.sha256(content).hexdigest()[:16]}"
+
+            with tempfile.NamedTemporaryFile(suffix=suffix or ".tmp", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
+
+            try:
+                if suffix == ".pdf":
+                    # Route to KBStore.ingest_pdf for semantic chunking +
+                    # page_number preservation. Skip OnboardingPipeline.
+                    try:
+                        n = store.ingest_pdf(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "pdf",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                elif suffix == ".xlsx":
+                    # Route to KBStore.ingest_xlsx (rate-table detection etc).
+                    # Previously dropped as UnsupportedFileType by OnboardingPipeline.
+                    try:
+                        n = store.ingest_xlsx(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "xlsx",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                else:
+                    # Text-ish: OnboardingPipeline extracts text -> ingest_text
+                    # chunks by paragraph. Keeps the .text field in the response
+                    # so soul generation has combined_text to work with.
+                    try:
+                        result = pipeline.ingest(str(tmp_path))
+                        result["original_name"] = filename
+                        results.append(result)
+                        text = result.get("text") or ""
+                        try:
+                            n = store.ingest_text(
+                                text,
+                                source_id=source_id,
+                                source_name=filename,
+                                source_type=result.get("file_type", "text"),
+                                file_path=filename,
+                                domain=industry or "",
+                            )
+                            kb_chunks_written += n
+                        except Exception as exc:
+                            kb_errors.append(f"{filename}: {exc}")
+                    except UnsupportedFileType as exc:
+                        results.append({
+                            "status": "skipped", "file_name": filename, "reason": str(exc),
+                        })
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+        # Website URL -- crawl 1 page, ingest into KB (bug fix).
         if website_url:
             try:
                 n = store.ingest_web(
