@@ -93,11 +93,26 @@ describe('DreamTab', () => {
       render(<DreamTab />);
     });
     await waitFor(() => expect(screen.getByTestId('dream-proposals-table')).toBeInTheDocument());
-    // prop_a (accepted) + prop_b (draft) = 2; prop_c (applied) and prop_d (rejected) excluded
-    expect(screen.getByTestId('dream-apply-prop_a')).toBeInTheDocument();
-    expect(screen.getByTestId('dream-apply-prop_b')).toBeInTheDocument();
-    expect(screen.queryByTestId('dream-apply-prop_c')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('dream-apply-prop_d')).not.toBeInTheDocument();
+    // prop_a (accepted) + prop_b (draft) = 2; prop_c (applied) and prop_d (rejected) excluded.
+    // Rows are the new selector (Apply button moved into CanaryPanel per T5S.12).
+    expect(screen.getByTestId('dream-proposal-row-prop_a')).toBeInTheDocument();
+    expect(screen.getByTestId('dream-proposal-row-prop_b')).toBeInTheDocument();
+    expect(screen.queryByTestId('dream-proposal-row-prop_c')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dream-proposal-row-prop_d')).not.toBeInTheDocument();
+  });
+
+  it('pending-proposals table no longer carries inline Apply buttons (T5S.12 — moved into CanaryPanel)', async () => {
+    primeMocks();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() => expect(screen.getByTestId('dream-proposals-table')).toBeInTheDocument());
+    // The M3-era inline Apply button on each row is gone — the new single
+    // source of truth is the CanaryPanel that mounts on row select.
+    expect(screen.queryByTestId('dream-apply-prop_a')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dream-apply-prop_b')).not.toBeInTheDocument();
+    // And no CanaryPanel until the user selects a row.
+    expect(screen.queryByTestId('canary-panel')).not.toBeInTheDocument();
   });
 
   it('applied proposals shown in "recently applied" section', async () => {
@@ -109,27 +124,52 @@ describe('DreamTab', () => {
     expect(screen.getByTestId('dream-applied-section')).toHaveTextContent('Already applied change');
   });
 
-  it('Apply button disabled for status=draft (requires accepted)', async () => {
-    primeMocks();
-    await act(async () => {
-      render(<DreamTab />);
-    });
-    await waitFor(() => expect(screen.getByTestId('dream-apply-prop_b')).toBeInTheDocument());
-    expect(screen.getByTestId('dream-apply-prop_b')).toBeDisabled();
-    expect(screen.getByTestId('dream-apply-prop_a')).not.toBeDisabled();
-  });
-
-  it('clicking Apply posts to /api/admin/proposals/{id}/apply', async () => {
+  it('clicking a pending proposal row mounts the CanaryPanel for it', async () => {
     primeMocks();
     const user = userEvent.setup();
     await act(async () => {
       render(<DreamTab />);
     });
-    await waitFor(() => expect(screen.getByTestId('dream-apply-prop_a')).toBeInTheDocument());
-    await user.click(screen.getByTestId('dream-apply-prop_a'));
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-row-prop_a')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('canary-panel')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('dream-proposal-row-prop_a'));
+    await waitFor(() => expect(screen.getByTestId('canary-panel')).toBeInTheDocument());
+    expect(screen.getByTestId('canary-panel-title')).toHaveTextContent('Increase pool size');
+  });
+
+  it('CanaryPanel Apply is enabled for status=accepted, posts to /api/admin/proposals/{id}/apply', async () => {
+    primeMocks();
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-row-prop_a')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('dream-proposal-row-prop_a'));
+    await waitFor(() => expect(screen.getByTestId('canary-panel-apply-btn')).toBeInTheDocument());
+    const applyBtn = screen.getByTestId('canary-panel-apply-btn');
+    expect(applyBtn).not.toBeDisabled();
+    await user.click(applyBtn);
     await waitFor(() => {
       expect(postJSONMock).toHaveBeenCalledWith('/api/admin/proposals/prop_a/apply', undefined);
     });
+  });
+
+  it('CanaryPanel Apply is disabled for status=draft (selected draft proposal)', async () => {
+    primeMocks();
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<DreamTab />);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('dream-proposal-row-prop_b')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('dream-proposal-row-prop_b'));
+    await waitFor(() => expect(screen.getByTestId('canary-panel-apply-btn')).toBeInTheDocument());
+    expect(screen.getByTestId('canary-panel-apply-btn')).toBeDisabled();
   });
 
   it('Trigger button posts to /api/dream/trigger with tenant_id', async () => {

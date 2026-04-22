@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../store/adminStore';
 import { fetchJSON, postJSON } from '../api';
+import { CanaryPanel } from './dream/canary-panel';
 
 interface DreamStatus {
   tenant_id: string;
@@ -93,7 +94,7 @@ export function DreamTab() {
   const [runs, setRuns] = useState<DreamRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState(false);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Load the tenant list once on mount.  Prefer the store's tenant if it
@@ -165,19 +166,6 @@ export function DreamTab() {
     }
   };
 
-  const handleApply = async (proposalId: string) => {
-    setApplyingId(proposalId);
-    setErrorMsg(null);
-    try {
-      await postJSON<unknown>(`/api/admin/proposals/${proposalId}/apply`);
-      load();
-    } catch (e) {
-      setErrorMsg(t('admin.dream.error.apply_failed', { id: proposalId }));
-    } finally {
-      setApplyingId(null);
-    }
-  };
-
   const reasonBadge = status
     ? REASON_CODE_STYLE[status.reason_code] || {
         label: status.reason_code,
@@ -188,6 +176,8 @@ export function DreamTab() {
 
   const pending = proposals.filter((p) => p.status === 'draft' || p.status === 'accepted');
   const recentApplied = proposals.filter((p) => p.status === 'applied').slice(0, 5);
+  const selectedProposal =
+    pending.find((p) => p.id === selectedProposalId) ?? null;
 
   return (
     <div data-testid="tab-dream">
@@ -312,6 +302,25 @@ export function DreamTab() {
         </div>
       )}
 
+      {/* ── Canary Panel (mounts when a pending proposal is selected) ─ */}
+      {/* When an action transitions the proposal out of pending (applied/
+          rejected), `pending.find(...)` returns undefined on the next
+          render and `selectedProposal` becomes null — the panel unmounts
+          naturally. No explicit `setSelectedProposalId(null)` needed. */}
+      {selectedProposal && (
+        <CanaryPanel
+          key={selectedProposal.id}
+          proposal={{
+            id: selectedProposal.id,
+            title: selectedProposal.title,
+            category: selectedProposal.category,
+            status: selectedProposal.status,
+            suggestion: selectedProposal.suggestion,
+          }}
+          onReload={load}
+        />
+      )}
+
       {/* ── Pending Proposals ─────────────────────────────────────── */}
       <section data-testid="dream-proposals-section" style={{ marginBottom: 24 }}>
         <div className="cs-ct" style={{ marginBottom: 12 }}>
@@ -340,56 +349,54 @@ export function DreamTab() {
                 <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.category')}</th>
                 <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.title')}</th>
                 <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.status')}</th>
-                <th style={{ textAlign: 'right', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {pending.map((p) => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border-subtle, var(--color-border))' }}>
-                  <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                    {formatTs(p.created_at)}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.category}</code>
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <div style={{ fontWeight: 500 }}>{p.title}</div>
-                    {p.suggestion && (
-                      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                        {p.suggestion.slice(0, 120)}
-                        {p.suggestion.length > 120 ? '…' : ''}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span
-                      style={{
-                        color: STATUS_COLOR[p.status] || 'var(--color-text-secondary)',
-                        fontWeight: 500,
-                      }}
-                    >
-                      {p.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="cs-btn ok"
-                      onClick={() => handleApply(p.id)}
-                      disabled={applyingId === p.id || p.status === 'draft'}
-                      data-testid={`dream-apply-${p.id}`}
-                      title={
-                        p.status === 'draft'
-                          ? t('admin.dream.apply.requires_accepted')
-                          : t('admin.dream.apply.cta')
-                      }
-                      style={{ opacity: applyingId === p.id || p.status === 'draft' ? 0.5 : 1 }}
-                    >
-                      {applyingId === p.id ? '…' : t('admin.dream.apply.cta')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {pending.map((p) => {
+                const isSelected = p.id === selectedProposalId;
+                return (
+                  <tr
+                    key={p.id}
+                    data-testid={`dream-proposal-row-${p.id}`}
+                    onClick={() =>
+                      setSelectedProposalId(isSelected ? null : p.id)
+                    }
+                    style={{
+                      borderBottom: '1px solid var(--color-border-subtle, var(--color-border))',
+                      cursor: 'pointer',
+                      background: isSelected
+                        ? 'var(--color-accent-subtle, var(--color-bg-surface-tinted))'
+                        : undefined,
+                    }}
+                  >
+                    <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                      {formatTs(p.created_at)}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.category}</code>
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ fontWeight: 500 }}>{p.title}</div>
+                      {p.suggestion && (
+                        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                          {p.suggestion.slice(0, 120)}
+                          {p.suggestion.length > 120 ? '…' : ''}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span
+                        style={{
+                          color: STATUS_COLOR[p.status] || 'var(--color-text-secondary)',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {p.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

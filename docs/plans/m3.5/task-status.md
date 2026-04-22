@@ -23,15 +23,15 @@
 | Batch | Name | State | Start | Gate |
 |-------|------|-------|-------|------|
 | batch-0 | D5 Dream LLM real-wire (T5S.14, yellow) | **done** | 2026-04-22 | ✅ 201 mock green + live LLM PASSED 30s via local SDK + reviewer APPROVED |
-| batch-1 | D2 Canary panel + 3-button Apply (T5S.12, yellow) | pending | 2026-04-23 | vitest green + manual walk + reviewer APPROVED |
-| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | pending | 2026-04-24 | smoke GO + regression + tag + PR |
+| batch-1 | D2 Canary panel + 3-button Apply (T5S.12, yellow) | **done** | 2026-04-22 | ✅ 32/32 vitest (22 canary-panel + 10 DreamTab) + reviewer APPROVED-WITH-FIXUP (2 rounds) |
+| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | pending | 2026-04-22 | smoke GO + regression + tag + PR |
 
 ## Active tasks (Dream cut)
 
 | # | ID | Alias | Task | Batch | Type | State | Implementer | Review | Commit |
 |---|----|-------|------|-------|------|-------|-------------|--------|--------|
 | 1 | T5S.14 | D5 | Dream LLM real-wire (T3B.5 + T4S.4b) | batch-0 | 🟡 | **done** | orchestrator (opus) | ✅ APPROVED (code-reviewer subagent, 13/13) | `m3.5 batch-0` |
-| 2 | T5S.12 | D2/U4 | Canary panel w/ 3-button Apply | batch-1 | 🟡 | pending | — | code-reviewer required | — |
+| 2 | T5S.12 | D2/U4 | Canary panel w/ 3-button Apply + Advance/Rollback | batch-1 | 🟡 | **done** | orchestrator (opus, autopilot-all) | ✅ APPROVED-WITH-FIXUP (code-reviewer ×2 — round 1 caught chat-vs-chat-legacy routing bug, round 2 all 8 CON-04 items PASS) | `m3.5 batch-1` |
 | 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | pending | — | — | — |
 
 ## Deferred — Phase 2 mini-sprint (artifacts kept, not executed this cut)
@@ -72,6 +72,21 @@ Landed in M3 batch-10.5 (commit `2e50ac1`):
 
 (most recent at top — updated at every batch boundary)
 
+- 2026-04-22 — **batch-1 done**. T5S.12 D2/U4 Dream Proposal canary panel shipped. Implementation:
+  - `frontend/apps/admin-portal/src/components/dream/canary-panel.tsx` (new, ~325 lines) — 5-action panel: `[Reject] [Approve] [🔒 Apply]` main row + `[Rollback] [Advance]` stage controls under the progress bar. Apply is the sole writer of `status='applied'` (CON-04). Approve/Reject route through `/api/management/chat-legacy?message=/approve|/reject <id>` (M1 slash dispatcher; reviewer round 1 caught that `/api/management/chat` is the M2 `_master` LLM pass-through and does NOT dispatch slash commands). Advance/Rollback use `window.confirm()` per-stage before POST `/api/canary/advance` | `/api/canary/rollback`. Single `BusyAction` atom locks all 5 buttons during any in-flight op.
+  - `frontend/apps/admin-portal/src/components/dream/metric-compare.tsx` (new, ~95 lines) — renders `monitor.breaches[]` as a compact pre/post table when non-empty; returns null otherwise.
+  - `frontend/apps/admin-portal/src/components/DreamTab.tsx` — removed the inline per-row Apply button (M3 commit `2e50ac1`); rows now click-to-select; CanaryPanel mounts above the pending-proposals table for the selected proposal. Single source of truth per plan §4.
+  - `frontend/apps/admin-portal/src/__tests__/DreamTab.test.tsx` — rewrote 2 old tests (inline Apply removed) + added 3 new integration tests (row-click mount, CanaryPanel Apply enable/disable, Apply endpoint contract).
+  - `frontend/apps/admin-portal/src/__tests__/dream/canary-panel.test.tsx` (new, 22 tests) — TDD: RED first on missing import, GREEN after implementation. Adds endpoint-drift guard asserting no call lands on `/api/management/chat` (M2 endpoint).
+  - `frontend/packages/i18n/src/locales/en.json` + `zh-CN.json` — 19 new `admin.dream.canary.*` keys registered in both locales.
+  - **Verification**: 32/32 scoped vitest (22 canary-panel + 10 DreamTab) green. Pre-existing baseline of 24 unrelated admin-portal failures on HEAD unchanged (AdminWorkspace, ChannelConfigStep, etc. — out of T5S.12 scope).
+  - **Reviewer**: code-reviewer subagent APPROVED-WITH-FIXUP across 2 rounds.
+    - Round 1 verdict: **CHANGES-REQUESTED**. Caught a real bug: Approve/Reject initially POSTed JSON `{text: "/approve <id>"}` to `/api/management/chat`, which (a) expects `{message: "..."}` body and (b) doesn't dispatch slash commands (that's `/chat-legacy`). Also flagged missing Advance/Rollback buttons (plan §Scope §2) and a no-op `setSelectedProposalId((curr) => curr)` in DreamTab.
+    - Round 2 verdict: **APPROVED-WITH-FIXUP**. All 3 fixups landed: chat-legacy endpoint + query-string; 5 new Advance/Rollback tests + confirm gating; cleaned DreamTab onReload. CON-04 rubric items #6 and #7 flipped FAIL→PASS. Open follow-ups (carryforward, non-blocking): i18n key registration (now done this commit), dynamic next-stage readout from backend rather than local STAGES array, `<ConfirmDialog>` modal when admin-portal gains one, `metric-compare.deltaClass` dead branch cleanup, `CanaryProgress` divergence comment.
+  - **Autopilot-all DEFAULT-PICKED decisions** (recorded per skill-13 §6):
+    1. Approve/Reject wiring — chose chat-legacy slash dispatcher over adding new REST endpoints (`POST /api/admin/proposals/{id}/accept|reject`). Rationale: REST expansion would push task outside plan's frontend-only `files_touched` scope and into Red territory (RBAC policy, audit log shape). Reversible: a future PR can thin-wrap `pp.update_status` as REST without changing the frontend.
+    2. CanaryProgress not reused — inline progress bar in CanaryPanel rather than embedding the existing `components/CanaryProgress.tsx` (DashboardTab). Rationale: CanaryProgress renders `monitor.breaches[]` inline; embedding alongside MetricCompare would duplicate the breach display. Reversible: refactor CanaryProgress to accept `variant='compact'` later.
+  - Next: batch-2 gate — full regression + smoke + tag `v1.2.1-dream`.
 - 2026-04-22 — **batch-0 done**. T5S.14 D5 Dream LLM real-wire shipped. Implementation:
   - `autoservice/cc_pool.py` — `CCClient.call_with_tools` (JSON-in/JSON-out local-SDK tool-use wrapper) + `_dream_role` gate (non-dream clients raise) + SDK type imports for test monkeypatch
   - `autoservice/dream_agent.py` — removed `RuntimeError` at L1117, added default `llm_send` closure path over pool's `call_with_tools` (run_dream signature unchanged; existing mock seam intact)
