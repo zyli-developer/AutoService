@@ -107,6 +107,17 @@ class CCClient:
         async for msg in self._sdk.receive_response():
             yield msg
 
+    async def set_model(self, model: str | None) -> None:
+        """Swap the active model mid-conversation.
+
+        Delegates to ``ClaudeSDKClient.set_model``, which is a control
+        message to the CLI — **no subprocess restart**, full conversation
+        state preserved. Used by :meth:`CCPool.session_query` to upgrade
+        a fast-tier sticky instance to slow_model when the router flags
+        the turn as slow.
+        """
+        await self._sdk.set_model(model)
+
 
 # ---------------------------------------------------------------------------
 # CC-specific configuration (extends generic PoolConfig)
@@ -203,8 +214,15 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
 #:
 #: Kept in sync with ``classify_intent.yaml::model_tiers`` — if you add a
 #: role, pick its tier here too.
+#:
+#: ``customer`` defaults to ``fast`` — the customer sticky pool warms on
+#: haiku. Turns that need sonnet (complaint, product inquiry with KB,
+#: purchase intent) are escalated in-place via
+#: :meth:`CCPool._maybe_upgrade_tier` → ``ClaudeSDKClient.set_model``, so
+#: the subprocess and its conversation context survive the model swap.
+#: The upgrade is one-way per sticky session (see ``_upgraded_sticky``).
 _ROLE_TIER: dict[str, str] = {
-    "customer": "slow",
+    "customer": "fast",
     "lead": "slow",
     "translate": "fast",
     "triage": "fast",
@@ -470,6 +488,12 @@ class CCPool(AsyncPool[CCClient]):
         self._role_pool_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task | None = None
         self._closed = False
+        #: Sticky keys that have already been upgraded from fast_model to
+        #: slow_model via ``set_model``. Upgrade is one-way per session —
+        #: once a conversation escalates to sonnet it stays there until
+        #: sticky release (matches the old demo's `_sdk_ensure` policy,
+        #: avoids model thrashing mid-conversation). Cleared on release.
+        self._upgraded_sticky: set[str] = set()
 
     async def acquire_sticky(
         self, key: str, *, tenant_id: str | None = None,
@@ -556,6 +580,7 @@ class CCPool(AsyncPool[CCClient]):
     async def session_query(
         self, chat_id: str, prompt: str,
         *, tenant_id: str | None = None,
+        tier: str | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[Message]:
         """Stateful multi-turn query: chat_id is sticky-bound to a CC instance.
@@ -568,8 +593,27 @@ class CCPool(AsyncPool[CCClient]):
         tenant's soul + KB tool on first acquire. Subsequent calls for the
         same chat_id MUST pass the same tenant_id or StickyTenantMismatch
         is raised.
+
+        *tier* controls in-session model escalation:
+
+        * ``None`` (legacy callers) — no model change; instance runs on
+          whatever model it was constructed with.
+        * ``"fast"`` — leave model as-is (customer pool defaults to
+          fast_model via ``_ROLE_TIER['customer']='fast'``, so this is a
+          no-op on a fresh sticky binding).
+        * ``"slow"`` — if ``config.slow_model`` is set and this sticky
+          key hasn't been upgraded yet, call
+          ``ClaudeSDKClient.set_model(slow_model)`` once. Subsequent
+          turns on the same key skip the call (upgrade-once semantics).
+
+        Downgrade is intentionally impossible here — a conversation that
+        reached sonnet stays there for its lifetime. Matches the old
+        demo's ``_sdk_ensure`` policy. ``end_session`` / sticky auto-
+        release clear the upgrade stamp so a fresh session on the same
+        key can start on fast_model again.
         """
         instance = await self.acquire_sticky(chat_id, tenant_id=tenant_id)
+        await self._maybe_upgrade_tier(chat_id, instance, tier)
         instance.query_count += 1
         session_id = kwargs.pop("session_id", chat_id)
         await instance.client.query(prompt, session_id=session_id)
@@ -577,9 +621,51 @@ class CCPool(AsyncPool[CCClient]):
             yield msg
         # Instance stays sticky-bound — NOT returned to pool
 
+    async def _maybe_upgrade_tier(
+        self,
+        chat_id: str,
+        instance: PooledInstance[CCClient],
+        tier: str | None,
+    ) -> None:
+        """Escalate *instance* to slow_model iff ``tier == 'slow'`` and we
+        haven't already upgraded this sticky session.
+
+        Logs + swallows ``set_model`` failures: the customer still gets a
+        reply on the pre-upgrade model, which is worse quality but not
+        broken. ``slow_model=None`` deployments (single-model config) are
+        no-op, preserving the back-compat contract of B-plan.
+        """
+        if tier != "slow":
+            return
+        if chat_id in self._upgraded_sticky:
+            return
+        slow_model = self._config.slow_model  # type: ignore[attr-defined]
+        if not slow_model:
+            return
+        try:
+            await instance.client.set_model(slow_model)
+        except Exception:
+            log.exception(
+                "sticky tier upgrade failed for conv=%s — staying on current model",
+                chat_id,
+            )
+            return
+        self._upgraded_sticky.add(chat_id)
+        log.info("sticky tier upgraded to slow: conv=%s model=%s",
+                 chat_id, slow_model)
+
     async def end_session(self, chat_id: str) -> None:
         """End a stateful session, release the instance back to pool."""
+        self._upgraded_sticky.discard(chat_id)
         await self.release_sticky(chat_id)
+
+    async def release_sticky(self, key: str) -> None:
+        """Override parent ``release_sticky`` to clear the tier upgrade
+        stamp — whether released explicitly via :meth:`end_session` or
+        reaped by the sticky-idle timer, a subsequent bind on the same
+        key must start fresh on fast_model."""
+        self._upgraded_sticky.discard(key)
+        await super().release_sticky(key)
 
     # ------------------------------------------------------------------
     # Role-aware acquire (T3B.5 — spec §2.5 + CON-06)

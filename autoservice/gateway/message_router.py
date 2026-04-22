@@ -1306,6 +1306,7 @@ async def _generate_agent_reply(
         previous_role = None
         detected_language: str | None = None
         direct_reply_text: str | None = None
+        tier_hint: str | None = None
         if triage_enabled:
             try:
                 decision = await triage_and_route(
@@ -1316,6 +1317,7 @@ async def _generate_agent_reply(
                 previous_role = decision.previous_role
                 detected_language = decision.detected_language
                 direct_reply_text = decision.direct_reply
+                tier_hint = decision.tier
             except Exception:
                 logger.exception("triage_and_route failed; falling back to customer")
 
@@ -1418,7 +1420,9 @@ async def _generate_agent_reply(
                     yield m
 
         iterator = (
-            pool.session_query(conv_id, prompt, tenant_id=tenant_id)
+            pool.session_query(
+                conv_id, prompt, tenant_id=tenant_id, tier=tier_hint,
+            )
             if target_role == "customer"
             else _role_stream()
         )

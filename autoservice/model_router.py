@@ -128,6 +128,13 @@ class TriageDecision:
     #: Populated only when ``role == "direct"``. The gateway persists this
     #: via ``engine.send_message`` and returns without touching any pool.
     direct_reply: Optional[str] = None
+    #: ``"fast"`` | ``"slow"`` | ``None``. Hint for the customer sticky
+    #: session — ``CCPool.session_query(tier=...)`` will escalate the
+    #: instance to slow_model on the first slow-tier turn and keep it
+    #: there. Derived from ``ClassificationResult.model_tier``; ``None``
+    #: means "leave instance on its default model" (e.g. direct / lead /
+    #: translate paths that don't use session_query at all).
+    tier: Optional[str] = None
 
 
 class _TenantConfigLike(Protocol):
@@ -332,6 +339,7 @@ class ModelRouter:
                 intent="language_barrier",
                 detected_language=lang,
                 needs_operator_notice=False,
+                tier="fast",
             )
 
         clf = FastClassifier.for_tenant(tenant_id)
@@ -363,6 +371,7 @@ class ModelRouter:
                 needs_operator_notice=fast.confidence < self._thresholds["high"],
                 previous_role=previous_role,
                 direct_reply=fast.direct_reply,
+                tier=fast.model_tier.value,
             )
 
         return await self._invoke_triage_agent(
@@ -419,6 +428,7 @@ class ModelRouter:
             needs_operator_notice=True,
             previous_role=previous_role,
             direct_reply=fast_result.direct_reply,
+            tier=fast_result.model_tier.value,
         )
 
     async def _invoke_triage_agent(
@@ -451,6 +461,16 @@ class ModelRouter:
             return self._triage_fallback(
                 message, fast_result, detected_language, previous_role,
             )
+        # Triage-agent output doesn't carry a tier — derive it from the
+        # yaml config of the claimed intent. Unknown intents (agent
+        # hallucinates a new one) fall back to the fast_result's tier.
+        agent_tier: str | None = None
+        intent_cfg = self._classifier._intents.get(parsed["intent"])
+        if intent_cfg and intent_cfg.get("model_tier"):
+            agent_tier = intent_cfg["model_tier"]
+        else:
+            agent_tier = fast_result.model_tier.value
+
         return TriageDecision(
             role=parsed["route_to"],
             confidence=parsed["confidence"],
@@ -461,6 +481,7 @@ class ModelRouter:
             needs_operator_notice=parsed["confidence"] < self._thresholds["medium"],
             previous_role=previous_role,
             direct_reply=parsed.get("direct_reply"),
+            tier=agent_tier,
         )
 
     def should_use_placeholder(self, decision: RoutingDecision) -> bool:

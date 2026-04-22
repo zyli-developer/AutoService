@@ -71,9 +71,20 @@ class TestResolveModelForRole:
         assert _resolve_model_for_role(cfg, "translate") == "haiku-x"
 
     def test_slow_roles_pick_slow_model(self):
+        """Plan C (2026-04-22): customer moved to fast tier for the pool
+        warmup (see _ROLE_TIER); escalation to slow_model happens per-turn
+        via ``CCPool.session_query(..., tier='slow')`` + ``set_model``,
+        not at pool construction. lead remains slow."""
         cfg = PoolConfig(model="base-x", fast_model="haiku-x", slow_model="sonnet-x")
-        assert _resolve_model_for_role(cfg, "customer") == "sonnet-x"
         assert _resolve_model_for_role(cfg, "lead") == "sonnet-x"
+
+
+class TestCustomerTierIsFast:
+    """Plan C pinned behavior — customer pool default warms on fast_model."""
+
+    def test_customer_resolves_to_fast_model(self):
+        cfg = PoolConfig(model="base-x", fast_model="haiku-x", slow_model="sonnet-x")
+        assert _resolve_model_for_role(cfg, "customer") == "haiku-x"
 
     def test_dream_picks_dream_model_when_set(self):
         cfg = PoolConfig(
@@ -203,8 +214,12 @@ async def test_role_pool_lead_gets_slow_model(tiered_pool):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_main_customer_pool_uses_slow_model(captured_calls):
-    """The default-role-customer warmup must use slow_model when configured."""
+async def test_main_customer_pool_uses_fast_model(captured_calls):
+    """Plan C: the customer pool warms on fast_model (haiku) — sticky
+    sessions escalate to slow_model per-turn via
+    ``CCPool.session_query(tier='slow')`` + ``ClaudeSDKClient.set_model``.
+    This keeps idle sticky instances cheap and pushes sonnet spend to
+    actual slow turns only."""
     cfg = PoolConfig(
         min_size=0, max_size=1, warmup_count=1,
         model="base-x",
@@ -214,14 +229,14 @@ async def test_main_customer_pool_uses_slow_model(captured_calls):
     pool = CCPool(cfg)
     await pool.start()
     try:
-        # warmup_count=1 → at least one create_cc_client call during start()
         assert captured_calls, "warmup did not invoke create_cc_client"
         used_models = {c[0].model for c in captured_calls}
-        assert "sonnet-x" in used_models, (
-            f"customer pool should warm with slow_model=sonnet-x; saw {used_models}"
+        assert "haiku-x" in used_models, (
+            f"customer pool should warm with fast_model=haiku-x; saw {used_models}"
         )
-        assert "haiku-x" not in used_models, (
-            "customer pool must not pick fast_model"
+        assert "sonnet-x" not in used_models, (
+            "customer pool must not pick slow_model at warmup "
+            "(slow is applied per-turn via set_model)"
         )
     finally:
         await pool.shutdown()
