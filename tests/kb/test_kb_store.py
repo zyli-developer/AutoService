@@ -125,11 +125,16 @@ class TestSaveAndClear:
             store.save_chunk(self._chunk("src_a", 0, "from A"))
             store.save_chunk(self._chunk("src_a", 1, "from A again"))
             store.save_chunk(self._chunk("src_b", 0, "from B"))
-            store.clear_source("src_a")
+            deleted = store.clear_source("src_a")
+            assert deleted == 2           # two src_a chunks existed
             assert store.count() == 1
             assert store.by_source() == {"src_b": 1}
         finally:
             store.close()
+
+    def test_clear_source_no_match_returns_zero(self, tmp_path: Path):
+        with KBStore(tmp_path / "kb.db") as store:
+            assert store.clear_source("does_not_exist") == 0
 
     def test_save_chunk_or_replace_is_idempotent(self, tmp_path: Path):
         store = KBStore(tmp_path / "kb.db")
@@ -141,8 +146,28 @@ class TestSaveAndClear:
             assert store.count() == 1
             conn = sqlite3.connect(str(store.db_path))
             row = conn.execute("SELECT content FROM kb_chunks").fetchone()
-            conn.close()
             assert row[0] == "updated"
+            # FTS must also reflect the update — verify the kb_ad+kb_ai trigger
+            # chain fires on INSERT OR REPLACE so stale payload doesn't linger.
+            # NOTE: we check the FTS content-row set directly rather than with
+            # `kb_fts MATCH 'original'`. `INSERT OR REPLACE` in SQLite FTS5
+            # external-content tables leaves the trigram segment index in a
+            # state where MATCH against a removed term raises "database disk
+            # image is malformed" even though the content payload is consistent
+            # (see parent report — root fix is DELETE-then-INSERT in save_chunk,
+            # out of scope here). The payload check still proves the DELETE
+            # trigger fired: without kb_ad, 'original' would remain in kb_fts.
+            fts_rows = conn.execute(
+                "SELECT content FROM kb_fts"
+            ).fetchall()
+            fresh = conn.execute(
+                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("updated",),
+            ).fetchall()
+            conn.close()
+            assert fts_rows == [("updated",)], (
+                f"kb_fts should reflect the REPLACE exactly — got {fts_rows!r}"
+            )
+            assert len(fresh) == 1 and fresh[0][0] == "updated"
         finally:
             store.close()
 

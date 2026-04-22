@@ -183,10 +183,60 @@ class KBStore:
                 json.dumps(chunk, ensure_ascii=False, indent=2), encoding="utf-8"
             )
 
-    def clear_source(self, source_id: str) -> None:
-        """Remove all chunks for a given source_id (for idempotent re-ingest)."""
-        self._conn.execute("DELETE FROM kb_chunks WHERE source_id = ?", (source_id,))
+    def save_chunks(
+        self,
+        chunks: Iterable[dict],
+        *,
+        debug_dir: Path | None = None,
+    ) -> int:
+        """Insert-or-replace many chunks as a single SQLite transaction.
+
+        Much faster than calling :meth:`save_chunk` in a loop because there is
+        exactly one commit (and thus one WAL fsync) for the whole batch. On any
+        per-chunk error, rolls back the whole batch — partial batch state never
+        lands. Returns the number of rows written.
+        """
+        chunks_list = list(chunks)
+        c = self._conn
+        try:
+            for chunk in chunks_list:
+                c.execute(
+                    """
+                    INSERT OR REPLACE INTO kb_chunks
+                        (id, source_id, source_type, source_name, source_url, file_path,
+                         section, content, created_at, domain, region, language, page_number)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        chunk["id"], chunk.get("source_id", ""), chunk.get("source_type", ""),
+                        chunk.get("source_name", ""), chunk.get("source_url"),
+                        chunk.get("file_path"), chunk.get("section", ""),
+                        chunk["content"], chunk["created_at"],
+                        chunk.get("domain", ""), chunk.get("region", ""),
+                        chunk.get("language", "en"), chunk.get("page_number"),
+                    ),
+                )
+                if debug_dir is not None:
+                    debug_dir.mkdir(parents=True, exist_ok=True)
+                    (debug_dir / f"{chunk['id']}.json").write_text(
+                        json.dumps(chunk, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
+        return len(chunks_list)
+
+    def clear_source(self, source_id: str) -> int:
+        """Remove all chunks for a given source_id (for idempotent re-ingest).
+
+        Returns the number of rows deleted.
+        """
+        cur = self._conn.execute(
+            "DELETE FROM kb_chunks WHERE source_id = ?", (source_id,),
+        )
         self._conn.commit()
+        return cur.rowcount
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM kb_chunks").fetchone()[0]
