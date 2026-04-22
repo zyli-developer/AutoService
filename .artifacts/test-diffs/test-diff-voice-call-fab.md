@@ -84,17 +84,28 @@ RUN  v1.6.1 /Users/li.zhenyu/workspace/h2os/AutoService/frontend/apps/customer-c
 
 ### Full customer-chat suite — regression check
 
-| Branch | Passed | Failed | Delta |
-|---|---|---|---|
-| dev (baseline) | 91 | 25 | — |
-| feat/customer-chat-voice-fab | 95 | 21 | **+4 passing, −4 failing** |
+| Branch | Total | Passed | Failed | Delta |
+|---|---|---|---|---|
+| dev (baseline) | 99 | 78 | 21 | — |
+| feat/customer-chat-voice-fab | 116 | 95 | 21 | **+17 passing, ±0 failing** |
 
 All 21 remaining failures are pre-existing on `dev` and unrelated to the
-voice work (MessageGroup prop mismatch, lastSeenCursor module resolution,
-integration tests referencing `data-testid="chat-fab"` which has never
-existed on ChatFAB). Four integration tests that expected the FAB to be
-a clickable button started passing as a side effect of the ChatFAB
-`<div>` → `<button>` change.
+voice work. Root cause for 20 of 21 is `Unable to find element by
+[data-testid="chat-fab"]` / `"fab-call"` — `ChatFAB.tsx` has never
+carried either testid on `dev` or on this branch (the 3rd looks up
+Chinese text while `setup.ts` initializes i18n with `en`).
+
+The +17 passing delta equals exactly the new test count. **Zero new
+regressions; zero incidentally fixed.** Per-test JSON diff confirmed
+by skill-4 and recorded in `.artifacts/e2e-reports/e2e-report-voice-call-fab.md`
+(§6 and §7).
+
+> **Correction**: an earlier revision of this section reported
+> "**+4 passing, −4 failing**" and claimed "Four integration tests
+> ...started passing as a side effect of the ChatFAB `<div>` → `<button>`
+> change." That was based on a misread single-run summary. The
+> structured per-test JSON diff proves the failing-count delta is 0,
+> not −4. See e2e-report-016 §3.
 
 **Zero regression introduced.**
 
