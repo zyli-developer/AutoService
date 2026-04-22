@@ -1,15 +1,20 @@
-"""Tests for T2S.8 — master dream skeleton + scheduler routing.
+"""Tests for T2S.8 → T5S.14 — master dream + scheduler routing.
 
 Covers:
 - ``master_dream_agent.run_platform_dream`` emits platform_level proposal
-  with CON-04 enforced (status='draft' hardcoded)
+  with CON-04 enforced (status='draft' hardcoded) — now LLM tool-loop
+  driven (post-T5S.14; was static skeleton in M3 T2S.8)
 - Routing guard: calling with non-master tenant_id raises
 - DreamScheduler._build_run_dream_coro routes _master → master_dream_agent
 - Per-tenant dream path still works for regular tenants
+
+Post-T5S.14: tests supply a fake cc_pool returning a scripted dream
+client instead of the M3-era ``cc_pool=None`` skeleton pattern.
 """
 from __future__ import annotations
 
 import sqlite3
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,6 +26,70 @@ from autoservice import (
     master_dream_agent,
     proposal_pipeline,
 )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# T5S.14 fake cc_pool / dream client — shared across tests that drive
+# the real LLM tool-loop.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class _FakeDreamClient:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    async def call_with_tools(self, *, system, messages, tools):
+        self.calls.append({"system": system, "messages": messages, "tools": tools})
+        if not self._responses:
+            raise AssertionError("fake client out of scripted responses")
+        return self._responses.pop(0)
+
+
+class _FakePooledInstance:
+    def __init__(self, client):
+        self.client = client
+        self.id = "fake-master-routing-1"
+
+
+class _FakeCCPool:
+    def __init__(self, dream_client):
+        self._dream_client = dream_client
+
+    def acquire(self, *, role, tenant_id=None, timeout=None):
+        @asynccontextmanager
+        async def _cm():
+            yield _FakePooledInstance(self._dream_client)
+        return _cm()
+
+
+def _tool_use_resp(tool_name, tool_input, *, use_id="tu"):
+    return {
+        "content": [
+            {"type": "tool_use", "id": use_id, "name": tool_name, "input": tool_input}
+        ],
+        "stop_reason": "tool_use",
+        "usage": {"input_tokens": 10, "output_tokens": 3},
+    }
+
+
+def _text_resp(text="done"):
+    return {
+        "content": [{"type": "text", "text": text}],
+        "stop_reason": "end_turn",
+        "usage": {"input_tokens": 5, "output_tokens": 2},
+    }
+
+
+_PLATFORM_EMIT_PAYLOAD = {
+    "category": "platform_level",
+    "title": "Cross-tenant CSAT drop",
+    "description": "LLM-driven analysis.",
+    "suggestion": "Refresh KB on billing topics.",
+    "evidence": "{\"tenant_count\": 1, \"total_proposals\": 1}",
+    "risk_level": "low",
+    "target_role": "dream",
+}
 
 
 @pytest.fixture()
@@ -50,9 +119,16 @@ def runs_conn():
 async def test_run_platform_dream_emits_platform_level_proposal(
     proposals_conn, runs_conn
 ):
+    """Post-T5S.14: LLM tool-loop emits platform_level proposal with CON-04."""
+    dream_client = _FakeDreamClient([
+        _tool_use_resp("emit_proposal", _PLATFORM_EMIT_PAYLOAD, use_id="tu_p1"),
+        _text_resp(),
+    ])
+    cc_pool = _FakeCCPool(dream_client)
+
     ids = await master_dream_agent.run_platform_dream(
         tenant_id=bootstrap.MASTER_TENANT_ID,
-        cc_pool=None,
+        cc_pool=cc_pool,
         mempool=None,
         proposals_conn=proposals_conn,
         runs_conn=runs_conn,
@@ -89,11 +165,18 @@ async def test_con04_red_line_status_is_draft(proposals_conn, runs_conn):
 
     Key CON-04 invariant: platform_level proposals cannot bypass the
     red line by virtue of being master-emitted.  5-layer defense applies
-    uniformly.
+    uniformly — regardless of whether the emit is driven by the T5S.14
+    LLM tool-loop or (historically) the T2S.8 static skeleton.
     """
+    dream_client = _FakeDreamClient([
+        _tool_use_resp("emit_proposal", _PLATFORM_EMIT_PAYLOAD, use_id="tu_draft"),
+        _text_resp(),
+    ])
+    cc_pool = _FakeCCPool(dream_client)
+
     ids = await master_dream_agent.run_platform_dream(
         tenant_id=bootstrap.MASTER_TENANT_ID,
-        cc_pool=None,
+        cc_pool=cc_pool,
         mempool=None,
         proposals_conn=proposals_conn,
         runs_conn=runs_conn,
@@ -264,6 +347,13 @@ def test_gather_platform_signals_tolerates_broken_pool(proposals_conn):
 
 @pytest.mark.asyncio
 async def test_run_platform_dream_uses_signals_in_evidence(proposals_conn, runs_conn):
+    """Post-T5S.14: signals reach the LLM via the initial prompt.
+
+    The M3-era assertion ("evidence field contains the signal keys") no
+    longer applies — evidence is now whatever the LLM chooses to emit.
+    This test pins the upstream invariant: the first prompt contains
+    signal values, so the LLM CAN base evidence on them if it wants.
+    """
     import json as _json
 
     # Seed a tenant
@@ -274,18 +364,24 @@ async def test_run_platform_dream_uses_signals_in_evidence(proposals_conn, runs_
     )
     proposals_conn.commit()
 
-    ids = await master_dream_agent.run_platform_dream(
+    # LLM just wraps up — we only care that the signals reached it.
+    dream_client = _FakeDreamClient([_text_resp("observed; nothing to propose")])
+    cc_pool = _FakeCCPool(dream_client)
+
+    await master_dream_agent.run_platform_dream(
         tenant_id=bootstrap.MASTER_TENANT_ID,
-        cc_pool=None, mempool=None,
+        cc_pool=cc_pool, mempool=None,
         proposals_conn=proposals_conn, runs_conn=runs_conn,
     )
-    # Fetch emitted proposal and check evidence carries signal snapshot
-    row = proposals_conn.execute(
-        "SELECT data FROM proposals WHERE id = ?", (ids[0],)
-    ).fetchone()
-    data = _json.loads(row["data"])
-    assert "tenant_count" in data["evidence"]
-    assert "total_proposals" in data["evidence"]
+
+    # The first call's initial user message must surface the signal
+    # values — we seeded 1 tenant with 1 proposal, so both "1"s should
+    # appear in the rendered context.
+    assert dream_client.calls, "LLM was never called — pool not consulted?"
+    initial = dream_client.calls[0]["messages"][0]["content"]
+    assert "tenant_count:" in initial
+    assert "total_proposal_count:" in initial
+    assert "1" in initial  # tenant_count=1 AND total_proposal_count=1
 
 
 @pytest.mark.asyncio

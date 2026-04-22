@@ -32,6 +32,24 @@ from typing import Any, AsyncIterator
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from claude_agent_sdk.types import Message
 
+# SDK content-block types — imported at module level so tests can
+# ``monkeypatch.setattr(cc_pool, "AssistantMessage", ...)`` and the
+# T5S.14 call_with_tools wrapper picks up the patched class via
+# isinstance checks. Fallbacks keep module import working if a future
+# SDK release removes any of these; real code paths will log and raise.
+try:
+    from claude_agent_sdk.types import (
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
+except ImportError:  # pragma: no cover — defensive
+    AssistantMessage = object  # type: ignore[assignment,misc]
+    ResultMessage = object  # type: ignore[assignment,misc]
+    TextBlock = object  # type: ignore[assignment,misc]
+    ToolUseBlock = object  # type: ignore[assignment,misc]
+
 from socialware.pool import (
     PoolConfig as _BasePoolConfig,
     PooledInstance,
@@ -70,6 +88,20 @@ def _setup_file_logging() -> None:
 
 
 _setup_file_logging()
+
+
+def _coerce_usage(u: Any) -> dict:
+    """Normalise a ``Usage`` object or dict to a plain ``{input_tokens,
+    output_tokens}`` dict for the Dream tool-use wrapper. T5S.14."""
+    if isinstance(u, dict):
+        return {
+            "input_tokens": int(u.get("input_tokens") or 0),
+            "output_tokens": int(u.get("output_tokens") or 0),
+        }
+    return {
+        "input_tokens": int(getattr(u, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +149,122 @@ class CCClient:
         the turn as slow.
         """
         await self._sdk.set_model(model)
+
+    async def call_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+    ) -> dict:
+        """Dream-role tool-use wrapper over the local claude_agent_sdk.
+
+        T5S.14 (T3B.5 core) — adds a JSON-in / JSON-out tool-use surface
+        to Dream role clients. The CLI-backed SDK does not accept
+        Anthropic-shape tool JSON natively, so tool schemas are
+        serialised into the prompt preamble; the model's ``tool_use``
+        emissions are translated back into Anthropic-shape dicts so
+        :func:`dream_agent._extract_tool_uses` consumes them unchanged.
+
+        **Scope gate**: only Dream-role clients expose this surface.
+        Customer / operator / triage / lead / translate clients raise
+        ``RuntimeError`` — prevents accidental blast-radius into the
+        conversation-path pools.  The ``_dream_role`` flag is set by
+        :func:`create_cc_client` when ``role="dream"`` and by the
+        legacy dream-pool factory (:func:`_make_tenant_instance`).
+
+        Args:
+            system: System prompt for this turn (caller-owned; not
+                cached across calls — the closure style means each
+                turn re-sends).
+            messages: Anthropic-shape message history. Tool results
+                on the user side are ``{"type": "tool_result",
+                "tool_use_id", "content"}`` blocks.
+            tools: Caller's tool schemas (e.g. ``emit_proposal``,
+                ``kb_search``, ``list_souls``). Passed through
+                verbatim — never mutated.
+
+        Returns:
+            Anthropic-shape response dict:
+            ``{"content": [...blocks...], "stop_reason": str,
+            "usage": {"input_tokens": int, "output_tokens": int}}``.
+            Each block is a dict with a ``type`` discriminator:
+            ``tool_use`` (has ``id`` / ``name`` / ``input``) or
+            ``text`` (has ``text``).
+
+        Raises:
+            RuntimeError: the client is not a Dream-role client
+                (``_dream_role`` flag unset / False).
+        """
+        if not getattr(self, "_dream_role", False):
+            raise RuntimeError(
+                "call_with_tools is reserved for dream-role clients. "
+                "Customer / operator / triage / lead / translate clients "
+                "must not invoke it — use query()/receive_response() "
+                "instead."
+            )
+
+        # Serialise tools + messages into the prompt so the CLI model
+        # sees them. The message shape mirrors Anthropic's so the model
+        # can emit tool_use blocks that downstream code already parses.
+        prompt_parts: list[str] = []
+        if system:
+            prompt_parts.append("[SYSTEM]")
+            prompt_parts.append(system)
+            prompt_parts.append("")
+        prompt_parts.append("[TOOLS]")
+        prompt_parts.append(json.dumps(list(tools), ensure_ascii=False))
+        prompt_parts.append("")
+        prompt_parts.append("[MESSAGES]")
+        prompt_parts.append(json.dumps(list(messages), ensure_ascii=False))
+        prompt = "\n".join(prompt_parts)
+
+        await self._sdk.query(prompt)
+
+        content_blocks: list[dict] = []
+        stop_reason: str | None = None
+        usage: dict | None = None
+
+        # Re-read module-level SDK type handles each call — tests
+        # monkeypatch them on cc_pool, and isinstance against the
+        # re-imported handles would bypass the patch.
+        import autoservice.cc_pool as _mod  # self-reference for patch visibility
+
+        async for msg in self._sdk.receive_response():
+            if isinstance(msg, _mod.AssistantMessage):
+                for block in (msg.content or []):
+                    if isinstance(block, _mod.ToolUseBlock):
+                        content_blocks.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        })
+                    elif isinstance(block, _mod.TextBlock):
+                        content_blocks.append({
+                            "type": "text",
+                            "text": block.text,
+                        })
+                # AssistantMessage-level stop_reason/usage (if present)
+                sr = getattr(msg, "stop_reason", None)
+                if sr is not None:
+                    stop_reason = sr
+                u = getattr(msg, "usage", None)
+                if u is not None:
+                    usage = _coerce_usage(u)
+            elif isinstance(msg, _mod.ResultMessage):
+                sr = getattr(msg, "stop_reason", None)
+                if sr is not None and stop_reason is None:
+                    stop_reason = sr
+                u = getattr(msg, "usage", None)
+                if u is not None and usage is None:
+                    usage = _coerce_usage(u)
+
+        return {
+            "content": content_blocks,
+            "stop_reason": stop_reason,
+            "usage": usage or {},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +549,11 @@ async def create_cc_client(
 
     sdk_client = ClaudeSDKClient(options)
     client = CCClient(sdk_client)
+    # T5S.14: flag dream-role clients so ``CCClient.call_with_tools``
+    # recognises them. Customer/operator/triage/lead/translate clients
+    # stay unflagged and reject call_with_tools.
+    if role == "dream":
+        client._dream_role = True  # type: ignore[attr-defined]
     await client.connect()
     return client
 
@@ -1184,6 +1337,10 @@ async def _make_tenant_instance(
         client = await create_cc_client(
             cfg, system_prompt=_load_dream_soul(tenant_id),
         )
+        # T5S.14: the legacy dream-pool factory bypasses the ``role=``
+        # kwarg on create_cc_client (it supplies the system_prompt
+        # directly), so the dream-role flag must be stamped here too.
+        client._dream_role = True  # type: ignore[attr-defined]
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.

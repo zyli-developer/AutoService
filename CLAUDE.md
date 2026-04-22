@@ -175,6 +175,27 @@ admin portal into a no-password console for anyone who can reach it.
 - Production Docker/compose/k8s configs must leave it unset.
 - Spec: `docs/superpowers/specs/2026-04-21-dev-auto-login-design.md`.
 
+## Dream Dev Stub
+
+`DREAM_DEV_STUB=1` is an offline-dev / CI fallback for `/api/dream/trigger`.
+Post-T5S.14 (M3.5) the default path always drives a real LLM tool-loop —
+per-tenant via `dream_agent.run_dream` and master via `master_dream_agent.
+run_platform_dream`, both backed by the CC pool's `call_with_tools`
+surface (local `claude_agent_sdk`, not the Anthropic cloud SDK).
+
+Setting `DREAM_DEV_STUB=1` short-circuits BOTH paths (master and per-tenant)
+to `_run_dev_stub_dream`: three seed proposals emitted after a 3-second
+sleep, no LLM traffic, no key required. Useful for:
+
+- CI without an `ANTHROPIC_API_KEY` / without a local Claude CLI installed.
+- Offline demos / video capture where deterministic output matters.
+- Smoke-testing the Dream Engine UI flows without spending tokens.
+
+Unlike `AUTH_DEV_MODE`, `DREAM_DEV_STUB` does not expose an auth-bypass
+surface, so the production risk is strictly "wrong output" rather than
+"unauthenticated access". Still leave it unset in production — seed
+proposals would pollute real `proposals` tables.
+
 ## Credentials
 
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)

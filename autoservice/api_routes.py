@@ -587,12 +587,18 @@ async def run_proposal_pipeline() -> list[dict[str, Any]]:
 #
 # Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §2.6
 
-# Dev-only stub for /api/dream/trigger (non-master tenants).  When set,
-# _run_and_mark skips the real ``run_dream`` (which still requires the
-# unlanded T3B.5 cc_pool tool-use surface) and emits three seed proposals
-# after a short sleep — enough to exercise the admin-portal Dream Engine
-# UI for demos / video capture without an Anthropic key.  MUST stay unset
-# in production.  Read once at import; restart to flip.
+# Offline-dev / CI fallback for /api/dream/trigger.  Post-T5S.14 the
+# default production path always goes through the real LLM tool-loop
+# (``dream_agent.run_dream`` for per-tenant, ``master_dream_agent.
+# run_platform_dream`` for master).  Setting ``DREAM_DEV_STUB=1``
+# short-circuits BOTH paths to :func:`_run_dev_stub_dream` — three
+# seed proposals after a short sleep, no LLM traffic, no API key
+# required.  Useful for:
+#   * CI suites that have no ``ANTHROPIC_API_KEY`` / no local Claude CLI
+#   * Offline demos / video capture where deterministic output matters
+#   * Smoke-testing the Dream Engine UI without spending tokens
+#
+# MUST stay unset in production.  Read once at import; restart to flip.
 DREAM_DEV_STUB_ENABLED = os.environ.get("DREAM_DEV_STUB") == "1"
 DREAM_DEV_STUB_DELAY_SEC = 3.0
 
@@ -857,11 +863,26 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     is_master = tenant_id == _bootstrap.MASTER_TENANT_ID
 
     async def _run_and_mark():
-        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised."""
+        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised.
+
+        Routing (post-T5S.14):
+          1. ``DREAM_DEV_STUB=1`` → :func:`_run_dev_stub_dream` for ALL
+             tenants (master + per-tenant).  Offline-dev fallback only.
+          2. master tenant (``_master``) → ``run_platform_dream`` —
+             real cross-tenant LLM tool-loop (T4S.4b).
+          3. per-tenant → ``dream_agent.run_dream`` with ``llm_send=None``
+             → CC pool's ``call_with_tools`` surface (T5S.14 / T3B.5).
+        """
         agent_status = "completed"
         agent_error: str | None = None
         try:
-            if is_master:
+            if DREAM_DEV_STUB_ENABLED:
+                # Offline-dev fallback — no LLM traffic, deterministic output.
+                # Gates both master and per-tenant paths so CI without an
+                # Anthropic key can still exercise the trigger endpoint +
+                # Dream UI.  See DREAM_DEV_STUB_ENABLED docstring above.
+                await _run_dev_stub_dream(tenant_id, proposals_conn, runs_conn)
+            elif is_master:
                 from autoservice import master_dream_agent as _master_dream
                 await _master_dream.run_platform_dream(
                     tenant_id,
@@ -871,13 +892,11 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
                     runs_conn,
                     max_tool_turns=10,
                 )
-            elif DREAM_DEV_STUB_ENABLED:
-                # Dev-only path — emits three seed proposals without the
-                # LLM tool-loop.  Gated by DREAM_DEV_STUB=1; production
-                # keeps falling through to run_dream below (which raises
-                # until T3B.5 lands the cc_pool tool-use surface).
-                await _run_dev_stub_dream(tenant_id, proposals_conn, runs_conn)
             else:
+                # Per-tenant default: run_dream acquires a dream-role CC
+                # pool client and calls its call_with_tools surface
+                # (T5S.14).  llm_send defaulted to None — previously raised
+                # RuntimeError; now drives a real tool-loop.
                 await dream_agent.run_dream(
                     tenant_id,
                     pool,

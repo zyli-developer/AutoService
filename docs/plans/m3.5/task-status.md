@@ -22,7 +22,7 @@
 
 | Batch | Name | State | Start | Gate |
 |-------|------|-------|-------|------|
-| batch-0 | D5 Dream LLM real-wire (T5S.14, yellow) | pending | 2026-04-22 | cinnox/master LLM-backed + VCR green + reviewer APPROVED |
+| batch-0 | D5 Dream LLM real-wire (T5S.14, yellow) | **done** | 2026-04-22 | ✅ 201 mock green + live LLM PASSED 30s via local SDK + reviewer APPROVED |
 | batch-1 | D2 Canary panel + 3-button Apply (T5S.12, yellow) | pending | 2026-04-23 | vitest green + manual walk + reviewer APPROVED |
 | batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | pending | 2026-04-24 | smoke GO + regression + tag + PR |
 
@@ -30,7 +30,7 @@
 
 | # | ID | Alias | Task | Batch | Type | State | Implementer | Review | Commit |
 |---|----|-------|------|-------|------|-------|-------------|--------|--------|
-| 1 | T5S.14 | D5 | Dream LLM real-wire (T3B.5 + T4S.4b) | batch-0 | 🟡 | pending | — | code-reviewer required | — |
+| 1 | T5S.14 | D5 | Dream LLM real-wire (T3B.5 + T4S.4b) | batch-0 | 🟡 | **done** | orchestrator (opus) | ✅ APPROVED (code-reviewer subagent, 13/13) | `m3.5 batch-0` |
 | 2 | T5S.12 | D2/U4 | Canary panel w/ 3-button Apply | batch-1 | 🟡 | pending | — | code-reviewer required | — |
 | 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | pending | — | — | — |
 
@@ -72,5 +72,17 @@ Landed in M3 batch-10.5 (commit `2e50ac1`):
 
 (most recent at top — updated at every batch boundary)
 
+- 2026-04-22 — **batch-0 done**. T5S.14 D5 Dream LLM real-wire shipped. Implementation:
+  - `autoservice/cc_pool.py` — `CCClient.call_with_tools` (JSON-in/JSON-out local-SDK tool-use wrapper) + `_dream_role` gate (non-dream clients raise) + SDK type imports for test monkeypatch
+  - `autoservice/dream_agent.py` — removed `RuntimeError` at L1117, added default `llm_send` closure path over pool's `call_with_tools` (run_dream signature unchanged; existing mock seam intact)
+  - `autoservice/master_dream_agent.py` — full rewrite: static skeleton → real LLM tool-loop via shared `_run_agent_loop`; `_render_signal_context` surfaces cross-tenant signals in prompt; `before_ids/after_ids` snapshot for robust emit attribution
+  - `autoservice/api_routes.py` — `_run_and_mark` routing flipped: `DREAM_DEV_STUB=1` now short-circuits BOTH master and per-tenant (was per-tenant only); default path is real LLM
+  - `CLAUDE.md` — new "Dream Dev Stub" section under Dev Auth Bypass explaining post-T5S.14 semantics
+  - `pyproject.toml` — registered `live` pytest marker + default-excluded from `pytest` runs
+  - **Tests**: 4 new files (1005 lines); 3 M3-era `test_master_dream_routing.py` tests adapted from `cc_pool=None` skeleton pattern to `_FakeCCPool`-driven tool-loop
+  - **Verification**: 201 mocked tests green + live test PASSED 30s via local `claude_agent_sdk` (`AUTOSERVICE_LIVE_OK=1` + env `claude.exe`, non-zero tokens, no stub title)
+  - **Reviewer**: code-reviewer subagent APPROVED (13/13 checks — CON-04 5-layer intact, no `import anthropic`, dream-role scoping correct, DREAM_DEV_STUB gate correct, seam back-compat preserved). 2 non-blocking follow-up suggestions carried forward (TODO: revisit CLI tool serialization when SDK gains native Anthropic-shape; `_coerce_usage` maybe shared util)
+  - **Note on execution**: initial background subagent stalled after 10min watchdog; orchestrator (main-thread opus) took over for implementation phase. The stalled agent's 4 TDD test files (RED baseline) were usable as-is.
+  - Next: batch-1 T5S.12 D2 canary panel.
 - 2026-04-22 — User pivot: defer Playwright + non-Dream UI to Phase 2; focus M3.5 on Dream engine (D5 + D2). Plan revised to 3-batch Dream cut; target tag `v1.2.1-dream`. 10 tasks moved to `deferred_phase_2` (artifacts kept). Ready for `/prd2impl:skill-5-start-task T5S.14` or `/prd2impl:skill-8-batch-dispatch batch-0`.
 - 2026-04-22 — `/prd2impl:skill-3-task-gen` + `/prd2impl:skill-4-plan-schedule` (initial 5-batch plan generated before user pivot).
