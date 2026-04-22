@@ -448,3 +448,107 @@ class TestIngestXlsx:
                 )
         finally:
             store.close()
+
+
+class TestIngestWeb:
+    def test_ingest_web_with_mocked_http(self, tmp_path: Path, monkeypatch):
+        """Mock _make_http_session so the test never hits the network."""
+        from autoservice import kb_core
+
+        html_home = """
+            <html><head><title>Home</title></head><body>
+              <main>
+                <h2>Our services</h2>
+                <p>We provide comprehensive cloud contact center solutions for enterprises across the globe with 24x7 support and multilingual staff.</p>
+                <h2>Pricing</h2>
+                <p>Our pricing model scales with usage — Essentials, Professional, Enterprise, Enterprise Plus tiers are available for different business sizes.</p>
+              </main>
+            </body></html>
+        """
+
+        class _FakeResp:
+            def __init__(self, text: str):
+                self.text = text
+                self.status_code = 200
+            def raise_for_status(self) -> None:
+                pass
+
+        class _FakeSession:
+            def get(self, url, **kw):
+                return _FakeResp(html_home)
+
+        monkeypatch.setattr(kb_core, "_make_http_session", lambda: _FakeSession())
+        # Also skip the sleep between requests.
+        monkeypatch.setattr(kb_core.time, "sleep", lambda _s: None)
+
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            n = store.ingest_web(
+                "https://example.com",
+                source_id="web_a",
+                source_name="Example",
+                max_pages=1, crawl_depth=1,
+            )
+            assert n >= 1
+            conn = sqlite3.connect(str(store.db_path))
+            rows = conn.execute(
+                "SELECT source_type, source_url FROM kb_chunks LIMIT 1"
+            ).fetchall()
+            conn.close()
+            assert rows[0][0] == "web" and rows[0][1] == "https://example.com"
+        finally:
+            store.close()
+
+    def test_ingest_web_idempotent(self, tmp_path: Path, monkeypatch):
+        """Re-crawl same URL with same source_id must not duplicate."""
+        from autoservice import kb_core
+
+        html = "<html><body><main><h2>S</h2><p>" + ("content word " * 30) + "</p></main></body></html>"
+
+        class _FakeResp:
+            def __init__(self): self.text = html; self.status_code = 200
+            def raise_for_status(self): pass
+
+        class _FakeSession:
+            def get(self, *a, **kw): return _FakeResp()
+
+        monkeypatch.setattr(kb_core, "_make_http_session", lambda: _FakeSession())
+        monkeypatch.setattr(kb_core.time, "sleep", lambda _s: None)
+
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            first = store.ingest_web(
+                "https://example.com/", source_id="web_b", source_name="Ex",
+                max_pages=1, crawl_depth=1,
+            )
+            second = store.ingest_web(
+                "https://example.com/", source_id="web_b", source_name="Ex",
+                max_pages=1, crawl_depth=1,
+            )
+            assert first == second
+            if first > 0:
+                assert store.by_source() == {"web_b": first}
+        finally:
+            store.close()
+
+    def test_ingest_web_fetch_failure_is_logged_not_raised(self, tmp_path: Path, monkeypatch):
+        """If the fetch raises, log-and-skip; don't bubble up."""
+        from autoservice import kb_core
+
+        class _BoomSession:
+            def get(self, *a, **kw):
+                raise ConnectionError("no network")
+
+        monkeypatch.setattr(kb_core, "_make_http_session", lambda: _BoomSession())
+        monkeypatch.setattr(kb_core.time, "sleep", lambda _s: None)
+
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            # Should NOT raise, should return 0 chunks.
+            n = store.ingest_web(
+                "https://example.com", source_id="web_c", source_name="Ex",
+                max_pages=1, crawl_depth=1,
+            )
+            assert n == 0
+        finally:
+            store.close()

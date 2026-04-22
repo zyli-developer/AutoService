@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -24,6 +25,16 @@ log = logging.getLogger(__name__)
 
 CHUNK_MAX_CHARS = 600
 CHUNK_MIN_CHARS = 50
+
+
+def _make_http_session():
+    """Factory wrapped for test monkeypatching.
+
+    Tests override this via ``monkeypatch.setattr(kb_core, "_make_http_session", ...)``
+    to inject a fake session that doesn't hit the network.
+    """
+    import requests
+    return requests.Session()
 
 
 class KBStore:
@@ -728,6 +739,121 @@ class KBStore:
                 })
                 idx += 1
 
+        if not chunks_to_save:
+            return 0
+        return self.save_chunks(chunks_to_save, debug_dir=debug_dir)
+
+    # ── Web ingestion (port of kb_ingest.ingest_web) ────────────────────
+
+    @staticmethod
+    def _fetch_page_text(url: str, session) -> tuple[str, str]:
+        from bs4 import BeautifulSoup
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; KBBuilder/1.0)"}
+        resp = session.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["nav", "footer", "script", "style", "header", "aside"]):
+            tag.decompose()
+        title = soup.title.string.strip() if soup.title and soup.title.string else url
+        body = soup.find("main") or soup.find("article") or soup.body or soup
+        lines: list[str] = []
+        for el in body.find_all(["h1", "h2", "h3", "h4", "p", "li", "td", "th"]):
+            text = el.get_text(separator=" ", strip=True)
+            if len(text) > 20:
+                prefix = "\n\n## " if el.name in ("h1", "h2", "h3") else ""
+                lines.append(f"{prefix}{text}")
+        return title, "\n".join(lines)
+
+    @staticmethod
+    def _same_domain_links(url: str, base_url: str, session) -> list[str]:
+        from bs4 import BeautifulSoup
+        from urllib.parse import urljoin, urlparse
+        try:
+            resp = session.get(url, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            base = urlparse(base_url)
+            out: list[str] = []
+            for a in soup.find_all("a", href=True):
+                href = urljoin(url, a["href"])
+                p = urlparse(href)
+                if p.netloc == base.netloc and p.scheme in ("http", "https"):
+                    clean = f"{p.scheme}://{p.netloc}{p.path}"
+                    if clean not in out:
+                        out.append(clean)
+            return out
+        except Exception:
+            return []
+
+    def ingest_web(
+        self,
+        url: str,
+        *,
+        source_id: str,
+        source_name: str,
+        max_pages: int = 20,
+        crawl_depth: int = 1,
+        domain: str = "",
+        region: str = "",
+        language: str = "en",
+        debug_dir: Path | None = None,
+    ) -> int:
+        """BFS crawl *url* within the same domain, chunk each page by section.
+
+        Uses a session from the module-level :func:`_make_http_session` (tests
+        monkeypatch this). Failures on individual pages are logged and skipped
+        — they do not abort the crawl. Returns # chunks written. Clears
+        existing rows for *source_id* first for idempotent re-ingest.
+        """
+        import re
+        self.clear_source(source_id)
+        now = datetime.now(timezone.utc).isoformat()
+        session = _make_http_session()
+        visited: set[str] = set()
+        to_visit = [url]
+        chunks_to_save: list[dict] = []
+        idx = 0
+        while to_visit and len(visited) < max_pages:
+            cur = to_visit.pop(0)
+            if cur in visited:
+                continue
+            visited.add(cur)
+            try:
+                title, text = self._fetch_page_text(cur, session)
+                time.sleep(0.5)
+            except Exception as exc:
+                log.warning("KB web fetch failed %s: %s", cur, exc)
+                continue
+            if not text.strip():
+                continue
+            sections = re.split(r"\n\n## ", text)
+            for sec_text in sections:
+                if not sec_text.strip():
+                    continue
+                lines = sec_text.strip().splitlines()
+                section_title = lines[0].replace("## ", "").strip()[:80] if lines else title
+                for sub in self._chunk_paragraphs(sec_text):
+                    if len(sub.strip()) < CHUNK_MIN_CHARS:
+                        continue
+                    chunks_to_save.append({
+                        "id": f"{source_id}_{idx:04d}",
+                        "source_id": source_id,
+                        "source_type": "web",
+                        "source_name": source_name,
+                        "source_url": cur,
+                        "file_path": None,
+                        "section": section_title,
+                        "content": sub.strip(),
+                        "created_at": now,
+                        "domain": domain,
+                        "region": region,
+                        "language": language,
+                        "page_number": None,
+                    })
+                    idx += 1
+            if crawl_depth > 1 and len(visited) < max_pages:
+                for link in self._same_domain_links(cur, url, session)[:10]:
+                    if link not in visited:
+                        to_visit.append(link)
         if not chunks_to_save:
             return 0
         return self.save_chunks(chunks_to_save, debug_dir=debug_dir)
