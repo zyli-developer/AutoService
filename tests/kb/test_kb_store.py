@@ -193,3 +193,77 @@ class TestSaveAndClear:
                 conn.close()
         finally:
             store.close()
+
+
+class TestIngestText:
+    def test_ingest_text_splits_by_paragraphs(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            text = (
+                "First paragraph with enough characters to pass the minimum threshold of fifty chars.\n\n"
+                "Second paragraph, also sufficiently long to count as a chunk on its own right here.\n\n"
+                "Third one, meeting the minimum character count required for inclusion in the output chunks."
+            )
+            n = store.ingest_text(
+                text,
+                source_id="doc_a",
+                source_name="Test Doc",
+                source_type="text",
+                file_path="test.md",
+                domain="contact_center",
+                region="",
+                language="en",
+            )
+            assert n >= 1
+            assert store.by_source() == {"doc_a": n}
+        finally:
+            store.close()
+
+    def test_ingest_text_skips_short_paragraphs(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            text = "hi\n\nshort\n\n" + ("x" * 80)  # last para >= CHUNK_MIN_CHARS
+            n = store.ingest_text(
+                text,
+                source_id="doc_b",
+                source_name="Short Doc",
+                source_type="text",
+            )
+            # "hi" (2 chars) and "short" (5 chars) are below CHUNK_MIN_CHARS (50),
+            # should be skipped. Only the 80-x paragraph should become a chunk.
+            assert n == 1
+        finally:
+            store.close()
+
+    def test_ingest_text_is_idempotent_on_same_source_id(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            text = ("a" * 200) + "\n\n" + ("b" * 200)
+            store.ingest_text(
+                text, source_id="doc_c", source_name="Doc C", source_type="text",
+            )
+            first = store.count()
+            store.ingest_text(
+                text, source_id="doc_c", source_name="Doc C", source_type="text",
+            )
+            # Same source_id → clear+reseed; count stays stable, no duplicates.
+            assert store.count() == first
+            assert store.by_source() == {"doc_c": first}
+        finally:
+            store.close()
+
+    def test_ingest_text_empty_returns_zero(self, tmp_path: Path):
+        """Empty or all-short text should ingest 0 chunks without erroring."""
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            assert store.ingest_text(
+                "",
+                source_id="doc_d", source_name="Empty", source_type="text",
+            ) == 0
+            assert store.ingest_text(
+                "hi\n\nshort",
+                source_id="doc_e", source_name="AllShort", source_type="text",
+            ) == 0
+            assert store.count() == 0
+        finally:
+            store.close()

@@ -262,3 +262,75 @@ class KBStore:
                 "SELECT source_id, COUNT(*) FROM kb_chunks GROUP BY source_id"
             ).fetchall()
         )
+
+    # ── text ingestion ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _chunk_paragraphs(text: str) -> list[str]:
+        """Paragraph-based chunker (port of kb_ingest.chunk_paragraphs).
+
+        Joins short paragraphs into chunks up to CHUNK_MAX_CHARS; skips
+        paragraphs below CHUNK_MIN_CHARS. No overlap.
+        """
+        import re
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        chunks: list[str] = []
+        current: list[str] = []
+        current_len = 0
+        for para in paragraphs:
+            if len(para) < CHUNK_MIN_CHARS:
+                continue
+            if current and current_len + len(para) > CHUNK_MAX_CHARS:
+                chunks.append("\n\n".join(current))
+                current = [para]
+                current_len = len(para)
+            else:
+                current.append(para)
+                current_len += len(para)
+        if current:
+            chunks.append("\n\n".join(current))
+        return chunks
+
+    def ingest_text(
+        self,
+        text: str,
+        *,
+        source_id: str,
+        source_name: str,
+        source_type: str = "text",
+        source_url: str | None = None,
+        file_path: str | None = None,
+        domain: str = "",
+        region: str = "",
+        language: str = "en",
+        debug_dir: Path | None = None,
+    ) -> int:
+        """Chunk plain text by paragraphs and insert. Returns # chunks written.
+
+        Clears existing rows for *source_id* first (idempotent re-ingest).
+        Writes all chunks in one transaction via :meth:`save_chunks`.
+        """
+        self.clear_source(source_id)
+        texts = self._chunk_paragraphs(text)
+        if not texts:
+            return 0
+        now = datetime.now(timezone.utc).isoformat()
+        chunks = [
+            {
+                "id": f"{source_id}_{i:04d}",
+                "source_id": source_id,
+                "source_type": source_type,
+                "source_name": source_name,
+                "source_url": source_url,
+                "file_path": file_path,
+                "section": "",
+                "content": chunk_text,
+                "created_at": now,
+                "domain": domain,
+                "region": region,
+                "language": language,
+                "page_number": None,
+            }
+            for i, chunk_text in enumerate(texts)
+        ]
+        return self.save_chunks(chunks, debug_dir=debug_dir)
