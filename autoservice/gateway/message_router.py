@@ -878,11 +878,16 @@ async def _drain_with_placeholder(
     """
     # Imported lazily so the gateway module stays import-cheap for tests
     # that don't exercise the CC stream.
-    from claude_agent_sdk.types import AssistantMessage, ResultMessage
+    from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
     reply_text = ""
     first_token_seen = asyncio.Event()
     placeholder_msg: Any = None
+    # When the SDK runs with `include_partial_messages=True`, text arrives via
+    # StreamEvent (content_block_delta / text_delta) **and** the trailing
+    # AssistantMessage carries the same fully-assembled text. Track whether we
+    # accumulated from deltas so the AssistantMessage tail doesn't double-count.
+    saw_stream_text = False
 
     # Intermediate-edit throttle state. `_push_streaming_edit` is a
     # closure over `placeholder_msg` / `reply_text`, so it always reads
@@ -962,17 +967,37 @@ async def _drain_with_placeholder(
 
     try:
         async for item in iterator:
-            if not first_token_seen.is_set():
-                if isinstance(item, AssistantMessage) and item.content:
+            # Token-level deltas (only present when include_partial_messages=True).
+            # Anthropic CLI stream-event shape: content_block_delta with a
+            # text_delta carries one chunk of assistant text. tool_use deltas
+            # are ignored — they're not user-visible reply content.
+            if isinstance(item, StreamEvent):
+                event = getattr(item, "event", None) or {}
+                if event.get("type") == "content_block_delta":
+                    delta = event.get("delta") or {}
+                    if delta.get("type") == "text_delta":
+                        chunk = delta.get("text") or ""
+                        if chunk:
+                            if not first_token_seen.is_set():
+                                first_token_seen.set()
+                            reply_text += chunk
+                            saw_stream_text = True
+            elif isinstance(item, AssistantMessage) and item.content:
+                if not first_token_seen.is_set():
                     first_token_seen.set()
-                elif isinstance(item, ResultMessage) and item.result:
-                    first_token_seen.set()
-            if isinstance(item, AssistantMessage) and item.content:
-                for block in item.content:
-                    if hasattr(block, "text"):
-                        reply_text += block.text
+                # Skip text accumulation when StreamEvent deltas already built
+                # reply_text; AssistantMessage.content is the same fully-assembled
+                # text and would double the output. Fallback path (no partial
+                # messages enabled) still captures the full reply here.
+                if not saw_stream_text:
+                    for block in item.content:
+                        if hasattr(block, "text"):
+                            reply_text += block.text
             elif isinstance(item, ResultMessage) and item.result:
-                reply_text = item.result
+                if not first_token_seen.is_set():
+                    first_token_seen.set()
+                if not saw_stream_text:
+                    reply_text = item.result
 
             # Throttled progress push. Runs only once the placeholder
             # exists (so there's a message_id to edit) and the chunk is
