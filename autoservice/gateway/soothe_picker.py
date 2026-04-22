@@ -9,12 +9,15 @@ Design: docs/superpowers/specs/2026-04-23-soothe-placeholder-design.md
 """
 from __future__ import annotations
 
+import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+log = logging.getLogger("soothe.picker")
 
 
 @dataclass(frozen=True)
@@ -36,16 +39,50 @@ class SoothePicker:
         self,
         bank: dict[str, Any],
         rng: random.Random | None = None,
+        known_intents: set[str] | None = None,
     ) -> None:
         self._rng = rng or random.Random()
-        # Index: (intent, lang) -> (template_id, lines)
         self._index: dict[tuple[str, str], tuple[str, list[str]]] = {}
+        seen_keys: set[tuple[str, str]] = set()
+        required = ("id", "intent", "lang", "lines")
         for entry in bank.get("templates", []):
-            key = (entry["intent"], entry["lang"])
-            self._index[key] = (entry["id"], list(entry["lines"]))
+            for k in required:
+                if k not in entry:
+                    raise ValueError(
+                        f"soothe template entry {entry!r} missing required key {k!r}"
+                    )
+            tid = entry["id"]
+            intent = entry["intent"]
+            lang = entry["lang"]
+            lines = list(entry["lines"])
+            if not lines:
+                raise ValueError(
+                    f"template {tid!r} (intent={intent!r}, lang={lang!r}) has empty 'lines'"
+                )
+            key = (intent, lang)
+            if key in seen_keys:
+                log.warning(
+                    "soothe template %r has duplicate (intent=%r, lang=%r) — "
+                    "previous entry is overwritten",
+                    tid, intent, lang,
+                )
+            seen_keys.add(key)
+            if known_intents is not None and intent != "*" and intent not in known_intents:
+                log.warning(
+                    "soothe template %r uses unknown intent %r "
+                    "(not in classify_intent.yaml); loading anyway",
+                    tid, intent,
+                )
+            self._index[key] = (tid, lines)
         self._fallback_by_lang: dict[str, list[str]] = dict(
             bank.get("defaults", {}).get("fallback", {})
         )
+        for required_lang in ("zh", "en"):
+            fb = self._fallback_by_lang.get(required_lang, [])
+            if not fb:
+                raise ValueError(
+                    f"defaults.fallback.{required_lang} is missing or empty"
+                )
 
     @classmethod
     def from_yaml(
@@ -71,10 +108,9 @@ class SoothePicker:
         if wildcard:
             tid, lines = wildcard
             return SoothePick(template_id=tid, text=self._rng.choice(lines))
-        # 3. defaults.fallback[lang]. Empty fallback is a bank authoring
-        # bug — Task 4 validation will raise at load time, but until
-        # then return a benign empty-text sentinel rather than letting
-        # random.choice([]) raise IndexError.
+        # 3. defaults.fallback[lang]. Guaranteed non-empty by
+        # __init__ validation, but the `if fb_lines else ""` guard
+        # remains as a belt-and-braces safeguard against future refactors.
         fb_lines = self._fallback_by_lang.get(lang_norm, [])
         text = self._rng.choice(fb_lines) if fb_lines else ""
         return SoothePick(

@@ -4,6 +4,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
+import pytest
 import yaml
 
 from autoservice.gateway.soothe_picker import SoothePick, SoothePicker
@@ -100,3 +101,82 @@ def test_unknown_lang_normalized_to_zh():
     pick = picker.pick(intent="complaint", lang="fr")
     # lang 'fr' does not start with 'en' → normalized to 'zh'
     assert pick.template_id == "complaint_zh"
+
+
+def test_missing_fallback_zh_raises():
+    bank = _bank()
+    del bank["defaults"]["fallback"]["zh"]
+    with pytest.raises(ValueError, match="defaults.fallback.zh"):
+        SoothePicker(bank=bank)
+
+
+def test_missing_fallback_en_raises():
+    bank = _bank()
+    del bank["defaults"]["fallback"]["en"]
+    with pytest.raises(ValueError, match="defaults.fallback.en"):
+        SoothePicker(bank=bank)
+
+
+def test_empty_fallback_raises():
+    bank = _bank()
+    bank["defaults"]["fallback"]["zh"] = []
+    with pytest.raises(ValueError, match="defaults.fallback.zh"):
+        SoothePicker(bank=bank)
+
+
+def test_empty_template_lines_raises():
+    bank = _bank()
+    bank["templates"][0]["lines"] = []
+    with pytest.raises(ValueError, match="complaint_zh.*lines"):
+        SoothePicker(bank=bank)
+
+
+def test_unknown_intent_in_bank_warns_but_loads(caplog):
+    import logging
+    bank = _bank()
+    bank["templates"].append({
+        "id": "fake_intent_zh",
+        "intent": "fake_intent_not_in_classify_yaml",
+        "lang": "zh",
+        "lines": ["test"],
+    })
+    known_intents = {"complaint", "product_inquiry"}
+    with caplog.at_level(logging.WARNING):
+        SoothePicker(bank=bank, known_intents=known_intents)
+    assert any(
+        "fake_intent_not_in_classify_yaml" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_missing_required_key_raises():
+    """A template entry missing 'id', 'intent', 'lang', or 'lines' must raise at load time."""
+    bank = _bank()
+    bank["templates"].append({
+        # missing 'id'
+        "intent": "complaint",
+        "lang": "zh",
+        "lines": ["test"],
+    })
+    with pytest.raises(ValueError, match="missing required key.*id"):
+        SoothePicker(bank=bank)
+
+
+def test_duplicate_intent_lang_warns(caplog):
+    """Two templates sharing (intent, lang) is a template-authoring bug —
+    the second entry silently overwrites the first. Warn so the author
+    notices. Loading still succeeds."""
+    import logging
+    bank = _bank()
+    bank["templates"].append({
+        "id": "complaint_zh_dup",
+        "intent": "complaint",   # collides with existing complaint_zh
+        "lang": "zh",
+        "lines": ["duplicate"],
+    })
+    with caplog.at_level(logging.WARNING):
+        SoothePicker(bank=bank)
+    assert any(
+        "duplicate" in rec.message.lower() and "complaint" in rec.message.lower()
+        for rec in caplog.records
+    )
