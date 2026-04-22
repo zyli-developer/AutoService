@@ -5,6 +5,7 @@ import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
 import { ChatFAB } from './components/ChatFAB';
 import { ChatModal } from './components/ChatModal';
+import { VoiceCallModal } from './components/VoiceCallModal';
 
 // Unique customer ID per browser tab (persisted in sessionStorage)
 function getCustomerId(): string {
@@ -112,8 +113,19 @@ function ChatApp({ tenantId }: { tenantId: string }) {
     return false;
   });
   const [sheet, setSheet] = useState<SheetState>(getInitialSheet);
+  const [isCallOpen, setIsCallOpen] = useState(false);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customerId = useMemo(getCustomerId, []);
+
+  const voiceCtx = useMemo(
+    () => ({
+      tenant_id: tenantId,
+      customer_id: customerId,
+      mode: 'e2e' as const,
+      lang: 'zh-CN',
+    }),
+    [tenantId, customerId],
+  );
 
   // Auto-open/close when viewport crosses the mobile breakpoint
   useEffect(() => {
@@ -216,7 +228,19 @@ function ChatApp({ tenantId }: { tenantId: string }) {
           onToggleSheet={toggleSheet}
         />
       ) : null}
-      <ChatFAB onClick={() => setIsOpen(true)} highlight={!isOpen} />
+      <ChatFAB
+        onClick={() => setIsOpen(true)}
+        onCallClick={() => {
+          setIsOpen(false);
+          setIsCallOpen(true);
+        }}
+        highlight={!isOpen}
+      />
+      <VoiceCallModal
+        open={isCallOpen}
+        onClose={() => setIsCallOpen(false)}
+        ctx={voiceCtx}
+      />
     </div>
   );
 }
