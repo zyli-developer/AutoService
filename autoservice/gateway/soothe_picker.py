@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-log = logging.getLogger("soothe.picker")
+log = logging.getLogger("autoservice.gateway.soothe")
 
 
 @dataclass(frozen=True)

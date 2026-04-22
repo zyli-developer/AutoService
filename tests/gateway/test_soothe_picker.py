@@ -1,6 +1,7 @@
 """Unit tests for SoothePicker — context-aware placeholder selection."""
 from __future__ import annotations
 
+import logging
 import random
 from pathlib import Path
 
@@ -132,7 +133,6 @@ def test_empty_template_lines_raises():
 
 
 def test_unknown_intent_in_bank_warns_but_loads(caplog):
-    import logging
     bank = _bank()
     bank["templates"].append({
         "id": "fake_intent_zh",
@@ -141,7 +141,7 @@ def test_unknown_intent_in_bank_warns_but_loads(caplog):
         "lines": ["test"],
     })
     known_intents = {"complaint", "product_inquiry"}
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="autoservice.gateway.soothe"):
         SoothePicker(bank=bank, known_intents=known_intents)
     assert any(
         "fake_intent_not_in_classify_yaml" in rec.message
@@ -166,7 +166,6 @@ def test_duplicate_intent_lang_warns(caplog):
     """Two templates sharing (intent, lang) is a template-authoring bug —
     the second entry silently overwrites the first. Warn so the author
     notices. Loading still succeeds."""
-    import logging
     bank = _bank()
     bank["templates"].append({
         "id": "complaint_zh_dup",
@@ -174,7 +173,7 @@ def test_duplicate_intent_lang_warns(caplog):
         "lang": "zh",
         "lines": ["duplicate"],
     })
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="autoservice.gateway.soothe"):
         SoothePicker(bank=bank)
     assert any(
         "duplicate" in rec.message.lower() and "complaint" in rec.message.lower()
