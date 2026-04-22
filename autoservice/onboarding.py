@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -413,8 +414,11 @@ async def upload_and_parse(
     files: list[UploadFile] = File(default=[]),
 ):
     """Upload files, parse, return extracted text + trigger soul generation."""
+    from autoservice.kb_core import KBStore
+
     pipeline = OnboardingPipeline()
-    results = []
+    results: list[dict] = []
+    file_payloads: list[tuple[dict, bytes, str]] = []  # (result, raw_bytes, detected_type)
 
     for f in files:
         content = await f.read()
@@ -426,76 +430,84 @@ async def upload_and_parse(
             result = pipeline.ingest(str(tmp_path))
             result["original_name"] = f.filename
             results.append(result)
+            file_payloads.append((result, content, result.get("file_type", "text")))
         except UnsupportedFileType as exc:
             results.append({"status": "skipped", "file_name": f.filename, "reason": str(exc)})
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    # Optionally parse URL
-    url_result = None
-    if website_url:
-        try:
-            import requests
-            from bs4 import BeautifulSoup
-            resp = requests.get(website_url, timeout=15, headers={"User-Agent": "AutoService/1.0"})
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer"]):
-                tag.decompose()
-            url_text = soup.get_text(separator="\n", strip=True)
-            url_result = {"status": "ok", "source": website_url, "text_length": len(url_text)}
-        except Exception as exc:
-            url_result = {"status": "failed", "source": website_url, "error": str(exc)}
-
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
-    # --- Sandbox provisioning (spec §2 / §3.1) ---
-    # Step 0 owns three on-disk artifacts:
-    #   1. .autoservice/sandbox/<tid>/config.json  (skeleton — tenant metadata only)
-    #   2. .autoservice/sandbox/<tid>/kb/kb.db     (FTS5 SQLite with extracted chunks)
-    #   3. .autoservice/sandbox/<tid>/souls/       (4 LLM-generated + dream template)
     config_path = None
     try:
         config_path = _write_sandbox_config_skeleton(tenant_id, brand_name, industry)
     except Exception as exc:
         log.warning("Failed to write sandbox config skeleton: %s", exc)
 
-    # --- KB ingest: write extracted chunks into per-tenant sandbox KB ---
+    # -- KB ingest via KBStore --------------------------------------
     kb_chunks_written = 0
-    try:
-        kb_chunks_written = _ingest_chunks_into_sandbox_kb(
-            tenant_id, results, domain=industry or ""
-        )
-    except Exception as exc:
-        log.warning("Sandbox KB ingest failed (upload still succeeds): %s", exc)
+    kb_errors: list[str] = []
+    url_result: dict | None = None
+    sandbox_kb = sandbox_dir(tenant_id) / "kb" / "kb.db"
+    with KBStore(sandbox_kb) as store:
+        # 1. Files -- one source per file, source_id = sha256 prefix of bytes.
+        for result, raw_bytes, ftype in file_payloads:
+            if result.get("status") != "ok":
+                continue
+            source_id = f"file:{hashlib.sha256(raw_bytes).hexdigest()[:16]}"
+            source_name = result.get("original_name") or result.get("file_name") or "uploaded"
+            text = result.get("text") or ""
+            try:
+                n = store.ingest_text(
+                    text,
+                    source_id=source_id,
+                    source_name=source_name,
+                    source_type=ftype,
+                    file_path=source_name,
+                    domain=industry or "",
+                )
+                kb_chunks_written += n
+            except Exception as exc:
+                kb_errors.append(f"{source_name}: {exc}")
 
-    # --- Soul generation: wire soul_generator after text extraction ---
+        # 2. Website URL -- crawl 1 page, ingest into KB (bug fix).
+        if website_url:
+            try:
+                n = store.ingest_web(
+                    website_url,
+                    source_id="website",
+                    source_name=website_url,
+                    max_pages=1,
+                    crawl_depth=1,
+                    domain=industry or "",
+                )
+                kb_chunks_written += n
+                url_result = {"status": "ok", "source": website_url, "chunks_written": n}
+            except Exception as exc:
+                url_result = {"status": "failed", "source": website_url, "error": str(exc)}
+                kb_errors.append(f"{website_url}: {exc}")
+
+    # -- Soul generation (unchanged) --------------------------------
     souls_output = None
     souls_saved: dict[str, str] = {}
     try:
         from autoservice.soul_generator import TenantConfig, generate_souls, save_drafts
 
-        # Combine extracted text from all successfully parsed files
         combined_text = "\n\n".join(
             r.get("text", "") for r in results if r.get("status") == "ok"
         )
-
         soul_config = TenantConfig(
             tenant_id=tenant_id,
             brand_name=brand_name or "Unknown Brand",
             industry=industry,
             extra_context=combined_text[:8000] if combined_text else "",
         )
-
         gen_result = generate_souls(soul_config, dry_run=(not combined_text))
-
-        # --- Persist soul drafts to sandbox (fixes bug #1) ---
         try:
             paths = save_drafts(gen_result)
             souls_saved = {role: str(p) for role, p in paths.items()}
         except Exception as exc:
             log.warning("save_drafts failed: %s", exc)
-
         souls_output = {
             "mode": gen_result.mode,
             "total_kb_hits": gen_result.total_kb_hits,
@@ -514,7 +526,6 @@ async def upload_and_parse(
         log.warning("Soul generation failed (upload still succeeds): %s", exc)
         souls_output = {"error": str(exc)}
 
-    # --- Dream soul placeholder: copy static template (M1 only, see §2.5) ---
     try:
         dream_path = _copy_dream_soul_template(tenant_id)
         if dream_path is not None:
@@ -534,6 +545,7 @@ async def upload_and_parse(
         "sandbox_dir": str(sandbox_dir(tenant_id)),
         "config_path": str(config_path) if config_path else None,
         "kb_chunks_written": kb_chunks_written,
+        "kb_errors": kb_errors,
         "souls": souls_output,
     }
 
