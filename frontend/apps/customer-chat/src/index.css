@@ -566,6 +566,19 @@ html, body, #root {
   border-bottom-left-radius: 4px;
 }
 
+/* Customer (dark indigo) bubble — invert markdown chrome for contrast.
+   Base .md-text styles live in @autoservice/design-system/components.css. */
+.w-msg.customer .md-text a { color: #fff; text-decoration: underline; }
+.w-msg.customer .md-text code,
+.w-msg.customer .md-text pre { background: rgba(255, 255, 255, 0.18); }
+.w-msg.customer .md-text blockquote {
+  border-left-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.85);
+}
+.w-msg.customer .md-text hr { border-top-color: rgba(255, 255, 255, 0.3); }
+.w-msg.customer .md-text th,
+.w-msg.customer .md-text td { border-color: rgba(255, 255, 255, 0.3); }
+
 /* Standalone system message — no wrapper */
 .web-msg.system {
   align-self: center;

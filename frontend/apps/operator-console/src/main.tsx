@@ -1,51 +1,20 @@
 /**
- * T7F.3 · operator-console entry — mode-based routing bootstrap
- *
- * Renders the app inside a `<BrowserRouter>` whose `basename` is derived from
- * the deployment mode reported by `/api/session/mode` (via `useSessionMode`,
- * batch-9 real impl). Single source of truth for mode.
- *
- * Mode policy (spec §3.6 + eval-doc-015 TenantContext middleware):
- *   - master mode                  → basename="/tenant/<tid>" if the operator's
- *                                    session carries tenant_id (common — an
- *                                    operator is always scoped to a tenant);
- *                                    otherwise "" and we rely on absolute
- *                                    `/tenant/:tenantId/operator` URLs.
- *   - tenant mode                  → basename="" (URL-flat). The backend
- *                                    middleware rewrites `/tenant/<self>/*` → `/*`
- *                                    before the SPA loads, so the URL-flat
- *                                    path is the canonical shape in fork
- *                                    deployments.
- *
- * The `<Routes>` tree accepts both URL shapes in both modes — keeps the tree
- * identical across modes and leaves the `basename` as the single
- * mode-dependent knob. No-tenant paths fall through to `NoTenantFallback`.
- *
- * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §3.6
+ * operator-console entry — mounts the SPA inside BrowserRouter after
+ * /api/session/mode resolves (Splash covers the async bootstrap). The
+ * route table matches `/tenant/:tenantId/operator` (master canonical) and
+ * `/operator` (tenant canonical after backend URL rewrite) directly; no
+ * basename stripping, because the app has no relative navigation.
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { I18nextProvider, createI18n, useTranslation } from '@autoservice/i18n';
-import { useSessionMode, type SessionMode } from '@autoservice/shared';
+import { useSessionMode } from '@autoservice/shared';
 import { App } from './App';
 import { NoTenantFallback } from './components/NoTenantFallback';
 import './index.css';
 
 const i18n = createI18n();
-
-/**
- * Compute the BrowserRouter basename from the resolved deployment mode +
- * session tenant_id. Exported for unit-test coverage.
- */
-export function deriveBasename(
-  mode: SessionMode['mode'],
-  tenantId: string | null,
-): string {
-  if (mode === 'tenant') return '';
-  if (mode === 'master' && tenantId) return `/tenant/${tenantId}`;
-  return '';
-}
 
 function Splash({
   variant = 'loading',
@@ -117,9 +86,9 @@ function Splash({
 }
 
 /**
- * Reads `useSessionMode()` and renders the router with the correct basename.
- * Exported for unit tests — tests can inject a fake `fetcher` via the
- * optional prop to drive the three states (loading / error / ready) without
+ * Gates rendering on `useSessionMode()` so the Splash covers the async
+ * handshake. Exported for unit tests — tests can inject a fake `fetcher`
+ * via the optional prop to drive loading / error / ready states without
  * hitting a real backend.
  */
 export function RouteBootstrap({
@@ -130,7 +99,7 @@ export function RouteBootstrap({
   endpoint?: string;
 } = {}) {
   const { t } = useTranslation();
-  const { data, loading, error, refetch } = useSessionMode(fetcher, endpoint);
+  const { loading, error, refetch } = useSessionMode(fetcher, endpoint);
 
   if (loading) {
     return <Splash variant="loading" />;
@@ -146,12 +115,8 @@ export function RouteBootstrap({
     );
   }
 
-  const mode: SessionMode['mode'] = data?.mode ?? 'master';
-  const tenantId = data?.tenant_id ?? null;
-  const basename = deriveBasename(mode, tenantId);
-
   return (
-    <BrowserRouter basename={basename || undefined}>
+    <BrowserRouter>
       <Routes>
         {/* Tenant-scoped entry — master mode primary shape */}
         <Route path="/tenant/:tenantId/operator" element={<App />} />
@@ -167,8 +132,8 @@ export function RouteBootstrap({
 }
 
 // Only mount at module load when a `#root` element is actually present.
-// Tests import this module for `RouteBootstrap` / `deriveBasename` coverage
-// and should not trigger a real mount.
+// Tests import this module for `RouteBootstrap` coverage and should not
+// trigger a real mount.
 const rootEl =
   typeof document !== 'undefined' ? document.getElementById('root') : null;
 if (rootEl) {

@@ -1,4 +1,5 @@
 import { useTranslation } from '@autoservice/i18n';
+import { MarkdownText } from '@autoservice/ui-components';
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
@@ -131,7 +132,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
             <span className="op-msg-tag">cust</span>
             <span className="op-msg-time">{msg.ts}</span>
           </div>
-          <div className="op-msg-text">{msg.text}</div>
+          <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
         </div>
       </div>
     );
@@ -152,7 +153,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
               <span className="op-msg-tag op">driver</span>
               <span className="op-msg-time">{msg.ts}</span>
             </div>
-            <div className="op-msg-text">{msg.text}</div>
+            <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
           </div>
         </div>
       );
@@ -166,7 +167,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
             <span className="op-msg-tag side">{t('operator.chat.tag.suggestion')}</span>
             <span className="op-msg-time">{msg.ts}</span>
           </div>
-          <div className="op-msg-text">{msg.text}</div>
+          <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
         </div>
       </div>
     );
@@ -181,7 +182,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
           <span className="op-msg-tag">{isSide ? 'side' : 'auto'}</span>
           <span className="op-msg-time">{msg.ts}</span>
         </div>
-        <div className="op-msg-text">{msg.text}</div>
+        <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
       </div>
     </div>
   );
