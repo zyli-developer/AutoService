@@ -21,6 +21,7 @@ from autoservice.cc_pool import StickyTenantMismatch
 from autoservice.conversation_engine import ConversationEngine
 from autoservice.conversation_engine.errors import ConversationNotFound
 from autoservice.conversation_engine.types import MessageVisibility, Participant, ParticipantRole
+from autoservice.lead_summary import parse_lead_summary
 
 from .connection import build_frame
 from .errors import ERR_INTERNAL, ERR_NOT_FOUND, ERR_VALIDATION, make_error_payload
@@ -1488,6 +1489,18 @@ async def _generate_agent_reply(
                     conv_id,
                 )
             return
+
+        # Lead-role side channel: strip the ``[线索] ...`` summary line the
+        # lead soul emits (agents/lead/soul.md §输出格式) before it reaches
+        # the customer, and log the structured fields for CRM correlation.
+        if target_role == "lead" and reply_text:
+            lead_result, reply_text = parse_lead_summary(reply_text)
+            if lead_result is not None:
+                logger.info(
+                    "Lead summary captured: conv=%s tenant=%s intent=%s",
+                    conv_id, tenant_id, lead_result.intent,
+                    extra={"lead_summary": lead_result.to_log_fields()},
+                )
 
         if not reply_text.strip():
             logger.warning("Agent reply: empty response from CC SDK")
