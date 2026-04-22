@@ -33,6 +33,14 @@ def _ws_engine():
 
 api_router = APIRouter(prefix="/api", tags=["api"])
 
+# Path to the repo-root config.local.yaml that drives the /api/onboard/publish
+# fork_creator selector (spec §3.4).  Module-level so tests can monkeypatch
+# it to an isolated tmp file.  Resolved lazily at import to a project-root
+# absolute path so requests from any cwd hit the same file.
+_PUBLISH_CONFIG_PATH: Path = (
+    Path(__file__).resolve().parent.parent / ".autoservice" / "config.local.yaml"
+)
+
 # ---------------------------------------------------------------------------
 # Singleton instances (lazy init, shared across requests)
 # ---------------------------------------------------------------------------
@@ -1685,9 +1693,19 @@ async def onboard_publish(payload: dict[str, Any] = Body(...)) -> Any:
             },
         )
 
+    # Select ForkCreator based on config.local.yaml.  Returns None when the
+    # admin has not opted in or gh is unavailable — publish() then falls
+    # back to its default LocalTarballForkCreator (M1 manual-runbook path).
+    fork_creator = publish_mod.select_fork_creator_from_config(
+        _PUBLISH_CONFIG_PATH
+    )
+
     try:
         result = publish_mod.publish(
-            tenant_id, override=override, signer=signer,
+            tenant_id,
+            override=override,
+            signer=signer,
+            fork_creator=fork_creator,
         )
     except FileNotFoundError as exc:
         return JSONResponse(

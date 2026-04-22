@@ -43,8 +43,18 @@ cc_pool:
 
   # SDK 参数
   permission_mode: bypassPermissions   # default | acceptEdits | plan | bypassPermissions
-  # model: claude-sonnet-4-5           # 不设置则使用 SDK 默认模型
+  # model: claude-sonnet-4-5           # 兜底模型（未配 tier 时用此项；不设则 SDK 默认）
   # cli_path: /usr/local/bin/claude    # 不设置则自动检测 PATH 中的 claude
+
+  # ─── 按角色分配模型（fast / slow / dream tier） ────────
+  # 与 autoservice/classify_intent.yaml::model_tiers 协同：
+  #   fast_model  → triage / translate           （目标延迟 ~1s）
+  #   slow_model  → customer / lead              （目标延迟 5–15s）
+  #   dream_model → dream agent loop             （未配则回落到 slow_model 再回落 model）
+  # 任意字段未设置时，该 tier 回落到上方 `model`（保持单模型部署的兼容行为）。
+  # fast_model: claude-haiku-4-5
+  # slow_model: claude-sonnet-4-6
+  # dream_model: claude-opus-4-7
 
 # ─── Takeover（接管/释放）配置 ─────────────────────────
 # Operator /hijack 后如何自动释放回 AI

@@ -119,10 +119,19 @@ class PoolConfig(_BasePoolConfig):
     Loadable from config.local.yaml or env vars.
     The pool uses the locally installed Claude CLI by default (found via PATH).
     Set cli_path to override with a specific binary location.
+
+    Tier model knobs (``fast_model`` / ``slow_model`` / ``dream_model``)
+    let each role group pick its own Anthropic model — see
+    :func:`_resolve_model_for_role` for the role → tier mapping.
+    All three default to ``None``, in which case the legacy single
+    ``model`` field is used for every role (back-compat).
     """
     cwd: str | None = None
     permission_mode: str = "bypassPermissions"
     model: str | None = None
+    fast_model: str | None = None
+    slow_model: str | None = None
+    dream_model: str | None = None
     cli_path: str | None = None
     # Enable partial/delta streaming events for progressive UI updates.
     include_partial_messages: bool = False
@@ -161,7 +170,8 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
                     "max_sticky_bindings"}
     _FLOAT_FIELDS = {"max_lifetime_seconds", "health_check_interval", "checkout_timeout",
                       "sticky_idle_timeout"}
-    _STR_FIELDS = {"cwd", "permission_mode", "model", "cli_path"}
+    _STR_FIELDS = {"cwd", "permission_mode", "model", "cli_path",
+                    "fast_model", "slow_model", "dream_model"}
 
     for field_name in _INT_FIELDS | _FLOAT_FIELDS | _STR_FIELDS:
         env_key = f"CC_POOL_{field_name.upper()}"
@@ -175,6 +185,56 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
                 setattr(config, field_name, env_val)
 
     return config
+
+
+# ---------------------------------------------------------------------------
+# Role → model tier resolution (Plan B — fast/slow/dream split)
+# ---------------------------------------------------------------------------
+
+#: Which model tier a role belongs to. Drives model selection in the main
+#: customer pool, in ``_create_role_pool`` for (lead/translate/triage)
+#: sub-pools, and in ``_dream_pool_config`` for the dream pool.
+#:
+#: * fast — haiku-class, target latency ~1 s (triage intent parsing,
+#:   translation pass-through)
+#: * slow — sonnet-class, target latency 5–15 s (customer conversation,
+#:   lead qualification)
+#: * dream — own knob; long-horizon agent loop, falls back to slow
+#:
+#: Kept in sync with ``classify_intent.yaml::model_tiers`` — if you add a
+#: role, pick its tier here too.
+_ROLE_TIER: dict[str, str] = {
+    "customer": "slow",
+    "lead": "slow",
+    "translate": "fast",
+    "triage": "fast",
+    "dream": "dream",
+}
+
+
+def _resolve_model_for_role(config: "PoolConfig", role: str) -> str | None:
+    """Return the concrete model name to use for *role*.
+
+    Resolution order per tier:
+
+    * ``fast``  → ``config.fast_model``  → ``config.model``
+    * ``slow``  → ``config.slow_model``  → ``config.model``
+    * ``dream`` → ``config.dream_model`` → ``config.slow_model`` → ``config.model``
+
+    Unknown roles fall back to ``config.model`` so adding a role without
+    wiring the tier here degrades gracefully (same behavior as before the
+    tier split). Returns ``None`` only when every relevant field is unset
+    — callers pass that straight through to ``ClaudeAgentOptions`` which
+    treats ``None`` as "SDK default".
+    """
+    tier = _ROLE_TIER.get(role)
+    if tier == "fast":
+        return config.fast_model or config.model
+    if tier == "slow":
+        return config.slow_model or config.model
+    if tier == "dream":
+        return config.dream_model or config.slow_model or config.model
+    return config.model
 
 
 # ---------------------------------------------------------------------------
@@ -381,10 +441,15 @@ class CCPool(AsyncPool[CCClient]):
         on_sticky_release: Callable[[str], Awaitable[None]] | None = None,
     ):
         cfg = config or PoolConfig()
+        # Customer-tier model is resolved at factory-call time so
+        # ``self._config`` keeps the original tier knobs intact for the
+        # sub-pool factories (lead/translate/triage/dream) to consult.
+        # Mutating ``cfg.model`` here would clobber slow_model/fast_model/
+        # dream_model resolution for those roles.
         super().__init__(
             config=cfg,
             factory=lambda: create_cc_client(
-                cfg,
+                replace(cfg, model=_resolve_model_for_role(cfg, "customer")),
                 mcp_servers=mcp_servers,
                 system_prompt=system_prompt,
                 role="customer",
@@ -642,8 +707,14 @@ class CCPool(AsyncPool[CCClient]):
         soul via :func:`create_cc_client`.
         """
         size = _ROLE_POOL_SIZES[role]
-        base = load_pool_config(self._config.cwd)
-        sub_cfg = replace(base, min_size=0, max_size=size, warmup_count=0)
+        # ``self._config`` is the authoritative PoolConfig (including any
+        # tier knobs supplied programmatically). It carries the unmutated
+        # ``model`` field; tier resolution picks the right one for *role*.
+        base = self._config
+        sub_cfg = replace(
+            base, min_size=0, max_size=size, warmup_count=0,
+            model=_resolve_model_for_role(base, role),
+        )
 
         async def _factory() -> CCClient:
             return await create_cc_client(sub_cfg, role=role, tenant_id=tenant_id)
@@ -905,10 +976,12 @@ def _load_dream_soul(tenant_id: str | None) -> str:
 def _dream_pool_config(base: PoolConfig) -> PoolConfig:
     """Clone *base* with dream-specific caps (size=1 per spec §2.5).
 
-    Keeping the other tunables (``cli_path``, ``model``, ``cwd``,
-    ``permission_mode`` …) in sync with the customer pool means the dream
-    pool picks up the same local CLI binary and proxy config. Only the
-    sizing knobs change.
+    Keeps ``cli_path`` / ``cwd`` / ``permission_mode`` aligned with the
+    customer pool so the dream pool picks up the same local CLI binary
+    and proxy config. Sizing collapses to 1, and ``model`` is resolved
+    via :func:`_resolve_model_for_role` so the dream pool can use a
+    distinct model (typically opus for the agent loop) without affecting
+    customer/lead/triage.
     """
     return replace(
         base,
@@ -919,6 +992,7 @@ def _dream_pool_config(base: PoolConfig) -> PoolConfig:
         # future sticky-aware dream use (currently dream does not use
         # sticky sessions; this is defence-in-depth).
         max_sticky_bindings=1,
+        model=_resolve_model_for_role(base, "dream"),
     )
 
 
