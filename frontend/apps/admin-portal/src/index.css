@@ -944,6 +944,7 @@ html, body, #root {
 .cs-canvas[data-view="dashboard"]  { padding: 22px 28px 60px; }
 .cs-canvas[data-view="wizard"]     { padding: 36px 56px 56px; }
 .cs-canvas[data-view="proposals"]  { padding: 20px 28px 60px; }
+.cs-canvas[data-view="dream"]      { padding: 20px 28px 60px; }
 .cs-canvas[data-view="billing"]    { padding: 20px 28px 60px; }
 
 /* ===== Command palette ===== */
@@ -1290,6 +1291,7 @@ html, body, #root {
   /* Canvas padding shrink */
   .cs-canvas[data-view="dashboard"],
   .cs-canvas[data-view="proposals"],
+  .cs-canvas[data-view="dream"],
   .cs-canvas[data-view="billing"] { padding: 16px 14px 80px; }
   .cs-canvas[data-view="wizard"] { padding: 20px 14px 40px; }
   .cs-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
