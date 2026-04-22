@@ -43,11 +43,14 @@ describe('MaterialUploadStep', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('TC-003: file upload accept attribute is .pdf,.csv,.txt', () => {
+  it('TC-003: file upload accept attribute covers wizard-supported types', () => {
     const { container } = render(<MaterialUploadStep tenantId="test-tenant" />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     expect(fileInput).not.toBeNull();
-    expect(fileInput.accept).toBe('.pdf,.csv,.txt');
+    // Accept: .pdf → KBStore.ingest_pdf (semantic chunking + page_number)
+    //         .xlsx → KBStore.ingest_xlsx (rate-table region detection)
+    //         .csv/.txt/.md → OnboardingPipeline → KBStore.ingest_text
+    expect(fileInput.accept).toBe('.pdf,.xlsx,.csv,.txt,.md');
   });
 
   it('TC-004: submit triggers generation + shows result', async () => {
