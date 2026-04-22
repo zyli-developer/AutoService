@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { WSClient, type Envelope, type ServerHelloPayload } from '@autoservice/ws-client';
-import { useOperatorStore, type Conversation } from '../store/operatorStore';
+import { useOperatorStore, type Conversation, type CopilotMessage } from '../store/operatorStore';
 
 // 允许测试时注入 fake client
 type WSClientConstructor = new (opts: ConstructorParameters<typeof WSClient>[0]) => WSClient;
@@ -23,6 +23,7 @@ export function handleEventFrame(
   frame: Envelope,
   addConversation: (conv: Conversation) => void,
   updateConversation: (id: string, patch: Partial<Conversation>) => void,
+  addCopilotMessage?: (convId: string, msg: CopilotMessage) => void,
 ) {
   const { event } = frame.payload as EventPayload;
   if (!event?.conversation_id) return;
@@ -76,6 +77,22 @@ export function handleEventFrame(
         lastActivityTs: ts,
         state: 'active',
       });
+      // SIDE messages (e.g. [分流] from triage) are persisted via
+      // engine.send_message but never wrapped in a `message` frame for squad
+      // broadcast — they reach operators only via this event path. Add to
+      // copilot here so they appear in the chat stream. Non-SIDE messages
+      // also flow as `message` frames; addCopilotMessage dedups by id, so
+      // this is a no-op for them.
+      const messageId = event.data.message_id as string | undefined;
+      if (addCopilotMessage && messageId && text) {
+        addCopilotMessage(convId, {
+          id: messageId,
+          text,
+          sender,
+          ts,
+          visibility: event.data.visibility as 'public' | 'side' | 'system' | undefined,
+        });
+      }
       break;
     }
   }
@@ -314,9 +331,10 @@ export function useOperatorWS(url: string): {
         }
 
         if (frame.type === 'event') {
-          // event frames update conversation metadata only (mode, state, etc.)
-          // copilot messages are handled exclusively via broadcast `message` frames
-          handleEventFrame(frame, addConversation, updateConversation);
+          // event frames carry conversation metadata + message.sent fan-out.
+          // SIDE messages (triage/system) only reach operators via this path,
+          // so handleEventFrame must thread addCopilotMessage to insert them.
+          handleEventFrame(frame, addConversation, updateConversation, addCopilotMessage);
         }
       },
     });
