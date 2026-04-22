@@ -24,7 +24,7 @@
 |-------|------|-------|-------|------|
 | batch-0 | D5 Dream LLM real-wire (T5S.14, yellow) | **done** | 2026-04-22 | ✅ 201 mock green + live LLM PASSED 30s via local SDK + reviewer APPROVED |
 | batch-1 | D2 Canary panel + 3-button Apply (T5S.12, yellow) | **done** | 2026-04-22 | ✅ 32/32 vitest (22 canary-panel + 10 DreamTab) + reviewer APPROVED-WITH-FIXUP (2 rounds) |
-| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | pending | 2026-04-22 | smoke GO + regression + tag + PR |
+| batch-2 | M3.5 Dream-first gate + tag v1.2.1-dream | **staged — awaiting user GO for tag+push+PR** | 2026-04-22 | ✅ 201/201 Dream pytest + 32/32 Dream vitest + 1872/1886 broad regression (14 failures triaged as pre-existing/env) · ⏳ manual walkthrough + tag push need user confirmation |
 
 ## Active tasks (Dream cut)
 
@@ -32,7 +32,7 @@
 |---|----|-------|------|-------|------|-------|-------------|--------|--------|
 | 1 | T5S.14 | D5 | Dream LLM real-wire (T3B.5 + T4S.4b) | batch-0 | 🟡 | **done** | orchestrator (opus) | ✅ APPROVED (code-reviewer subagent, 13/13) | `m3.5 batch-0` |
 | 2 | T5S.12 | D2/U4 | Canary panel w/ 3-button Apply + Advance/Rollback | batch-1 | 🟡 | **done** | orchestrator (opus, autopilot-all) | ✅ APPROVED-WITH-FIXUP (code-reviewer ×2 — round 1 caught chat-vs-chat-legacy routing bug, round 2 all 8 CON-04 items PASS) | `m3.5 batch-1` |
-| 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | pending | — | — | — |
+| 3 | GATE-M3.5-dream | — | M3.5 smoke + tag v1.2.1-dream | batch-2 | 🟢 | **staged** | orchestrator (opus, autopilot-all) | n/a (Green) | smoke report `m3.5/smoke-report.md` |
 
 ## Deferred — Phase 2 mini-sprint (artifacts kept, not executed this cut)
 
@@ -72,6 +72,27 @@ Landed in M3 batch-10.5 (commit `2e50ac1`):
 
 (most recent at top — updated at every batch boundary)
 
+- 2026-04-22 — **batch-2 staged (smoke GO; awaiting user authorization for tag + push + PR)**.
+  - Dream-scope pytest: 201 passed, 1 deselected (live, opt-in) — `tests/dream_agent`,
+    `tests/dream_runs`, `tests/dream`, `tests/api/test_dream_api.py`, `tests/cc_pool`,
+    `tests/dream_agent/test_con04_guardrail.py`. CON-04 AST guardrail PASS (no new
+    `status='applied'` writers).
+  - Admin-portal vitest (Dream surfaces): 32/32 — 22 canary-panel + 10 DreamTab.
+  - Broad regression `pytest tests/ --ignore=tests/e2e-playwright`: **1872 passed,
+    14 failed, 4 skipped, 9 deselected**. All 14 failures triaged out-of-scope and
+    pre-existing on HEAD (8 = `test_proposal_pipeline` suite-ordering flakes, all
+    pass in isolation; 5 = `tests/publish/test_github_api_fork_creator.py` — Python
+    3.12+ `tarfile.extractall(filter="data")` API on local 3.11; 1 = M2
+    `test_step7_dream_config_persisted` carry-over). Effective in-scope pass rate:
+    1872/1872 = 100%.
+  - Smoke report: `.artifacts/milestones/m3.5/smoke-report.md` — verdict GO conditional
+    on (a) user attestation of two manual walkthroughs (D5 production trigger × cinnox
+    + master · D2 canary panel UX), (b) user authorization for `git tag v1.2.1-dream`
+    + `git push origin v1.2.1-dream` + `gh pr create` (visible-to-others actions
+    require explicit GO per autorun safeguards).
+  - i18n: 19 new `admin.dream.canary.*` keys registered in en.json + zh-CN.json
+    (batch-1 commit `59188c3`); both files JSON-valid.
+  - **Next**: handoff to user for §5 + §6 of smoke-report.
 - 2026-04-22 — **batch-1 done**. T5S.12 D2/U4 Dream Proposal canary panel shipped. Implementation:
   - `frontend/apps/admin-portal/src/components/dream/canary-panel.tsx` (new, ~325 lines) — 5-action panel: `[Reject] [Approve] [🔒 Apply]` main row + `[Rollback] [Advance]` stage controls under the progress bar. Apply is the sole writer of `status='applied'` (CON-04). Approve/Reject route through `/api/management/chat-legacy?message=/approve|/reject <id>` (M1 slash dispatcher; reviewer round 1 caught that `/api/management/chat` is the M2 `_master` LLM pass-through and does NOT dispatch slash commands). Advance/Rollback use `window.confirm()` per-stage before POST `/api/canary/advance` | `/api/canary/rollback`. Single `BusyAction` atom locks all 5 buttons during any in-flight op.
   - `frontend/apps/admin-portal/src/components/dream/metric-compare.tsx` (new, ~95 lines) — renders `monitor.breaches[]` as a compact pre/post table when non-empty; returns null otherwise.
