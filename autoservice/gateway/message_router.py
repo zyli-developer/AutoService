@@ -800,14 +800,16 @@ PLACEHOLDER_ELIGIBLE_ROLES: frozenset[str] = frozenset({"customer", "lead"})
 PLACEHOLDER_DELAY_S: float = 1.5
 
 #: Minimum interval between intermediate `message_edited` pushes while
-#: draining the CC SDK stream. Keeps the UI updating smoothly (~5 fps)
-#: without flooding the WS or replicating every SDK token.
-STREAM_EDIT_MIN_INTERVAL_S: float = 0.2
+#: draining the CC SDK stream. Tuned for token-level streaming
+#: (include_partial_messages=True): ~12 fps gives a typewriter feel
+#: without flooding the WS.
+STREAM_EDIT_MIN_INTERVAL_S: float = 0.08
 
-#: Minimum character growth since the last intermediate push. A 200ms
-#: tick with only 3 new characters is not worth a frame — at that rate
-#: the progressive render flickers more than it informs.
-STREAM_EDIT_MIN_DELTA_CHARS: int = 40
+#: Minimum character growth since the last intermediate push. With
+#: token-level deltas (often 1-5 chars each), a low threshold lets
+#: each tick carry visible new content; too high and the UI lurches in
+#: 40-char chunks instead of fluid fill-in.
+STREAM_EDIT_MIN_DELTA_CHARS: int = 12
 
 _PLACEHOLDER_TEXT_ZH = "正在为您查询，请稍候..."
 _PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."

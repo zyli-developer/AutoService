@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { MarkdownText } from '@autoservice/ui-components';
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
@@ -283,6 +284,19 @@ export function CopilotView({
     .sort((a, b) => (a.ts ?? '').localeCompare(b.ts ?? ''));
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
+
+  // Auto-scroll the stream container to the bottom whenever a new message
+  // arrives OR the last message grows (progressive streaming edits). Re-runs
+  // on length change and last-message text length so token-level fill-in
+  // keeps the latest content visible without manual scrolling.
+  const streamRef = useRef<HTMLDivElement>(null);
+  const lastMessageLen = allMessages.length > 0
+    ? (allMessages[allMessages.length - 1]?.text?.length ?? 0)
+    : 0;
+  useEffect(() => {
+    const el = streamRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [allMessages.length, lastMessageLen, activeCopilotConvId]);
 
   return (
     <div className="op-chat-pane" data-testid="copilot-sidebar">

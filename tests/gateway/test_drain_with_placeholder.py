@@ -410,9 +410,11 @@ async def test_throttle_suppresses_sub_threshold_deltas(
     """Tiny deltas below `STREAM_EDIT_MIN_DELTA_CHARS` must not trigger
     a push — otherwise every SDK token would crash across the WS."""
     import autoservice.gateway.message_router as mr
-    # Keep the default 40-char threshold; zero the interval so the test
-    # is exercising the char-threshold gate in isolation.
+    # Pin both gates for the test rather than depending on tuning defaults:
+    # interval=0 isolates the char-threshold gate; chars=40 sets the floor
+    # that the 5×5-char chunks below must stay under.
     monkeypatch.setattr(mr, "STREAM_EDIT_MIN_INTERVAL_S", 0.0)
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_DELTA_CHARS", 40)
 
     async def _gen():
         await asyncio.sleep(0.05)
