@@ -553,3 +553,181 @@ class KBStore:
         if not chunks_to_save:
             return 0
         return self.save_chunks(chunks_to_save, debug_dir=debug_dir)
+
+    # ── XLSX ingestion (port of kb_ingest.ingest_xlsx) ──────────────────
+
+    RATE_TABLE_SIGNALS: set[str] = {
+        "country", "did", "mrc", "rate", "dial-in", "dial-out", "leg1", "leg2",
+    }
+    COUNTRY_REGION_MAP: dict[str, str] = {
+        "united states": "US", "usa": "US", "us": "US",
+        "united kingdom": "UK", "uk": "UK", "great britain": "UK",
+        "hong kong": "HK", "hk": "HK",
+        "singapore": "SG", "sg": "SG",
+        "japan": "JP", "jp": "JP",
+        "australia": "AU", "au": "AU",
+        "germany": "DE", "de": "DE",
+        "france": "FR", "fr": "FR",
+        "canada": "CA", "ca": "CA",
+        "china": "CN", "cn": "CN", "mainland china": "CN",
+        "taiwan": "TW", "tw": "TW",
+        "south korea": "KR", "korea": "KR", "kr": "KR",
+        "india": "IN", "in": "IN",
+        "indonesia": "ID", "id": "ID",
+        "malaysia": "MY", "my": "MY",
+        "thailand": "TH", "th": "TH",
+        "philippines": "PH", "ph": "PH",
+        "vietnam": "VN", "vn": "VN",
+    }
+    ROWS_PER_XLSX_CHUNK: int = 15
+    ROWS_PER_RATE_TABLE_CHUNK: int = 3
+
+    @classmethod
+    def _extract_country_region(cls, row_text: str, headers: list[str]) -> str:
+        for i, h in enumerate(headers):
+            if h.lower().strip() in ("country", "country/region", "destination"):
+                break
+        else:
+            return ""
+        for part in row_text.split(" | "):
+            if ":" in part:
+                key, val = part.split(":", 1)
+                if key.strip().lower() in ("country", "country/region", "destination"):
+                    name = val.strip().lower()
+                    if name in cls.COUNTRY_REGION_MAP:
+                        return cls.COUNTRY_REGION_MAP[name]
+                    for nm, code in cls.COUNTRY_REGION_MAP.items():
+                        if nm in name or name in nm:
+                            return code
+        return ""
+
+    @staticmethod
+    def _detect_service_type(sheet_name: str, headers: list[str]) -> str:
+        combined = (sheet_name + " " + " ".join(headers)).lower()
+        if "toll-free" in combined or "tollfree" in combined or "toll free" in combined:
+            return "toll-free"
+        if "did" in combined:
+            return "DID"
+        if "local" in combined:
+            return "local"
+        return ""
+
+    def ingest_xlsx(
+        self,
+        file_path: Path,
+        *,
+        source_id: str,
+        source_name: str,
+        is_rate_table: bool = False,
+        domain: str = "",
+        region: str = "",
+        language: str = "en",
+        debug_dir: Path | None = None,
+    ) -> int:
+        """Ingest an XLSX workbook via openpyxl.
+
+        Groups rows into chunks by both row count and character limit. Auto-
+        detects rate/pricing tables by header names (``country`` / ``did`` /
+        ``mrc`` / ``rate`` / ``dial-in`` / ``dial-out`` / ``leg1`` / ``leg2``)
+        and switches to smaller chunk sizes for those. When *is_rate_table*
+        is True AND a country column exists, per-chunk ``region`` is derived
+        from the rows in that chunk.
+
+        Returns # chunks written. Clears existing rows for *source_id* first
+        for idempotent re-ingest.
+        """
+        import openpyxl
+
+        fp = Path(file_path)
+        if not fp.exists():
+            raise FileNotFoundError(file_path)
+
+        self.clear_source(source_id)
+        now = datetime.now(timezone.utc).isoformat()
+        wb = openpyxl.load_workbook(str(fp), data_only=True)
+        chunks_to_save: list[dict] = []
+        idx = 0
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows: list[str] = []
+            headers: list[str] = []
+            for row_idx, row in enumerate(ws.iter_rows(values_only=True)):
+                cells = [str(v).strip() if v is not None else "" for v in row]
+                if not any(cells):
+                    continue
+                if row_idx == 0:
+                    headers = cells
+                else:
+                    if headers:
+                        row_dict = {h: v for h, v in zip(headers, cells) if h and v}
+                        row_text = " | ".join(f"{k}: {v}" for k, v in row_dict.items())
+                    else:
+                        row_text = " | ".join(v for v in cells if v)
+                    if row_text.strip():
+                        rows.append(row_text)
+
+            header_lower = {h.lower() for h in headers}
+            detected_rate = bool(header_lower & self.RATE_TABLE_SIGNALS)
+            chunk_size = (
+                self.ROWS_PER_RATE_TABLE_CHUNK if detected_rate else self.ROWS_PER_XLSX_CHUNK
+            )
+            service_type = self._detect_service_type(sheet_name, headers)
+            has_country_col = is_rate_table and any(
+                h.lower().strip() in ("country", "country/region", "destination")
+                for h in headers
+            )
+
+            batches: list[list[str]] = []
+            current: list[str] = []
+            current_chars = 0
+            for row in rows:
+                row_len = len(row) + 1
+                if current and (
+                    len(current) >= chunk_size or current_chars + row_len > CHUNK_MAX_CHARS
+                ):
+                    batches.append(current)
+                    current = [row]
+                    current_chars = row_len
+                else:
+                    current.append(row)
+                    current_chars += row_len
+            if current:
+                batches.append(current)
+
+            for batch in batches:
+                content = f"[Sheet: {sheet_name}]\n" + "\n".join(batch)
+                if len(content.strip()) < CHUNK_MIN_CHARS:
+                    continue
+                chunk_region = region
+                if has_country_col:
+                    regions_in_batch: set[str] = set()
+                    for rt in batch:
+                        r = self._extract_country_region(rt, headers)
+                        if r:
+                            regions_in_batch.add(r)
+                    if regions_in_batch:
+                        chunk_region = "/".join(sorted(regions_in_batch))
+                        if service_type:
+                            chunk_region += f"/{service_type}"
+
+                chunks_to_save.append({
+                    "id": f"{source_id}_{idx:04d}",
+                    "source_id": source_id,
+                    "source_type": "xlsx",
+                    "source_name": source_name,
+                    "source_url": None,
+                    "file_path": str(fp),
+                    "section": sheet_name,
+                    "content": content,
+                    "created_at": now,
+                    "domain": domain,
+                    "region": chunk_region,
+                    "language": language,
+                    "page_number": None,
+                })
+                idx += 1
+
+        if not chunks_to_save:
+            return 0
+        return self.save_chunks(chunks_to_save, debug_dir=debug_dir)

@@ -359,3 +359,92 @@ class TestIngestPdf:
                 assert store.by_source() == {}
         finally:
             store.close()
+
+
+class TestIngestXlsx:
+    def _make_xlsx(self, dest: Path, sheets: dict[str, list[list]]) -> Path:
+        import openpyxl
+        wb = openpyxl.Workbook()
+        # First sheet is the default "Sheet" — rename to the first caller sheet.
+        default = wb.active
+        names = list(sheets.keys())
+        default.title = names[0]
+        for name in names[1:]:
+            wb.create_sheet(name)
+        for name, rows in sheets.items():
+            ws = wb[name]
+            for row in rows:
+                ws.append(row)
+        wb.save(str(dest))
+        return dest
+
+    def test_ingest_xlsx_non_rate_table(self, tmp_path: Path):
+        xlsx = self._make_xlsx(tmp_path / "data.xlsx", {
+            "Products": [
+                ["Name", "Category", "Description"],
+                ["Widget A", "hardware", "A standard widget used for various applications across the industry."],
+                ["Widget B", "hardware", "An upgraded widget with extended durability and longer warranty coverage."],
+            ],
+        })
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            n = store.ingest_xlsx(xlsx, source_id="xl_a", source_name="Products")
+            assert n >= 1
+            assert list(store.by_source().keys()) == ["xl_a"]
+        finally:
+            store.close()
+
+    def test_ingest_xlsx_rate_table_detects_region(self, tmp_path: Path):
+        xlsx = self._make_xlsx(tmp_path / "rates.xlsx", {
+            "DID Rates": [
+                ["Country", "DID", "MRC"],
+                ["Hong Kong", "+852", "USD 15.00"],
+                ["Singapore", "+65", "USD 12.00"],
+                ["United States", "+1", "USD 10.00"],
+            ],
+        })
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            n = store.ingest_xlsx(
+                xlsx, source_id="xl_b", source_name="DID Rates",
+                is_rate_table=True,
+            )
+            assert n >= 1
+            conn = sqlite3.connect(str(store.db_path))
+            regions = {r[0] for r in conn.execute("SELECT region FROM kb_chunks").fetchall()}
+            conn.close()
+            # Rate-table detection sets region per chunk from the country column.
+            assert any("HK" in r or "SG" in r or "US" in r for r in regions)
+        finally:
+            store.close()
+
+    def test_ingest_xlsx_idempotent(self, tmp_path: Path):
+        """Re-ingest same xlsx with same source_id must not duplicate."""
+        xlsx = self._make_xlsx(tmp_path / "x.xlsx", {
+            "S": [
+                ["Col"],
+                ["row one with sufficient content to make a chunk"],
+                ["row two also sufficiently wordy for chunking"],
+                ["row three for good measure in the data set"],
+            ],
+        })
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            first = store.ingest_xlsx(xlsx, source_id="xl_c", source_name="X")
+            second = store.ingest_xlsx(xlsx, source_id="xl_c", source_name="X")
+            assert first == second
+            if first > 0:
+                assert store.by_source() == {"xl_c": first}
+        finally:
+            store.close()
+
+    def test_ingest_xlsx_missing_file_raises(self, tmp_path: Path):
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            with pytest.raises(FileNotFoundError):
+                store.ingest_xlsx(
+                    tmp_path / "nope.xlsx",
+                    source_id="x", source_name="x",
+                )
+        finally:
+            store.close()
