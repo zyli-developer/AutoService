@@ -230,11 +230,16 @@ export function useOperatorWS(url: string): {
                 lastActivityTs: ts,
                 unreadCount: (existing.unreadCount ?? 0) + 1,
               };
-              // Backfill customerId on the first real customer message — when
-              // a conv is auto-created by an agent greeting, customerId is the
-              // literal "customer" placeholder. The first customer-sourced
-              // frame carries the real id in srcDisplay.id.
-              if (role === 'customer' && existing.customerId === 'customer' && srcDisplay?.id) {
+              // Backfill customerId on the first real customer message. A conv
+              // can be created with a placeholder customerId by three paths:
+              //   - conversation.created event with empty data.customer_id ('')
+              //   - active-conversations bulk fetch on WS open (literal 'customer')
+              //   - addConversation in this same handler when the first frame
+              //     was agent-sourced (literal 'customer')
+              // All three resolve once a customer-sourced frame arrives — its
+              // srcDisplay.id is the authoritative customer id.
+              const isPlaceholderCustomerId = !existing.customerId || existing.customerId === 'customer';
+              if (role === 'customer' && isPlaceholderCustomerId && srcDisplay?.id) {
                 patch.customerId = srcDisplay.id as string;
               }
               updateConversation(convId, patch);

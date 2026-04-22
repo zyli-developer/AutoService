@@ -275,7 +275,12 @@ export function CopilotView({
 
   if (!activeCopilotConvId) return null;
 
-  const allMessages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
+  // Sort by ts so SIDE / live / history-fetched frames interleave correctly.
+  // Receive order isn't enough: history snapshots arrive after live frames
+  // even when their timestamps are earlier, which causes [分流] SIDE summaries
+  // to render below the placeholder reply they should precede.
+  const allMessages: CopilotMessage[] = [...(copilotMessages[activeCopilotConvId] ?? [])]
+    .sort((a, b) => (a.ts ?? '').localeCompare(b.ts ?? ''));
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
