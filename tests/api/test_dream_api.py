@@ -17,6 +17,7 @@ limit clamping, most-recent-first ordering, serialisation shape.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from autoservice import api_routes, dream_runs
+from autoservice.proposal_pipeline import apply_schema as apply_proposals_schema
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -311,6 +313,57 @@ def test_runs_limit_clamped_to_min_one(app_client, runs_conn):
     )
     assert resp.status_code == 200
     assert len(resp.json()["runs"]) == 1
+
+
+# ── Dev stub path (DREAM_DEV_STUB=1) ──────────────────────────────────────
+
+
+def test_dev_stub_emits_three_proposals_and_completes(runs_conn, monkeypatch):
+    """``_run_dev_stub_dream`` writes 3 draft proposals + one completed run.
+
+    Directly exercises the stub coroutine with in-memory DBs — no HTTP,
+    no pool, no LLM.  Asserts the visible user-facing outcome: three
+    distinct proposals in the proposals table and a single ``completed``
+    row in dream_runs with non-zero token counts for UI display.
+    """
+    # Keep the test fast — zero the artificial delay.
+    monkeypatch.setattr(api_routes, "DREAM_DEV_STUB_DELAY_SEC", 0)
+
+    proposals_conn = sqlite3.connect(":memory:", check_same_thread=False)
+    proposals_conn.row_factory = sqlite3.Row
+    apply_proposals_schema(proposals_conn)
+    try:
+        asyncio.run(
+            api_routes._run_dev_stub_dream(
+                "cinnox", proposals_conn, runs_conn,
+            )
+        )
+
+        rows = proposals_conn.execute(
+            "SELECT data, status, category FROM proposals "
+            "WHERE tenant_id = ? ORDER BY created_at",
+            ("cinnox",),
+        ).fetchall()
+        assert len(rows) == 3
+        # Red-line CON-04: emit_proposal hardcodes status='draft'.
+        assert {r["status"] for r in rows} == {"draft"}
+        # Three distinct categories keep the admin-portal UI varied.
+        assert {r["category"] for r in rows} == {
+            "response_quality", "knowledge_gap", "escalation_signal",
+        }
+        # Risk levels spread across low/medium/high (parsed from JSON blob).
+        risks = {json.loads(r["data"])["risk_level"] for r in rows}
+        assert risks == {"low", "medium", "high"}
+
+        runs = dream_runs.list_runs(runs_conn, "cinnox", limit=10)
+        assert len(runs) == 1
+        row = runs[0]
+        assert row["status"] == "completed"
+        assert row["proposals_emitted"] == 3
+        assert row["tokens_in"] == 123 and row["tokens_out"] == 456
+        assert row["ended_at"] is not None
+    finally:
+        proposals_conn.close()
 
 
 def test_runs_serialization_shape(app_client, runs_conn):

@@ -541,6 +541,15 @@ async def run_proposal_pipeline() -> list[dict[str, Any]]:
 #
 # Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §2.6
 
+# Dev-only stub for /api/dream/trigger (non-master tenants).  When set,
+# _run_and_mark skips the real ``run_dream`` (which still requires the
+# unlanded T3B.5 cc_pool tool-use surface) and emits three seed proposals
+# after a short sleep — enough to exercise the admin-portal Dream Engine
+# UI for demos / video capture without an Anthropic key.  MUST stay unset
+# in production.  Read once at import; restart to flip.
+DREAM_DEV_STUB_ENABLED = os.environ.get("DREAM_DEV_STUB") == "1"
+DREAM_DEV_STUB_DELAY_SEC = 3.0
+
 _dream_runs_db_conn = None
 
 
@@ -673,6 +682,96 @@ async def dream_trigger(payload: dict[str, Any] = Body(...)) -> Any:
     )
 
 
+# Seed proposals for the dev stub path.  Three distinct categories /
+# risk levels so the admin-portal review UI renders visibly different
+# rows (useful for screen recording + reviewer-flow smoke tests).  These
+# go through the normal ``dream_agent.emit_proposal`` — they land as
+# ``status='draft'`` under CON-04, same as LLM-emitted proposals.
+_DREAM_DEV_STUB_SEEDS = [
+    {
+        "category": "response_quality",
+        "title": "[dev stub] Agent 回复中 '您好' 使用频率偏高",
+        "description": "最近 20 轮对话里 Agent 开场白 65% 使用 '您好'，缺乏场景区分度。",
+        "suggestion": "在 customer soul 中加入多样化招呼语池，按时段/客户类型选择。",
+        "evidence": "greet_ratio=0.65; window=20; sample=conv_20260421_a3f2",
+        "risk_level": "low",
+        "target_role": "customer",
+    },
+    {
+        "category": "knowledge_gap",
+        "title": "[dev stub] 近期 3 轮对话命中空 KB",
+        "description": "客户询问退款政策细则时 kb_search 返回空，Agent 回复不确定。",
+        "suggestion": "向 KB 补充退款政策 FAQ (refund_policy_v2) 并重建索引。",
+        "evidence": "missed=['退款多久到账','部分退款可以吗','跨境退款流程']; kb_hits=0",
+        "risk_level": "medium",
+        "target_role": "customer",
+    },
+    {
+        "category": "escalation_signal",
+        "title": "[dev stub] 同一客户 5 分钟内 3 次请求转人工",
+        "description": "客户 end_u_8811 在 5 分钟内连续请求 '要人工'，Agent 未主动降级。",
+        "suggestion": "在 rules.yaml 增加 escalation 触发器：同意图 >= 2 次即转 operator。",
+        "evidence": "end_user=end_u_8811; escalation_count=3; window_seconds=300",
+        "risk_level": "high",
+        "target_role": "customer",
+    },
+]
+
+
+async def _run_dev_stub_dream(
+    tenant_id: str,
+    proposals_conn: Any,
+    runs_conn: Any,
+) -> None:
+    """Dev-only stub that mimics a successful ``run_dream`` without the LLM.
+
+    Opens its own ``dream_runs`` row (mirrors the 2-row pattern the real
+    ``run_dream`` produces alongside the trigger-row), sleeps a few seconds
+    so the admin-portal UI shows a visible ``running`` state, then emits
+    three seed proposals via :func:`dream_agent.emit_proposal` and closes
+    the row as ``completed``.  Token counts are fabricated — enough to
+    render non-zero values in the UI without implying real LLM work.
+
+    Only reachable when ``DREAM_DEV_STUB_ENABLED`` is true.  Production
+    boots with the env var unset and this function is never called.
+    """
+    stub_run_id = dream_runs.start_run(runs_conn, tenant_id)
+    try:
+        await asyncio.sleep(DREAM_DEV_STUB_DELAY_SEC)
+        emitted = 0
+        for seed in _DREAM_DEV_STUB_SEEDS:
+            dream_agent.emit_proposal(
+                proposals_conn,
+                tenant_id=tenant_id,
+                category=seed["category"],
+                title=seed["title"],
+                description=seed["description"],
+                suggestion=seed["suggestion"],
+                evidence=seed["evidence"],
+                risk_level=seed["risk_level"],
+                target_role=seed["target_role"],
+            )
+            emitted += 1
+        dream_runs.update_run(
+            runs_conn, stub_run_id,
+            tool_calls=emitted, proposals_emitted=emitted,
+            tokens_in=123, tokens_out=456,
+        )
+        dream_runs.end_run(
+            runs_conn, stub_run_id,
+            status="completed", tokens_in=123, tokens_out=456,
+        )
+    except Exception as exc:  # noqa: BLE001 — always finalise the stub row
+        try:
+            dream_runs.end_run(
+                runs_conn, stub_run_id,
+                status="failed", error=f"{type(exc).__name__}: {exc}",
+            )
+        except Exception:
+            logger.exception("dev stub end_run cleanup failed for %s", stub_run_id)
+        raise
+
+
 async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     """Schedule the right dream entry for an already-opened ``dream_runs`` row.
 
@@ -726,6 +825,12 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
                     runs_conn,
                     max_tool_turns=10,
                 )
+            elif DREAM_DEV_STUB_ENABLED:
+                # Dev-only path — emits three seed proposals without the
+                # LLM tool-loop.  Gated by DREAM_DEV_STUB=1; production
+                # keeps falling through to run_dream below (which raises
+                # until T3B.5 lands the cc_pool tool-use surface).
+                await _run_dev_stub_dream(tenant_id, proposals_conn, runs_conn)
             else:
                 await dream_agent.run_dream(
                     tenant_id,
