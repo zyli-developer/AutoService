@@ -5,7 +5,7 @@ import { useAdminStore, initialState } from '../store/adminStore';
 import { InlineWidget } from '../components/chat/InlineWidget';
 
 beforeEach(() => {
-  useAdminStore.setState({ ...initialState, isLoggedIn: true });
+  useAdminStore.setState({ ...initialState });
 });
 
 describe('InlineWidget', () => {

@@ -20,7 +20,7 @@ const renderRailVariant = (variant: 'master' | 'tenant', path = '/') =>
   );
 
 beforeEach(() => {
-  useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: 't1' });
+  useAdminStore.setState({ ...initialState, tenantId: 't1' });
 });
 
 describe('AdminRail', () => {

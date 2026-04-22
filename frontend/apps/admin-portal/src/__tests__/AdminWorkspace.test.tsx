@@ -13,7 +13,7 @@ vi.mock('../components/BillingTab', () => ({ BillingTab: () => <div data-testid=
 import { AdminWorkspace } from '../components/AdminWorkspace';
 
 beforeEach(() => {
-  useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: 'tenant-001' });
+  useAdminStore.setState({ ...initialState, tenantId: 'tenant-001' });
 });
 
 describe('AdminWorkspace', () => {
@@ -58,6 +58,6 @@ describe('AdminWorkspace', () => {
     render(<AdminWorkspace />);
     await user.click(screen.getByTestId('avatar-trigger'));
     await user.click(screen.getByTestId('btn-logout'));
-    expect(useAdminStore.getState().isLoggedIn).toBe(false);
+    expect(useAdminStore.getState().tenantId).toBeNull();
   });
 });
