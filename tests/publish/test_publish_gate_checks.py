@@ -523,6 +523,199 @@ class TestForkCreator:
 
 
 # ---------------------------------------------------------------------------
+# select_fork_creator_from_config() — config-driven ForkCreator selection
+#
+# The HTTP route `/api/onboard/publish` does not itself know which creator
+# to use; it calls this helper to resolve the admin's choice from
+# `.autoservice/config.local.yaml`.  Tests here pin the selector's
+# behavior independently of the route for fast iteration.
+# ---------------------------------------------------------------------------
+
+
+class TestSelectForkCreator:
+    def test_returns_none_when_config_missing(self, tmp_path):
+        """Missing config file → None (→ publish() defaults to Local)."""
+        from autoservice.publish import select_fork_creator_from_config
+
+        result = select_fork_creator_from_config(tmp_path / "nope.yaml")
+        assert result is None
+
+    def test_returns_none_when_fork_creator_unset(self, tmp_path):
+        """Config exists, but `fork_creator` key missing → None."""
+        from autoservice.publish import select_fork_creator_from_config
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("auth:\n  admin_emails: []\n", encoding="utf-8")
+        assert select_fork_creator_from_config(cfg) is None
+
+    def test_returns_none_when_fork_creator_local(self, tmp_path):
+        """Explicit `fork_creator: local` → None (use default)."""
+        from autoservice.publish import select_fork_creator_from_config
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("fork_creator: local\n", encoding="utf-8")
+        assert select_fork_creator_from_config(cfg) is None
+
+    def test_returns_github_api_when_configured_and_available(self, tmp_path):
+        """`fork_creator: github_api` + gh authed → GitHubApiForkCreator."""
+        from unittest.mock import patch
+
+        from autoservice.publish import (
+            GitHubApiForkCreator,
+            select_fork_creator_from_config,
+        )
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("fork_creator: github_api\n", encoding="utf-8")
+        with patch.object(
+            GitHubApiForkCreator, "available", return_value=True
+        ):
+            result = select_fork_creator_from_config(cfg)
+        assert isinstance(result, GitHubApiForkCreator)
+
+    def test_falls_back_when_gh_unavailable(
+        self, tmp_path, caplog: pytest.LogCaptureFixture
+    ):
+        """github_api requested but gh unavailable → None + WARNING log.
+
+        The fallback is non-destructive: publish() still runs via
+        LocalTarballForkCreator, producing a tarball + runbook.  The log
+        line is the only signal to the admin — tests pin it so it can't be
+        silently swallowed.
+        """
+        import logging
+        from unittest.mock import patch
+
+        from autoservice.publish import (
+            GitHubApiForkCreator,
+            select_fork_creator_from_config,
+        )
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("fork_creator: github_api\n", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="autoservice.publish"):
+            with patch.object(
+                GitHubApiForkCreator, "available", return_value=False
+            ):
+                result = select_fork_creator_from_config(cfg)
+
+        assert result is None
+        combined = " ".join(r.message for r in caplog.records)
+        assert "fork_creator" in combined
+        assert "gh" in combined.lower()
+
+    def test_malformed_yaml_returns_none(
+        self, tmp_path, caplog: pytest.LogCaptureFixture
+    ):
+        """Corrupt yaml → None + WARNING log; never raises."""
+        import logging
+
+        from autoservice.publish import select_fork_creator_from_config
+
+        cfg = tmp_path / "config.local.yaml"
+        cfg.write_text("this: is: not: yaml\n", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="autoservice.publish"):
+            result = select_fork_creator_from_config(cfg)
+        assert result is None
+
+
+class TestRouteSelectsForkCreator:
+    """Integration — `/api/onboard/publish` passes the selected creator to publish()."""
+
+    def test_route_uses_github_api_creator_when_configured(
+        self, isolated_layout, monkeypatch
+    ):
+        """Config says github_api + gh available → route runs via GitHubApiForkCreator.
+
+        Guarantees the selector is actually plumbed through the route, not
+        just tested in isolation.  Uses ``patch.object`` on
+        ``GitHubApiForkCreator.create`` to capture the call — the real
+        ``create()`` would hit subprocess.run.
+        """
+        from unittest.mock import patch
+
+        from autoservice import publish as pub_mod
+        from autoservice.publish import GitHubApiForkCreator
+
+        tid = "tenant_route_gha"
+        _seed_sandbox(isolated_layout["sandbox"], tid)
+
+        # Write a config file under the tmp dir and redirect the route to it.
+        cfg_path = isolated_layout["tmp"] / "config.local.yaml"
+        cfg_path.write_text("fork_creator: github_api\n", encoding="utf-8")
+
+        from autoservice import api_routes
+        monkeypatch.setattr(
+            api_routes, "_PUBLISH_CONFIG_PATH", cfg_path
+        )
+
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        app = FastAPI()
+        app.include_router(api_routes.api_router)
+        client = TestClient(app)
+
+        captured: list[tuple[str, Path]] = []
+
+        def fake_create(self, tenant_id: str, artifact_path: Path):
+            captured.append((tenant_id, artifact_path))
+            runbook = pub_mod.write_runbook(tenant_id, artifact_path)
+            return pub_mod.ForkResult(
+                tenant_id=tenant_id,
+                artifact_path=artifact_path,
+                runbook_path=runbook,
+                repo_url="https://github.com/user/AutoService-" + tenant_id,
+            )
+
+        with patch.object(
+            GitHubApiForkCreator, "available", return_value=True
+        ), patch.object(GitHubApiForkCreator, "create", fake_create):
+            resp = client.post(
+                "/api/onboard/publish", json={"tenant_id": tid}
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert len(captured) == 1, (
+            "GitHubApiForkCreator.create() must have been invoked by the route"
+        )
+        assert captured[0][0] == tid
+
+    def test_route_defaults_to_local_creator(self, isolated_layout, monkeypatch):
+        """No config file → route uses LocalTarballForkCreator (existing behavior).
+
+        Regression guard: the selector change MUST NOT alter the default
+        path for callers that don't opt in.
+        """
+        from autoservice import api_routes
+
+        # Point the route at a non-existent config so selector returns None.
+        monkeypatch.setattr(
+            api_routes,
+            "_PUBLISH_CONFIG_PATH",
+            isolated_layout["tmp"] / "missing.yaml",
+        )
+
+        tid = "tenant_route_default"
+        _seed_sandbox(isolated_layout["sandbox"], tid)
+
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        app = FastAPI()
+        app.include_router(api_routes.api_router)
+        client = TestClient(app)
+
+        resp = client.post("/api/onboard/publish", json={"tenant_id": tid})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # No repo_url means LocalTarballForkCreator was used (M1 default).
+        # The endpoint response doesn't surface repo_url, but the
+        # runbook + archived_to must still exist.
+        assert body["runbook"]
+        assert body["archived_to"]
+
+
+# ---------------------------------------------------------------------------
 # HTTP surface
 # ---------------------------------------------------------------------------
 
