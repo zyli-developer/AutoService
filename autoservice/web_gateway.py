@@ -38,6 +38,7 @@ from autoservice.gateway.errors import (
 )
 from autoservice.gateway.message_router import dispatch, get_subscription_registry, replay_messages
 from autoservice.gateway.offline_watcher import OfflineWatcher
+from autoservice.gateway.tenant_resolver import resolve_customer_tenant
 from autoservice.takeover_config import TakeoverConfig, load_takeover_config
 
 logger = logging.getLogger("autoservice.gateway")
@@ -581,6 +582,31 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         op_cookie_for_touch = op_cookie
         operators.touch_operator_session(op_conn, op_cookie)
 
+    # Customer role: resolve + validate tenant from URL query. tenant-mode
+    # deployments reject cross-tenant snooping (query ≠ self); master-mode
+    # rejects queries for unregistered tenants. Successful resolution pins
+    # ws.state_customer_tenant_id, which message_router then forwards into
+    # conv.metadata["tenant_id"] so downstream KB pre-fetch + tenant-soul
+    # recycle fire on the right tenant.
+    validated_customer_tenant_id: str | None = None
+    if viewer_role == "customer":
+        tid, reject_reason = resolve_customer_tenant(ws.query_params)
+        if reject_reason is not None:
+            await ws.send_json(
+                build_frame(
+                    "error",
+                    make_error_payload(
+                        ERR_AUTH,
+                        f"tenant resolution failed: {reject_reason}",
+                        details={"reason": reject_reason},
+                    ),
+                    ref=env.id,
+                )
+            )
+            await ws.close(code=1008)
+            return
+        validated_customer_tenant_id = tid
+
     session_id = generate_session_id()
     _ws_connections[session_id] = ws
     if viewer_role == "admin":
@@ -593,6 +619,9 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
         ws.state_operator_tenant_id = validated_operator_tenant_id
         # Tell the offline watcher this operator is online
         ws.app.state.offline_watcher.on_connect(validated_operator_id)
+
+    if viewer_role == "customer":
+        ws.state_customer_tenant_id = validated_customer_tenant_id
 
     await ws.send_json(
         build_frame(

@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
-"""Seed the `mystore` demo tenant for E2E recording (2026-04-21 scenarios).
+"""Seed the `cinnox` tenant via the runtime-aligned sandbox KB path.
+
+Why this exists separately from `seed_mystore_tenant.py`:
+  - `seed_mystore_tenant.py` writes to the *global* KB at
+    `.autoservice/database/knowledge_base/kb.db`, which the frontend
+    `/api/kb_search` endpoint uses as fallback.
+  - But the agent runtime `kb_search(tenant_id=...)` resolves the KB
+    file via `dream_agent._sandbox_kb_path`, which looks at:
+       1. `.autoservice/sandbox/<tid>/kb/kb.db`
+       2. `plugins/<tid>/kb/kb.db`
+    — NOT the global path. So mystore-style seeding never lights up
+    the customer agent's KB tool / pre-fetch.
+  - This script seeds to the sandbox path so customer messages for
+    tenant `cinnox` get KB-grounded answers instead of the soul.md
+    "need to confirm → escalate" fallback.
 
 Creates:
-  - .autoservice/sandbox/mystore/config.json          (active tenant metadata)
-  - .autoservice/sandbox/mystore/souls/customer_soul.md (Cinnox-flavored persona)
-  - .autoservice/sandbox/mystore/souls/_generation_meta.yaml
-  - .autoservice/database/knowledge_base/kb.db         (global FTS5 KB consumed by /api/kb_search)
+  - .autoservice/sandbox/cinnox/config.json           (active tenant metadata)
+  - .autoservice/sandbox/cinnox/souls/customer_soul.md (CINNOX-flavored persona)
+  - .autoservice/sandbox/cinnox/souls/_generation_meta.yaml
+  - .autoservice/sandbox/cinnox/kb/kb.db               (FTS5 SQLite, tenant-scoped)
 
 KB sources:
-  - AutoService-Cinnox/plugins/cinnox/references/glossary.json (≈240 terms, one chunk each)
-  - Hand-curated "demo-facts" chunks aligned to the 3 scripted customer questions
-    (DID 开通 / 跨套餐迁移 / PSTN 故障转移) so customer agent answers are KB-grounded.
+  - plugins/cinnox/references/glossary.json (~353 terms, 1 chunk each)
+  - Hand-curated "demo-facts" chunks covering common service questions
 
 Safe to re-run: wipes + reseeds its own source_ids only.
 """
@@ -27,16 +40,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from autoservice.kb_core import KBStore  # noqa: E402
 
-CINNOX_ROOT = PROJECT_ROOT.parent / "AutoService-Cinnox"
-SANDBOX = PROJECT_ROOT / ".autoservice" / "sandbox" / "mystore"
-# Runtime-aligned KB path: dream_agent._sandbox_kb_path resolves to
-# .autoservice/sandbox/<tid>/kb/kb.db — the old global path never
-# lit up the mystore customer agent.
-KB_DB = PROJECT_ROOT / ".autoservice" / "sandbox" / "mystore" / "kb" / "kb.db"
-GLOSSARY_PATH = CINNOX_ROOT / "plugins" / "cinnox" / "references" / "glossary.json"
+SANDBOX = PROJECT_ROOT / ".autoservice" / "sandbox" / "cinnox"
+KB_DB = SANDBOX / "kb" / "kb.db"
+GLOSSARY_PATH = PROJECT_ROOT / "plugins" / "cinnox" / "references" / "glossary.json"
 
-TENANT_ID = "mystore"
-BRAND = "mystore"
+TENANT_ID = "cinnox"
+BRAND = "CINNOX"
 INDUSTRY = "contact_center"
 
 NOW = datetime.now(timezone.utc).isoformat()
@@ -79,11 +88,11 @@ CONFIG = {
     },
 }
 
-CUSTOMER_SOUL = """# Customer Service Agent · Soul (mystore · CINNOX-flavored)
+CUSTOMER_SOUL = """# Customer Service Agent · Soul (cinnox · CINNOX/M800)
 
 ## 角色定位
 
-你是 mystore 商户（基于 CINNOX / M800 全渠道联络中心平台）的 AI 客服代表。mystore 主要向企业客户提供云联络中心、IVR、DID 号码开通、全球 PSTN 接入、AI 销售语音机器人等服务。你的职责是基于商户知识库准确回答客户关于套餐、功能、定价、故障处理的问题，并在能力边界内主动升级到人工。
+你是 CINNOX / M800 全渠道联络中心平台的 AI 客服代表。CINNOX 主要向企业客户提供云联络中心、IVR、DID 号码开通、全球 PSTN 接入、AI 销售语音机器人等服务。你的职责是基于商户知识库准确回答客户关于套餐、功能、定价、故障处理的问题，并在能力边界内主动升级到人工。
 
 ## 业务范围（从知识库中可以回答的）
 
@@ -98,7 +107,7 @@ CUSTOMER_SOUL = """# Customer Service Agent · Soul (mystore · CINNOX-flavored)
 
 1. **仅基于知识库回答** — 所有事实性回答（价格、时效、功能清单、条款）必须来自已加载的知识库内容。KB 无匹配时，明确告知"这个细节我需要跟同事核实后回复您"，并触发升级。
 2. **禁止编造** — 不得杜撰产品功能、价格、政策、联系方式。不确定时说"不确定"或建议转人工。
-3. **身份披露** — 首次交互时声明 AI 身份（`soul.disclosure_enabled=true`）："您好，我是 mystore 的 AI 助手。"
+3. **身份披露** — 首次交互时声明 AI 身份（`soul.disclosure_enabled=true`）："您好，我是 CINNOX 的 AI 助手。"
 4. **语言跟随** — 使用客户首次消息的语言回复（中/英均可）。客户用中文你用中文，客户用英文你用英文。
 5. **术语规范** — 使用 CINNOX 官方术语（DID、IVR、PSTN、MRC、IDD、SSO 等），必要时附中文解释。
 6. **情绪感知** — 识别负面/愤怒情绪。对故障类投诉（尤其带工单号 TK-xxxx 的）采用安抚话术并降低升级阈值，**优先提"故障转移"或"临时备用号"方案**。
@@ -113,7 +122,7 @@ CUSTOMER_SOUL = """# Customer Service Agent · Soul (mystore · CINNOX-flavored)
 
 ## 多轮交互模式
 
-1. **问候** — "您好，我是 mystore 的 AI 助手。请问需要帮您了解哪方面？"
+1. **问候** — "您好，我是 CINNOX 的 AI 助手。请问需要帮您了解哪方面？"
 2. **理解** — 识别客户类型（新客 / 老客 / 合作伙伴）；老客问业务问题直接进入回答；涉及账号/账单的老客须验证身份（姓名/公司/邮箱/账号 ID）。
 3. **回答** — 基于 KB 给出准确回复，引用术语但不暴露内部文件名。
 4. **确认** — 询问是否解决，或是否需要补充信息。
@@ -147,16 +156,32 @@ roles:
   customer:
     kb_hit_count: 0
     warnings: []
-tenant_id: mystore
+tenant_id: cinnox
 total_kb_hits: 0
-note: Hand-authored for 2026-04-21 E2E recording. Bypasses soul_generator.
+note: Hand-authored seed to restore runtime KB retrieval for cinnox tenant.
+  Writes to .autoservice/sandbox/cinnox/kb/kb.db (the path dream_agent._sandbox_kb_path
+  actually queries), rather than the global kb.db that seed_mystore_tenant.py
+  targets. Fixes the observed "agent always escalates instead of using KB" bug.
 """
 
 
-# ─── Demo-facts chunks (covers the 3 scripted customer questions) ────────────
+# ─── Demo-facts chunks (covers common scripted questions) ────────────────────
 
 DEMO_FACTS: list[tuple[str, str, str, str]] = [
-    # (section, content, domain, region)
+    (
+        "Service Overview",
+        "**CINNOX 提供什么服务**\n\n"
+        "CINNOX 是一家全渠道客户互动平台，主要面向企业客户提供以下服务：\n"
+        "- **云联络中心**：统一管理语音、视频、聊天、邮件等多渠道客户互动\n"
+        "- **全球号码**：DID（直拨入号）、Toll-free、Virtual Number，覆盖 50+ 国家/地区\n"
+        "- **IVR 编排**：可视化拖拽式 IVR 流程设计器\n"
+        "- **Omnichannel 路由**：WhatsApp / Web chat / IM / Voice 统一接入\n"
+        "- **AI 销售语音机器人**：外呼自动化、语义理解、话术管理\n"
+        "- **CRM 集成 & 分析**：通话录音、会话归档、客户画像\n\n"
+        "套餐分为 Essentials（中小企业）、Professional（中型）、Enterprise（大型）、"
+        "Enterprise Plus（全球账户）四档。",
+        "contact_center", "global",
+    ),
     (
         "DID Provisioning · Professional Plan",
         "**Local DID provisioning (Professional plan)**\n\n"
@@ -237,11 +262,7 @@ DEMO_FACTS: list[tuple[str, str, str, str]] = [
 
 def main() -> int:
     if not GLOSSARY_PATH.exists():
-        print(
-            f"[err] glossary not found: {GLOSSARY_PATH}\n"
-            f"       (sibling AutoService-Cinnox repo missing — cannot seed glossary)",
-            file=sys.stderr,
-        )
+        print(f"[err] glossary not found: {GLOSSARY_PATH}", file=sys.stderr)
         return 2
 
     SANDBOX.mkdir(parents=True, exist_ok=True)
@@ -287,9 +308,9 @@ def main() -> int:
                 "id": f"demo_{i:04d}",
                 "source_id": "demo",
                 "source_type": "md",
-                "source_name": "mystore Demo Knowledge",
+                "source_name": "cinnox Demo Knowledge",
                 "source_url": None,
-                "file_path": "scripts/seed_mystore_tenant.py#DEMO_FACTS",
+                "file_path": "scripts/seed_cinnox_tenant.py#DEMO_FACTS",
                 "section": section,
                 "content": content,
                 "created_at": now,

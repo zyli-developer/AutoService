@@ -31,3 +31,6 @@ uv.lock
 
 # Local overrides sourced by autoservice.sh
 autoservice.local.sh
+
+# Superpowers-style isolated worktrees
+.worktrees/

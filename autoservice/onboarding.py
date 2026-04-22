@@ -14,17 +14,16 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
 import os
 import re
 import shutil
-import sqlite3
-import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 log = logging.getLogger("onboarding")
 
@@ -44,99 +43,8 @@ def sandbox_dir(tenant_id: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Sandbox KB helpers (per-tenant SQLite + FTS5)
+# Sandbox config & soul helpers
 # ---------------------------------------------------------------------------
-
-def _init_sandbox_kb(db_path: Path) -> sqlite3.Connection:
-    """Initialize a per-tenant sandbox KB SQLite DB with FTS5.
-
-    Schema mirrors the minimum fields required by the spec §2.4
-    (kb_chunks: id, content, source_name, section, domain) and
-    provides an FTS5 virtual table `kb_fts` that mirrors `content`.
-    Content-synced FTS keeps writes cheap and search consistent.
-    """
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS kb_chunks (
-            id          TEXT PRIMARY KEY,
-            content     TEXT NOT NULL,
-            source_name TEXT DEFAULT '',
-            section     TEXT DEFAULT '',
-            domain      TEXT DEFAULT '',
-            created_at  TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
-            content,
-            source_name,
-            section,
-            domain,
-            content=kb_chunks,
-            content_rowid=rowid,
-            tokenize="unicode61 remove_diacritics 1"
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TRIGGER IF NOT EXISTS kb_ai AFTER INSERT ON kb_chunks BEGIN
-            INSERT INTO kb_fts(rowid, content, source_name, section, domain)
-            VALUES (new.rowid, new.content, new.source_name, new.section, new.domain);
-        END
-        """
-    )
-    conn.execute(
-        """
-        CREATE TRIGGER IF NOT EXISTS kb_ad AFTER DELETE ON kb_chunks BEGIN
-            INSERT INTO kb_fts(kb_fts, rowid, content, source_name, section, domain)
-            VALUES ('delete', old.rowid, old.content, old.source_name, old.section, old.domain);
-        END
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def _ingest_chunks_into_sandbox_kb(
-    tenant_id: str,
-    file_results: Iterable[dict],
-    *,
-    domain: str = "",
-) -> int:
-    """Write extracted chunks into `.autoservice/sandbox/<tid>/kb/kb.db`.
-
-    Returns the number of chunks written.
-    """
-    db_path = sandbox_dir(tenant_id) / "kb" / "kb.db"
-    conn = _init_sandbox_kb(db_path)
-    now = datetime.now(timezone.utc).isoformat()
-    written = 0
-    try:
-        for r in file_results:
-            if r.get("status") != "ok":
-                continue
-            source_name = r.get("original_name") or r.get("file_name") or ""
-            for chunk in r.get("chunks", []) or []:
-                text = (chunk or "").strip()
-                if not text:
-                    continue
-                conn.execute(
-                    "INSERT INTO kb_chunks (id, content, source_name, section, domain, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (_uuid.uuid4().hex, text, source_name, "", domain, now),
-                )
-                written += 1
-        conn.commit()
-    finally:
-        conn.close()
-    return written
-
 
 def _write_sandbox_config_skeleton(
     tenant_id: str,
@@ -413,89 +321,153 @@ async def upload_and_parse(
     files: list[UploadFile] = File(default=[]),
 ):
     """Upload files, parse, return extracted text + trigger soul generation."""
+    from autoservice.kb_core import KBStore
+
     pipeline = OnboardingPipeline()
-    results = []
-
-    for f in files:
-        content = await f.read()
-        suffix = Path(f.filename or "").suffix or ".txt"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-        try:
-            result = pipeline.ingest(str(tmp_path))
-            result["original_name"] = f.filename
-            results.append(result)
-        except UnsupportedFileType as exc:
-            results.append({"status": "skipped", "file_name": f.filename, "reason": str(exc)})
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    # Optionally parse URL
-    url_result = None
-    if website_url:
-        try:
-            import requests
-            from bs4 import BeautifulSoup
-            resp = requests.get(website_url, timeout=15, headers={"User-Agent": "AutoService/1.0"})
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer"]):
-                tag.decompose()
-            url_text = soup.get_text(separator="\n", strip=True)
-            url_result = {"status": "ok", "source": website_url, "text_length": len(url_text)}
-        except Exception as exc:
-            url_result = {"status": "failed", "source": website_url, "error": str(exc)}
+    results: list[dict] = []
 
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
-    # --- Sandbox provisioning (spec §2 / §3.1) ---
-    # Step 0 owns three on-disk artifacts:
-    #   1. .autoservice/sandbox/<tid>/config.json  (skeleton — tenant metadata only)
-    #   2. .autoservice/sandbox/<tid>/kb/kb.db     (FTS5 SQLite with extracted chunks)
-    #   3. .autoservice/sandbox/<tid>/souls/       (4 LLM-generated + dream template)
     config_path = None
     try:
         config_path = _write_sandbox_config_skeleton(tenant_id, brand_name, industry)
     except Exception as exc:
         log.warning("Failed to write sandbox config skeleton: %s", exc)
 
-    # --- KB ingest: write extracted chunks into per-tenant sandbox KB ---
+    # -- KB ingest via KBStore --------------------------------------
+    # Route each file by extension BEFORE extracting text:
+    #   .pdf  -> KBStore.ingest_pdf  (preserves page_number + semantic chunking)
+    #   .xlsx -> KBStore.ingest_xlsx (previously dropped as UnsupportedFileType)
+    #   else  -> OnboardingPipeline.ingest -> KBStore.ingest_text (text-ish files)
     kb_chunks_written = 0
-    try:
-        kb_chunks_written = _ingest_chunks_into_sandbox_kb(
-            tenant_id, results, domain=industry or ""
-        )
-    except Exception as exc:
-        log.warning("Sandbox KB ingest failed (upload still succeeds): %s", exc)
+    kb_errors: list[str] = []
+    url_result: dict | None = None
+    sandbox_kb = sandbox_dir(tenant_id) / "kb" / "kb.db"
 
-    # --- Soul generation: wire soul_generator after text extraction ---
+    with KBStore(sandbox_kb) as store:
+        for f in files:
+            content = await f.read()
+            filename = f.filename or "uploaded"
+            suffix = Path(filename).suffix.lower()
+            source_id = f"file:{hashlib.sha256(content).hexdigest()[:16]}"
+
+            with tempfile.NamedTemporaryFile(suffix=suffix or ".tmp", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
+
+            try:
+                if suffix == ".pdf":
+                    # Route to KBStore.ingest_pdf for semantic chunking +
+                    # page_number preservation. Skip OnboardingPipeline.
+                    try:
+                        n = store.ingest_pdf(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "pdf",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                elif suffix == ".xlsx":
+                    # Route to KBStore.ingest_xlsx (rate-table detection etc).
+                    # Previously dropped as UnsupportedFileType by OnboardingPipeline.
+                    try:
+                        n = store.ingest_xlsx(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "xlsx",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                else:
+                    # Text-ish: OnboardingPipeline extracts text -> ingest_text
+                    # chunks by paragraph. Keeps the .text field in the response
+                    # so soul generation has combined_text to work with.
+                    try:
+                        result = pipeline.ingest(str(tmp_path))
+                        result["original_name"] = filename
+                        results.append(result)
+                        text = result.get("text") or ""
+                        try:
+                            n = store.ingest_text(
+                                text,
+                                source_id=source_id,
+                                source_name=filename,
+                                source_type=result.get("file_type", "text"),
+                                file_path=filename,
+                                domain=industry or "",
+                            )
+                            kb_chunks_written += n
+                        except Exception as exc:
+                            kb_errors.append(f"{filename}: {exc}")
+                    except UnsupportedFileType as exc:
+                        results.append({
+                            "status": "skipped", "file_name": filename, "reason": str(exc),
+                        })
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+        # Website URL -- crawl 1 page, ingest into KB (bug fix).
+        if website_url:
+            try:
+                n = store.ingest_web(
+                    website_url,
+                    source_id="website",
+                    source_name=website_url,
+                    max_pages=1,
+                    crawl_depth=1,
+                    domain=industry or "",
+                )
+                kb_chunks_written += n
+                url_result = {"status": "ok", "source": website_url, "chunks_written": n}
+            except Exception as exc:
+                url_result = {"status": "failed", "source": website_url, "error": str(exc)}
+                kb_errors.append(f"{website_url}: {exc}")
+
+    # -- Soul generation (unchanged) --------------------------------
     souls_output = None
     souls_saved: dict[str, str] = {}
     try:
         from autoservice.soul_generator import TenantConfig, generate_souls, save_drafts
 
-        # Combine extracted text from all successfully parsed files
         combined_text = "\n\n".join(
             r.get("text", "") for r in results if r.get("status") == "ok"
         )
-
         soul_config = TenantConfig(
             tenant_id=tenant_id,
             brand_name=brand_name or "Unknown Brand",
             industry=industry,
             extra_context=combined_text[:8000] if combined_text else "",
         )
-
         gen_result = generate_souls(soul_config, dry_run=(not combined_text))
-
-        # --- Persist soul drafts to sandbox (fixes bug #1) ---
         try:
             paths = save_drafts(gen_result)
             souls_saved = {role: str(p) for role, p in paths.items()}
         except Exception as exc:
             log.warning("save_drafts failed: %s", exc)
-
         souls_output = {
             "mode": gen_result.mode,
             "total_kb_hits": gen_result.total_kb_hits,
@@ -514,7 +486,6 @@ async def upload_and_parse(
         log.warning("Soul generation failed (upload still succeeds): %s", exc)
         souls_output = {"error": str(exc)}
 
-    # --- Dream soul placeholder: copy static template (M1 only, see §2.5) ---
     try:
         dream_path = _copy_dream_soul_template(tenant_id)
         if dream_path is not None:
@@ -534,6 +505,7 @@ async def upload_and_parse(
         "sandbox_dir": str(sandbox_dir(tenant_id)),
         "config_path": str(config_path) if config_path else None,
         "kb_chunks_written": kb_chunks_written,
+        "kb_errors": kb_errors,
         "souls": souls_output,
     }
 

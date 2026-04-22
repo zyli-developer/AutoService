@@ -507,6 +507,14 @@ async def _call_engine(
             meta: dict[str, Any] = {"channel": "web"}
             if squad_id_hint:
                 meta["squad_id"] = squad_id_hint
+            # tenant_id pinned by web_gateway._handle_connection via the
+            # /ws/customer?tenant=<tid> query (validated by tenant_resolver).
+            # Downstream: triage_config_loader reads conv.metadata["tenant_id"]
+            # and drives KB pre-fetch + tenant-soul recycle.
+            if ws is not None:
+                tid = getattr(ws, "state_customer_tenant_id", None)
+                if tid:
+                    meta["tenant_id"] = tid
             conv = await engine.create_conversation(
                 channel="web", external_id=source, metadata=meta,
             )

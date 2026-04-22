@@ -127,6 +127,12 @@ export class WSClient {
             this.versionIncompatible = true;
             this.closedByUser = true; // prevent reconnect
           }
+          // Handshake-phase auth errors (4011): tenant_mismatch /
+          // unknown_tenant / operator cookie invalid — retry would fail the
+          // same way and only floods the server. Suppress reconnect.
+          if (payload.code === ERROR_CODES.AUTH) {
+            this.closedByUser = true;
+          }
           this.opts.onError?.(payload);
           this.opts.onFrame?.(frame);
           return;

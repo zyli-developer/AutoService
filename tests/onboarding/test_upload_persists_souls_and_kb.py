@@ -72,84 +72,15 @@ def isolated_project_root(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 class TestSandboxHelpers:
-    def test_init_sandbox_kb_creates_schema(self, tmp_path):
-        from autoservice.onboarding import _init_sandbox_kb
-
-        db_path = tmp_path / "kb.db"
-        conn = _init_sandbox_kb(db_path)
-        try:
-            tables = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
-                )
-            }
-            assert "kb_chunks" in tables
-            assert "kb_fts" in tables
-        finally:
+    def test_kb_store_creates_trigram_schema(self, tmp_path):
+        from autoservice.kb_core import KBStore
+        with KBStore(tmp_path / "kb.db") as store:
+            conn = sqlite3.connect(str(store.db_path))
+            sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name='kb_fts'"
+            ).fetchone()[0]
             conn.close()
-        assert db_path.exists()
-
-    def test_ingest_chunks_writes_rows(self, tmp_path, monkeypatch):
-        from autoservice import onboarding as onboarding_mod
-
-        monkeypatch.setattr(
-            onboarding_mod, "SANDBOX_ROOT", tmp_path / ".autoservice" / "sandbox"
-        )
-        file_results = [
-            {
-                "status": "ok",
-                "original_name": "brand.txt",
-                "chunks": ["Welcome to brand X.", "Refund policy 14d."],
-            },
-            {"status": "skipped", "chunks": ["ignored"]},
-        ]
-        written = onboarding_mod._ingest_chunks_into_sandbox_kb("t_test", file_results)
-        assert written == 2
-
-        db = tmp_path / ".autoservice" / "sandbox" / "t_test" / "kb" / "kb.db"
-        assert db.exists()
-        conn = sqlite3.connect(str(db))
-        try:
-            (count,) = conn.execute("SELECT COUNT(*) FROM kb_chunks").fetchone()
-            assert count == 2
-            # FTS index is searchable
-            rows = conn.execute(
-                "SELECT content FROM kb_fts WHERE kb_fts MATCH 'refund'"
-            ).fetchall()
-            assert any("Refund" in r[0] for r in rows)
-        finally:
-            conn.close()
-
-    def test_write_sandbox_config_skeleton(self, tmp_path, monkeypatch):
-        from autoservice import onboarding as onboarding_mod
-
-        monkeypatch.setattr(
-            onboarding_mod, "SANDBOX_ROOT", tmp_path / ".autoservice" / "sandbox"
-        )
-        path = onboarding_mod._write_sandbox_config_skeleton(
-            "tenant_abc", "acme", "ecommerce"
-        )
-        assert path.exists()
-        data = json.loads(path.read_text(encoding="utf-8"))
-        assert data["tenant_id"] == "tenant_abc"
-        assert data["brand_name"] == "acme"
-        assert data["industry"] == "ecommerce"
-        assert data["status"] == "sandbox"
-        assert "created_at" in data and data["created_at"]
-
-    def test_copy_dream_soul_template(self, tmp_path, monkeypatch):
-        from autoservice import onboarding as onboarding_mod
-
-        monkeypatch.setattr(
-            onboarding_mod, "SANDBOX_ROOT", tmp_path / ".autoservice" / "sandbox"
-        )
-        dest = onboarding_mod._copy_dream_soul_template("tenant_xyz")
-        assert dest is not None
-        assert dest.exists()
-        body = dest.read_text(encoding="utf-8")
-        assert body.strip(), "dream_soul.md should not be empty"
-        assert "Dream Engine" in body
+            assert "trigram" in sql
 
 
 # ---------------------------------------------------------------------------
@@ -172,10 +103,20 @@ class TestUploadEndpointPersistsArtifacts:
         app = _build_app()
         client = TestClient(app)
 
-        # Two small uploaded files so the KB gets >= 1 chunk.
+        # Two uploaded files, each with at least one paragraph above
+        # KBStore's CHUNK_MIN_CHARS (50) threshold so the KB gets >= 1 chunk.
+        intro = (
+            b"Welcome to AcmeCorp! We are a retailer that sells a wide range of "
+            b"widgets and accessories to businesses across the globe."
+        )
+        faq = (
+            b"# FAQ\n\nQ: What is your refund policy?\nA: We accept returns within "
+            b"14 days of purchase, provided items are in original condition and "
+            b"accompanied by the original receipt or order confirmation email."
+        )
         files = [
-            ("files", ("intro.txt", io.BytesIO(b"Hello world. Our brand sells widgets."), "text/plain")),
-            ("files", ("faq.md", io.BytesIO(b"# FAQ\n\nQ: Refunds?\nA: Within 14 days."), "text/markdown")),
+            ("files", ("intro.txt", io.BytesIO(intro), "text/plain")),
+            ("files", ("faq.md", io.BytesIO(faq), "text/markdown")),
         ]
         data = {"brand_name": "acmecorp", "industry": "ecommerce", "website_url": ""}
 
@@ -274,3 +215,216 @@ class TestUploadEndpointPersistsArtifacts:
         # 4 LLM souls still written via fallback template
         for role in ("customer", "translate", "lead", "triage"):
             assert (sandbox / "souls" / f"{role}_soul.md").exists()
+
+
+class TestUploadBugFixes:
+    """Regression tests for the three bugs identified in the KB audit
+    (2026-04-22 KB unification plan §Phase 4)."""
+
+    def test_reupload_same_file_does_not_duplicate_chunks(
+        self, isolated_project_root, monkeypatch,
+    ):
+        """Re-ingesting the same file_bytes via the same source_id keeps count stable."""
+        app = _build_app()
+        client = TestClient(app)
+
+        # First upload creates a tenant with N chunks for that file.
+        file_body = b"Alpha paragraph with enough text to pass the minimum threshold. " * 5
+        resp = client.post(
+            "/api/onboard/upload",
+            data={"brand_name": "Dedup Co", "industry": "retail"},
+            files={"files": ("note.txt", file_body, "text/plain")},
+        )
+        assert resp.status_code == 200, resp.text
+        first = resp.json()
+        tid = first["tenant_id"]
+        db = isolated_project_root / ".autoservice" / "sandbox" / tid / "kb" / "kb.db"
+        conn = sqlite3.connect(str(db))
+        first_count = conn.execute("SELECT COUNT(*) FROM kb_chunks").fetchone()[0]
+        conn.close()
+
+        # Now simulate a re-ingest WITHIN the same tenant by opening KBStore
+        # directly and calling ingest_text with the same source_id a second
+        # time (the wizard creates a new tenant each call, but the source_id
+        # scheme is deterministic on file bytes). If the scheme is correct,
+        # count stays stable.
+        import hashlib
+        from autoservice.kb_core import KBStore
+        source_id = f"file:{hashlib.sha256(file_body).hexdigest()[:16]}"
+
+        with KBStore(db) as store:
+            before = store.count()
+            n = store.ingest_text(
+                file_body.decode("utf-8"),
+                source_id=source_id,
+                source_name="note.txt", source_type="text",
+            )
+            # Count stays stable: clear_source(source_id) wiped previous rows,
+            # ingest_text reseeded the same content with the same id pattern.
+            assert store.count() == before
+            assert n == first_count  # same chunk count as the wizard call
+
+    def test_upload_with_website_url_ingests_into_kb(
+        self, isolated_project_root, monkeypatch,
+    ):
+        """website_url content must end up in kb_chunks (not silently dropped)."""
+        from autoservice import kb_core
+
+        html = "<html><body><main><h2>Services</h2><p>We sell widgets of many varieties, including premium and standard lines. Each widget has comprehensive documentation for integration.</p></main></body></html>"
+
+        class _FakeResp:
+            def __init__(self, text):
+                self.text = text
+                self.status_code = 200
+            def raise_for_status(self): pass
+
+        class _FakeSession:
+            def get(self, *a, **kw):
+                return _FakeResp(html)
+
+        monkeypatch.setattr(kb_core, "_make_http_session", lambda: _FakeSession())
+        monkeypatch.setattr(kb_core.time, "sleep", lambda _s: None)
+
+        app = _build_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/onboard/upload",
+            data={"brand_name": "Web Co", "industry": "retail", "website_url": "https://example.com/"},
+        )
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        tid = payload["tenant_id"]
+
+        db = isolated_project_root / ".autoservice" / "sandbox" / tid / "kb" / "kb.db"
+        conn = sqlite3.connect(str(db))
+        n = conn.execute(
+            "SELECT COUNT(*) FROM kb_chunks WHERE source_id = 'website'"
+        ).fetchone()[0]
+        conn.close()
+        assert n >= 1
+        # Response payload should also mention the URL ingestion.
+        assert payload.get("url_result", {}).get("status") == "ok"
+        assert payload.get("url_result", {}).get("chunks_written", 0) >= 1
+
+    def test_upload_pdf_routes_to_ingest_pdf(
+        self, isolated_project_root, monkeypatch,
+    ):
+        """PDF uploads should route to KBStore.ingest_pdf (preserves page_number
+        + heading/table semantic chunking), not be flattened by ingest_text."""
+        # Build a minimal real PDF using reportlab if available; fallback stub otherwise.
+        try:
+            from reportlab.pdfgen import canvas  # type: ignore
+            from reportlab.lib.pagesizes import LETTER
+            pdf_buffer = io.BytesIO()
+            cvs = canvas.Canvas(pdf_buffer, pagesize=LETTER)
+            for page_text in [
+                "1. INTRODUCTION\nThis is the first page of an onboarding document with enough content.",
+                "2. DETAILS\nThis is the second page containing additional detailed information for the reader.",
+            ]:
+                y = 750
+                for line in page_text.split("\n"):
+                    cvs.drawString(50, y, line[:100])
+                    y -= 14
+                cvs.showPage()
+            cvs.save()
+            pdf_bytes = pdf_buffer.getvalue()
+            has_reportlab = True
+        except ImportError:
+            import pypdf
+            writer = pypdf.PdfWriter()
+            writer.add_blank_page(width=612, height=792)
+            buf = io.BytesIO()
+            writer.write(buf)
+            pdf_bytes = buf.getvalue()
+            has_reportlab = False
+
+        app = _build_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/onboard/upload",
+            data={"brand_name": "PDF Co", "industry": "retail"},
+            files={"files": ("manual.pdf", pdf_bytes, "application/pdf")},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        tid = body["tenant_id"]
+
+        db = isolated_project_root / ".autoservice" / "sandbox" / tid / "kb" / "kb.db"
+        assert db.exists()
+        conn = sqlite3.connect(str(db))
+        rows = conn.execute(
+            "SELECT source_type, page_number, source_name FROM kb_chunks"
+        ).fetchall()
+        conn.close()
+
+        if has_reportlab:
+            # Real text → at least one chunk, source_type=pdf, page_number set.
+            assert len(rows) >= 1
+            assert all(r[0] == "pdf" for r in rows), (
+                f"expected all source_type='pdf', got {[r[0] for r in rows]}"
+            )
+            assert any(r[1] is not None for r in rows), (
+                "expected at least one chunk with page_number set (ingest_pdf populates it)"
+            )
+            assert all(r[2] == "manual.pdf" for r in rows)
+        else:
+            # Blank-page stub: 0 chunks is acceptable. But if any chunk exists,
+            # it must still be marked as pdf (proving we routed to ingest_pdf).
+            if rows:
+                assert all(r[0] == "pdf" for r in rows)
+
+    def test_upload_xlsx_routes_to_ingest_xlsx(
+        self, isolated_project_root, monkeypatch,
+    ):
+        """XLSX uploads were previously dropped as 'unsupported'. Now they
+        must route to KBStore.ingest_xlsx and produce source_type='xlsx' chunks."""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Products"
+        ws.append(["Name", "Category", "Description"])
+        ws.append([
+            "Widget Pro", "hardware",
+            "A premium widget used across industrial applications with extended durability.",
+        ])
+        ws.append([
+            "Widget Lite", "hardware",
+            "A lightweight variant suitable for smaller business deployments and pilots.",
+        ])
+        buf = io.BytesIO()
+        wb.save(buf)
+        xlsx_bytes = buf.getvalue()
+
+        app = _build_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/api/onboard/upload",
+            data={"brand_name": "XLSX Co", "industry": "retail"},
+            files={"files": ("products.xlsx",
+                             xlsx_bytes,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        tid = body["tenant_id"]
+
+        # Must NOT be marked as skipped — previous behaviour was skip.
+        file_results = body.get("file_results", [])
+        assert len(file_results) == 1, f"expected 1 file result, got {file_results}"
+        assert file_results[0].get("status") == "ok", (
+            f"XLSX upload still skipped: {file_results[0]!r}"
+        )
+
+        # KB must contain at least one chunk with source_type='xlsx'.
+        db = isolated_project_root / ".autoservice" / "sandbox" / tid / "kb" / "kb.db"
+        assert db.exists()
+        conn = sqlite3.connect(str(db))
+        rows = conn.execute(
+            "SELECT source_type, section FROM kb_chunks"
+        ).fetchall()
+        conn.close()
+        assert len(rows) >= 1, "XLSX upload produced 0 chunks — routing did not take effect"
+        assert all(r[0] == "xlsx" for r in rows)
+        assert any("Products" in (r[1] or "") for r in rows), (
+            "expected at least one chunk to have the sheet name 'Products' in section"
+        )
