@@ -123,8 +123,9 @@ class TestInit:
             # After migration, kb_fts should use trigram.
             assert "trigram" in sql
             # And the row should still be findable via substring match.
+            # (Trigram needs ≥3 char windows; "提供什么" appears contiguously in seed.)
             rows = conn2.execute(
-                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("提供",),
+                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("提供什么",),
             ).fetchall()
             conn2.close()
             assert len(rows) == 1
@@ -237,10 +238,15 @@ class KBStore:
             c.execute("DROP TRIGGER IF EXISTS kb_ad")
             c.execute("DROP TABLE kb_fts")
 
+        # NOTE: FTS has NO chunk_id column. External-content FTS (content=kb_chunks)
+        # requires every FTS column to exist in the content table; kb_chunks' PK is
+        # `id`, not `chunk_id`. Callers join search results by rowid instead. Dropping
+        # chunk_id also lets `INSERT INTO kb_fts(kb_fts) VALUES('rebuild')` succeed —
+        # with chunk_id present, rebuild errors with "SQL logic error" because it
+        # tries to read a kb_chunks.chunk_id column that doesn't exist.
         c.execute(
             """
             CREATE VIRTUAL TABLE kb_fts USING fts5(
-                chunk_id UNINDEXED,
                 source_name,
                 section,
                 content,
@@ -253,16 +259,16 @@ class KBStore:
         c.execute(
             """
             CREATE TRIGGER kb_ai AFTER INSERT ON kb_chunks BEGIN
-                INSERT INTO kb_fts(rowid, chunk_id, source_name, section, content)
-                VALUES (new.rowid, new.id, new.source_name, new.section, new.content);
+                INSERT INTO kb_fts(rowid, source_name, section, content)
+                VALUES (new.rowid, new.source_name, new.section, new.content);
             END
             """
         )
         c.execute(
             """
             CREATE TRIGGER kb_ad AFTER DELETE ON kb_chunks BEGIN
-                INSERT INTO kb_fts(kb_fts, rowid, chunk_id, source_name, section, content)
-                VALUES ('delete', old.rowid, old.id, old.source_name, old.section, old.content);
+                INSERT INTO kb_fts(kb_fts, rowid, source_name, section, content)
+                VALUES ('delete', old.rowid, old.source_name, old.section, old.content);
             END
             """
         )
