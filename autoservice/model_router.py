@@ -36,6 +36,53 @@ _TRIAGE_OUTPUT_RE = re.compile(
 _TRIAGE_ROLE_WHITELIST = {"customer", "lead", "translate", "direct"}
 
 
+#: Max residue length (after stripping matched keywords + whitespace +
+#: punctuation) for a message to qualify as "pure social". Tuned to allow
+#: natural fillers like 您/啊/呀 after 你好/谢谢/再见 while blocking anything
+#: with a real business clause attached.
+_DIRECT_SOCIAL_MAX_RESIDUE = 6
+
+#: Characters that signal a substantive question even when a greeting
+#: keyword is present. `?`/`？` → actual question; digits → usually
+#: product codes, amounts, dates, phone numbers.
+_NON_SOCIAL_SIGNAL_RE = re.compile(r"[?？0-9]")
+
+#: Punctuation + whitespace to strip when measuring residue. Uses a
+#: hand-picked set rather than `\W` because CJK punctuation (，。！？)
+#: isn't classified as non-word in Python's `re` under UNICODE.
+_RESIDUE_STRIP_RE = re.compile(
+    r"[\s,\.!\?;:\-_/\\\(\)\[\]\{\}'\"`~@#\$%\^&\*\+="
+    r"，。！？；：、《》（）【】「」『』—…·]+"
+)
+
+
+def _is_pure_social(message: str, keywords: list[str]) -> bool:
+    """Whether ``message`` is a pure social pattern (greeting/thanks/bye).
+
+    A raw substring match on ``"你好"`` fires on any message that happens
+    to start with a greeting — including substantive business questions.
+    Direct-route intents short-circuit the pool entirely, so a false
+    positive here sends the customer a template reply while their real
+    question is silently dropped. This guard requires:
+
+      1. No ``?``/``？`` or digits in the message (signal of a real
+         question or data-bearing content)
+      2. After stripping every matched keyword and filler punctuation,
+         at most :data:`_DIRECT_SOCIAL_MAX_RESIDUE` word characters remain
+
+    Both conditions must hold. If either fails, the keyword match is
+    ignored and the message falls through to other intents (or the
+    general_question fallback).
+    """
+    if _NON_SOCIAL_SIGNAL_RE.search(message):
+        return False
+    lowered = message.lower()
+    for kw in sorted(keywords, key=len, reverse=True):
+        lowered = lowered.replace(kw.lower(), "")
+    residue = _RESIDUE_STRIP_RE.sub("", lowered)
+    return len(residue) <= _DIRECT_SOCIAL_MAX_RESIDUE
+
+
 def _parse_triage_output(raw: str) -> dict | None:
     """Parse a triage agent [分流] line. Returns dict or None on hard failure."""
     if not raw:
@@ -226,6 +273,13 @@ class FastClassifier:
                 continue
             hits = sum(1 for kw in keywords if kw in message_lower)
             if hits > 0:
+                # Direct-route intents (greeting/thanks/bye) short-circuit
+                # the pool with a template reply. Require the message to
+                # be a pure social pattern — "你好,我要问..." must fall
+                # through to customer, not template-reply the real question.
+                if intent_cfg.get("route_to") == AgentRole.DIRECT.value:
+                    if not _is_pure_social(message, keywords):
+                        continue
                 score = min(0.5 + hits * 0.15, 0.95)
                 if score > best_score:
                     best_score = score
@@ -243,16 +297,31 @@ class FastClassifier:
         # prefer ``direct_reply_en`` when present, falling back to the
         # canonical ``direct_reply`` (Chinese).
         direct_reply = None
-        if intent_cfg.get("route_to") == AgentRole.DIRECT.value:
+        route_to = intent_cfg["route_to"]
+        if route_to == AgentRole.DIRECT.value:
             if detected_language and detected_language.lower().startswith("en"):
                 direct_reply = intent_cfg.get("direct_reply_en") or intent_cfg.get("direct_reply")
             else:
                 direct_reply = intent_cfg.get("direct_reply")
+            # Invariant: direct route must carry a template. A tenant overlay
+            # can flip ``route_to: direct`` on an intent that doesn't define
+            # a ``direct_reply``; that would leave the gateway short-circuit
+            # with nothing to send and fall through to a
+            # ``pool.acquire(role="direct")`` that raises NotImplementedError.
+            # Demote here so every ClassificationResult is internally
+            # consistent.
+            if not direct_reply:
+                log.warning(
+                    "intent=%s has route_to=direct but no direct_reply "
+                    "template — demoting to customer",
+                    best_intent,
+                )
+                route_to = AgentRole.CUSTOMER.value
 
         return ClassificationResult(
             intent=Intent(best_intent),
             confidence=best_score,
-            route_to=AgentRole(intent_cfg["route_to"]),
+            route_to=AgentRole(route_to),
             model_tier=ModelTier(intent_cfg["model_tier"]),
             priority=intent_cfg.get("priority", "normal"),
             summary=message[:100] if best_score < self._thresholds["medium"] else None,
@@ -461,6 +530,22 @@ class ModelRouter:
             return self._triage_fallback(
                 message, fast_result, detected_language, previous_role,
             )
+
+        # Invariant: route=direct MUST carry a non-empty direct_reply — the
+        # gateway short-circuits the pool entirely for this role and has
+        # nothing to send if the template is missing. Fall through to
+        # pool.acquire(role="direct") would hit NotImplementedError since
+        # "direct" isn't a real sub-pool. Demote to customer instead.
+        agent_role = parsed["route_to"]
+        agent_direct_reply = parsed.get("direct_reply")
+        if agent_role == "direct" and not agent_direct_reply:
+            log.warning(
+                "triage agent returned route=direct without 回复: field "
+                "(intent=%s) — demoting to customer",
+                parsed.get("intent"),
+            )
+            agent_role = "customer"
+
         # Triage-agent output doesn't carry a tier — derive it from the
         # yaml config of the claimed intent. Unknown intents (agent
         # hallucinates a new one) fall back to the fast_result's tier.
@@ -472,7 +557,7 @@ class ModelRouter:
             agent_tier = fast_result.model_tier.value
 
         return TriageDecision(
-            role=parsed["route_to"],
+            role=agent_role,
             confidence=parsed["confidence"],
             source="triage_agent",
             intent=parsed["intent"],
@@ -480,7 +565,7 @@ class ModelRouter:
             summary=parsed.get("summary"),
             needs_operator_notice=parsed["confidence"] < self._thresholds["medium"],
             previous_role=previous_role,
-            direct_reply=parsed.get("direct_reply"),
+            direct_reply=agent_direct_reply,
             tier=agent_tier,
         )
 

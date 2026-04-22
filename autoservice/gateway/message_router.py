@@ -711,13 +711,14 @@ async def _call_engine(
         return []
 
     if frame_type == "edit_request":
+        edited_by = payload.get("edited_by", "operator")
         msg = await engine.edit_message(
             payload["conversation_id"],
             payload["message_id"],
             new_content=payload["new_content"],
-            edited_by=payload.get("edited_by", "operator"),
+            edited_by=edited_by,
         )
-        return [_message_frame(msg, event_type="message_edited")]
+        return [_message_edited_frame(msg, edited_by=edited_by)]
 
     if frame_type == "delete_request":
         await engine.delete_message(
@@ -755,6 +756,27 @@ def _message_frame(msg: Any, *, event_type: str = "message") -> dict[str, Any]:
             "conversation_id": serialized["conversation_id"],
             "message": serialized,
             "source_display": {"id": serialized["source"], "role": "agent"},
+        },
+    )
+
+
+def _message_edited_frame(msg: Any, *, edited_by: str) -> dict[str, Any]:
+    """Build a BE→FE S6 message_edited frame.
+
+    Flat payload per docs/contracts/frontend-ws-schema.md §5 S6. The
+    customer-chat handler reads these top-level fields directly; emitting
+    the S5 nested shape (as _message_frame does) silently drops
+    placeholder→reply replacement on the customer UI even though the
+    operator console tolerates both shapes.
+    """
+    return build_frame(
+        "message_edited",
+        {
+            "conversation_id": msg.conversation_id,
+            "message_id": msg.id,
+            "new_content": msg.content,
+            "edited_by": edited_by,
+            "sequence_number": msg.sequence_number,
         },
     )
 
@@ -967,7 +989,7 @@ async def _cleanup_stranded_placeholder(
             conv_id, getattr(placeholder_msg, "id", "?"),
         )
         return
-    frame = _message_frame(edited, event_type="message_edited")
+    frame = _message_edited_frame(edited, edited_by=edited_by)
     try:
         await ws.send_json(frame)
     except Exception:
@@ -1323,7 +1345,24 @@ async def _generate_agent_reply(
 
         # Direct-reply short-circuit: triage identified a template-driven
         # social pattern (greeting/thanks/bye). Skip pool entirely.
-        if target_role == "direct" and direct_reply_text:
+        #
+        # Invariant: ``"direct"`` is a pseudo-role — cc_pool has no such
+        # sub-pool, so ``pool.acquire(role="direct")`` raises
+        # NotImplementedError. The short-circuit MUST fire whenever
+        # target_role == "direct"; if direct_reply_text is empty
+        # (upstream bug: triage agent hallucinated the route without a
+        # 回复: field, or a tenant overlay flipped route_to without
+        # providing a template), fall back to a generic social reply
+        # rather than letting the message leak into _role_stream and
+        # trigger the "target_role=direct 池获取失败" warning.
+        if target_role == "direct":
+            if not direct_reply_text:
+                logger.warning(
+                    "direct route with empty direct_reply_text conv=%s "
+                    "(intent=%s) — using generic fallback template",
+                    conv_id, getattr(decision, "intent", "?"),
+                )
+                direct_reply_text = "您好,请问有什么可以帮您?"
             logger.info(
                 "Agent reply via direct: conv=%s intent=%s",
                 conv_id, getattr(decision, "intent", "?"),
@@ -1484,12 +1523,13 @@ async def _generate_agent_reply(
         #      frame; frontend clears isStreaming via chatStore.updateMessage).
         #   2. No placeholder → normal send_message + "message" frame.
         if placeholder_msg is not None:
+            edited_by = f"agent:{target_role}"
             agent_msg = await engine.edit_message(
                 conv_id, placeholder_msg.id,
                 new_content=reply_text.strip(),
-                edited_by=f"agent:{target_role}",
+                edited_by=edited_by,
             )
-            frame = _message_frame(agent_msg, event_type="message_edited")
+            frame = _message_edited_frame(agent_msg, edited_by=edited_by)
         else:
             agent_msg = await engine.send_message(
                 conv_id, source="agent", content=reply_text.strip(),
