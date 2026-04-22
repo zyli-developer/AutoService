@@ -122,6 +122,11 @@ def _tokenize_fts_query(query: str) -> str:
     Returns an empty string when no usable fragment survives; callers
     short-circuit to ``[]`` in that case.
     """
+    # TODO(kb-unification/T11): once Task 9 migrates `onboarding._init_sandbox_kb`
+    # fixtures to KBStore (trigram), this hybrid can collapse to the strict-phrase
+    # form specified in the plan § Task 7 Step 3. Keeping the fanout in place now
+    # because both tokenizer backends (trigram + legacy unicode61) are in use
+    # during the refactor window.
     raw_fragments = _FTS_SPLIT_RE.split(query)
     fragments = [f for f in raw_fragments if len(f) >= 2]
     if not fragments:

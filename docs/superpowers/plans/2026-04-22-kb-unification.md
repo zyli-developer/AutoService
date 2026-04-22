@@ -1380,6 +1380,17 @@ git commit -m "feat(kb): KBStore.ingest_web with domain-bounded crawl"
 
 ## Phase 3 · CJK query fix
 
+> **SHIPPED AS HYBRID (not pure strict-phrase).** During implementation we discovered
+> that the plan's pure strict-phrase tokenizer regresses 3/9 legacy
+> `test_kb_search_tool.py` cases because those fixtures still use
+> `onboarding._init_sandbox_kb` (unicode61), which doesn't phrase-match queries
+> like `"refund policy"` against chunks containing `"Refund policy: 30 days..."`.
+> Rather than migrate the fixture early (that's Task 9), T7 shipped a hybrid
+> tokenizer that emits each fragment as a phrase AND as sliding trigram windows
+> for fragments > 4 chars. This serves both backends during the transition.
+> After Task 9 lands, the hybrid can collapse to the strict-phrase form — see
+> the `TODO(kb-unification/T11)` breadcrumb in `_tokenize_fts_query`.
+
 ### Task 7: Simplify _tokenize_fts_query for trigram + CJK regression test
 
 **Files:**
