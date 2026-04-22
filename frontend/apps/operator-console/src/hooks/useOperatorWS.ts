@@ -253,8 +253,15 @@ export function useOperatorWS(url: string): {
           const msg = p.message as Record<string, unknown> | undefined;
           const messageId = (msg?.id as string) ?? (p.message_id as string);
           const newContent = (msg?.content as string) ?? (p.new_content as string);
+          const ts = (msg?.timestamp as string) ?? new Date().toISOString();
           if (convId && messageId && newContent !== undefined) {
             updateCopilotMessage(convId, messageId, { text: newContent });
+            if (useOperatorStore.getState().conversations[convId]) {
+              updateConversation(convId, {
+                lastMessage: newContent,
+                lastActivityTs: ts,
+              });
+            }
           }
         }
 

@@ -799,6 +799,16 @@ PLACEHOLDER_ELIGIBLE_ROLES: frozenset[str] = frozenset({"customer", "lead"})
 #: as a normal `message` frame.
 PLACEHOLDER_DELAY_S: float = 1.5
 
+#: Minimum interval between intermediate `message_edited` pushes while
+#: draining the CC SDK stream. Keeps the UI updating smoothly (~5 fps)
+#: without flooding the WS or replicating every SDK token.
+STREAM_EDIT_MIN_INTERVAL_S: float = 0.2
+
+#: Minimum character growth since the last intermediate push. A 200ms
+#: tick with only 3 new characters is not worth a frame — at that rate
+#: the progressive render flickers more than it informs.
+STREAM_EDIT_MIN_DELTA_CHARS: int = 40
+
 _PLACEHOLDER_TEXT_ZH = "正在为您查询，请稍候..."
 _PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."
 
@@ -852,6 +862,15 @@ async def _drain_with_placeholder(
     * **Cleanup** — the timer task is always awaited before return, so
       no dangling placeholder sends can race with the reply edit.
 
+    * **Progressive streaming** — once the placeholder is persisted,
+      subsequent SDK chunks trigger throttled ``message_edited`` frames
+      pushed directly over ``ws`` + ``_broadcast_to_squad``. These
+      bypass ``engine.edit_message`` so the Engine event stream still
+      sees a single atomic ``message.edited`` when the caller finally
+      persists the full reply. The FE's ``updateMessage`` is
+      covering-semantic, so each intermediate frame just overwrites
+      ``content`` with the accumulated text — ChatGPT-style fill-in.
+
     Returns ``(reply_text, placeholder_msg)``. ``placeholder_msg`` is
     ``None`` whenever no placeholder was persisted — the caller uses
     this to decide between ``edit_message`` + ``message_edited`` frame
@@ -864,6 +883,44 @@ async def _drain_with_placeholder(
     reply_text = ""
     first_token_seen = asyncio.Event()
     placeholder_msg: Any = None
+
+    # Intermediate-edit throttle state. `_push_streaming_edit` is a
+    # closure over `placeholder_msg` / `reply_text`, so it always reads
+    # the current values at call time.
+    last_push_time: float = 0.0
+    last_push_len: int = 0
+    streaming_edited_by = f"agent:{target_role}"
+
+    async def _push_streaming_edit() -> None:
+        """Push the current `reply_text` as a progress `message_edited` frame.
+
+        Skips the Engine entirely — intermediate frames are UI-only
+        progressive render, and the caller's final ``edit_message``
+        remains the canonical persistence + audit event. Errors are
+        swallowed: a missed intermediate frame is harmless (the final
+        flush backfills content), a raised exception would abort the
+        drain and strand the placeholder.
+        """
+        if placeholder_msg is None:
+            return
+        frame = build_frame(
+            "message_edited",
+            {
+                "conversation_id": conv_id,
+                "message_id": placeholder_msg.id,
+                "new_content": reply_text,
+                "edited_by": streaming_edited_by,
+                "sequence_number": placeholder_msg.sequence_number,
+            },
+        )
+        try:
+            await ws.send_json(frame)
+        except Exception:
+            logger.debug("Streaming edit ws push failed conv=%s", conv_id)
+        try:
+            await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+        except Exception:
+            logger.debug("Streaming edit broadcast failed conv=%s", conv_id)
 
     async def _placeholder_worker() -> None:
         nonlocal placeholder_msg
@@ -916,6 +973,18 @@ async def _drain_with_placeholder(
                         reply_text += block.text
             elif isinstance(item, ResultMessage) and item.result:
                 reply_text = item.result
+
+            # Throttled progress push. Runs only once the placeholder
+            # exists (so there's a message_id to edit) and the chunk is
+            # big enough / interval elapsed — otherwise we'd spam a
+            # frame per SDK token and drown the WS.
+            if placeholder_msg is not None:
+                now = asyncio.get_running_loop().time()
+                if (len(reply_text) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
+                        and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S):
+                    await _push_streaming_edit()
+                    last_push_time = now
+                    last_push_len = len(reply_text)
     finally:
         # Wake the timer so it exits cleanly even if the stream ended
         # without any token (e.g. upstream exception).

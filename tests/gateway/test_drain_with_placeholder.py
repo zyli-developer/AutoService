@@ -323,3 +323,113 @@ async def test_result_message_replaces_accumulated_text(fake_engine, fake_ws):
         target_role="customer", ws=fake_ws, eligible=True, delay_s=1.0,
     )
     assert reply == "canonical final"
+
+
+# ---------------------------------------------------------------------------
+# Progressive streaming — intermediate `message_edited` pushes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_progressive_edits_pushed_during_stream(
+    fake_engine, fake_ws, monkeypatch,
+):
+    """After the placeholder lands, subsequent SDK chunks should emit
+    intermediate `message_edited` frames so the UI fills in progressively
+    instead of waiting for the final `engine.edit_message` flush.
+
+    The frames must reference the placeholder's `message_id` (in-place
+    update, not a new bubble) and carry the accumulated `new_content`.
+    """
+    import autoservice.gateway.message_router as mr
+    # Lower thresholds so the test exercises the push path without
+    # having to emit hundreds of characters or sleep 200ms between
+    # iterations.
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_DELTA_CHARS", 3)
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_INTERVAL_S", 0.0)
+
+    async def _gen():
+        # Placeholder timer = 0.02s; first yield after 0.05s → placeholder
+        # is guaranteed to land before any token, so all three chunks
+        # below flow through the progressive-push branch.
+        await asyncio.sleep(0.05)
+        yield _FakeAssistantMessage([_FakeBlock("ABC")])
+        yield _FakeAssistantMessage([_FakeBlock("DEF")])
+        yield _FakeAssistantMessage([_FakeBlock("GHI")])
+
+    reply, ph = await _drain_with_placeholder(
+        _gen(), engine=fake_engine, conv_id="conv-1",
+        target_role="customer", ws=fake_ws, eligible=True, delay_s=0.02,
+    )
+    assert reply == "ABCDEFGHI"
+    assert ph is not None
+
+    edit_frames = [
+        call.args[0] for call in fake_ws.send_json.call_args_list
+        if call.args[0].get("type") == "message_edited"
+    ]
+    # Three chunks × 3 chars ≥ 3-char threshold → one push per chunk.
+    assert len(edit_frames) == 3
+    # All progress frames edit the same placeholder id.
+    for frame in edit_frames:
+        assert frame["payload"]["message_id"] == ph.id
+        assert frame["payload"]["edited_by"] == "agent:customer"
+    # Content accumulates across pushes.
+    assert edit_frames[0]["payload"]["new_content"] == "ABC"
+    assert edit_frames[1]["payload"]["new_content"] == "ABCDEF"
+    assert edit_frames[2]["payload"]["new_content"] == "ABCDEFGHI"
+
+
+@pytest.mark.asyncio
+async def test_no_streaming_edits_without_placeholder(
+    fake_engine, fake_ws, monkeypatch,
+):
+    """Fast-path (first token within delay_s) skips the placeholder —
+    without a message_id there is nothing to edit, so no intermediate
+    frames should fire even if the stream keeps producing."""
+    import autoservice.gateway.message_router as mr
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_DELTA_CHARS", 1)
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_INTERVAL_S", 0.0)
+
+    async def _gen():
+        yield _FakeAssistantMessage([_FakeBlock("fast")])
+        yield _FakeAssistantMessage([_FakeBlock(" chunk")])
+
+    reply, ph = await _drain_with_placeholder(
+        _gen(), engine=fake_engine, conv_id="conv-1",
+        target_role="customer", ws=fake_ws, eligible=True, delay_s=1.0,
+    )
+    assert reply == "fast chunk"
+    assert ph is None
+    fake_ws.send_json.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_throttle_suppresses_sub_threshold_deltas(
+    fake_engine, fake_ws, monkeypatch,
+):
+    """Tiny deltas below `STREAM_EDIT_MIN_DELTA_CHARS` must not trigger
+    a push — otherwise every SDK token would crash across the WS."""
+    import autoservice.gateway.message_router as mr
+    # Keep the default 40-char threshold; zero the interval so the test
+    # is exercising the char-threshold gate in isolation.
+    monkeypatch.setattr(mr, "STREAM_EDIT_MIN_INTERVAL_S", 0.0)
+
+    async def _gen():
+        await asyncio.sleep(0.05)
+        # Five 5-char chunks = 25 chars total, all below the 40-char
+        # gate. None should produce an intermediate frame.
+        for _ in range(5):
+            yield _FakeAssistantMessage([_FakeBlock("abcde")])
+
+    reply, ph = await _drain_with_placeholder(
+        _gen(), engine=fake_engine, conv_id="conv-1",
+        target_role="customer", ws=fake_ws, eligible=True, delay_s=0.02,
+    )
+    assert reply == "abcde" * 5
+    assert ph is not None
+
+    edit_frames = [
+        call.args[0] for call in fake_ws.send_json.call_args_list
+        if call.args[0].get("type") == "message_edited"
+    ]
+    assert edit_frames == []  # only the placeholder `message` frame fired
