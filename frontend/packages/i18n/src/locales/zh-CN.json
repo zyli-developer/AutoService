@@ -192,7 +192,6 @@
 
   "admin.login.title": "AutoService 管理后台",
   "admin.login.subtitle": "请输入租户 ID 登录",
-  "admin.login.tenant_id": "Tenant ID",
   "admin.nav.management_chat": "管理群",
   "admin.nav.dashboard": "仪表盘",
   "admin.nav.wizard": "向导",

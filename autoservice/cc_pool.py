@@ -257,6 +257,7 @@ async def create_cc_client(
     system_prompt: str | None = None,
     role: str | None = None,
     tenant_id: str | None = None,
+    enable_kb_tool: bool = False,
 ) -> CCClient:
     """Factory: creates and connects a CCClient from pool config.
 
@@ -274,6 +275,9 @@ async def create_cc_client(
                    a per-tenant soul from
                    ``.autoservice/sandbox/<tenant_id>/souls/<role>_soul.md``;
                    falls back to the default role soul when absent.
+        enable_kb_tool: When True AND tenant_id is non-None, injects the
+            ``autoservice_kb`` MCP server that exposes ``kb_search`` scoped
+            to the given tenant. No-op when False or tenant_id is None.
     """
     cwd = config.cwd or str(Path.cwd())
     cwd_path = Path(cwd).absolute()
@@ -293,6 +297,12 @@ async def create_cc_client(
                 "No soul found for role=%s tenant_id=%s — starting without system prompt",
                 role, tenant_id,
             )
+
+    if enable_kb_tool and tenant_id:
+        # Lazy import: avoids pulling SQLite/kb deps when tool isn't needed.
+        from autoservice.kb_mcp_server import build_kb_mcp_server
+        kb_server = build_kb_mcp_server(tenant_id)
+        mcp_servers = {**(mcp_servers or {}), "autoservice_kb": kb_server}
 
     options = ClaudeAgentOptions(
         cwd=cwd,
@@ -320,6 +330,15 @@ async def create_cc_client(
 # ---------------------------------------------------------------------------
 # CCPool — thin subclass with query() convenience
 # ---------------------------------------------------------------------------
+
+class StickyTenantMismatch(RuntimeError):
+    """Raised when acquire_sticky is called with a tenant_id that differs
+    from the one already sticky-bound to the same chat_id.
+
+    Signals a logic bug upstream (conversation's tenant ownership mutated
+    mid-flight). Callers should log + degrade, not retry.
+    """
+
 
 #: Set of roles :meth:`CCPool.acquire` accepts. "customer" is the default
 #: M1 path (preserved for back-compat); "dream" routes through the
@@ -364,8 +383,14 @@ class CCPool(AsyncPool[CCClient]):
         cfg = config or PoolConfig()
         super().__init__(
             config=cfg,
-            factory=lambda: create_cc_client(cfg, mcp_servers=mcp_servers,
-                                              system_prompt=system_prompt),
+            factory=lambda: create_cc_client(
+                cfg,
+                mcp_servers=mcp_servers,
+                system_prompt=system_prompt,
+                role="customer",
+                tenant_id=None,
+                enable_kb_tool=False,
+            ),
             instance_prefix="cc",
             logger=log,
             on_sticky_release=on_sticky_release,
@@ -381,6 +406,79 @@ class CCPool(AsyncPool[CCClient]):
         self._reaper_task: asyncio.Task | None = None
         self._closed = False
 
+    async def acquire_sticky(
+        self, key: str, *, tenant_id: str | None = None,
+        timeout: float | None = None,
+    ) -> PooledInstance[CCClient]:
+        """Acquire a sticky-bound instance for (chat_id, tenant_id).
+
+        Extends :meth:`AsyncPool.acquire_sticky` with tenant-aware soul
+        injection:
+
+          * Already bound + tenant matches → return as-is (parent handles
+            access-counter/last-access bookkeeping).
+          * Already bound + tenant differs → :class:`StickyTenantMismatch`.
+          * Not bound → delegate to ``super()`` for the bind, then recycle
+            the instance so it carries the tenant's customer soul + KB
+            tool. If recycle swaps the instance, update the sticky binding
+            to point at the new one so subsequent acquires return it.
+          * ``tenant_id=None`` → delegate to ``super()`` unchanged (no
+            recycle, preserves pre-existing M1 semantics).
+
+        Recycle failures are caught and logged; the uncycled warm instance
+        is still returned so the caller can degrade rather than crash. The
+        instance is stamped with ``_pool_tenant_id = tenant_id`` in that
+        case so subsequent same-tenant acquires match instead of raising
+        :class:`StickyTenantMismatch`; the instance still works without
+        the tenant soul.
+
+        Concurrency: assumes a single in-flight acquire per key. Recycle
+        runs outside ``_sticky_lock`` while the binding still points at
+        the instance being destroyed; a concurrent acquire for the same
+        key could observe a dead binding and double-bind. Safe for the
+        typical one-conv-one-caller pattern; revisit if the gateway fans
+        out parallel acquires.
+        """
+        existing = self._sticky_bindings.get(key)  # noqa: SLF001
+        if existing is not None and existing.instance.is_healthy:
+            bound = getattr(existing.instance, "_pool_tenant_id", None)
+            if bound == tenant_id:
+                return await super().acquire_sticky(key, timeout=timeout)
+            raise StickyTenantMismatch(
+                f"conv {key!r} already sticky-bound to tenant={bound!r}, "
+                f"refusing rebind to tenant={tenant_id!r}"
+            )
+
+        # Fresh bind — let parent do its locking + checkout + binding.
+        instance = await super().acquire_sticky(key, timeout=timeout)
+
+        if tenant_id is None:
+            return instance
+
+        try:
+            instance = await _recycle_instance_for_tenant(
+                self, instance,
+                role="customer", tenant_id=tenant_id,
+            )
+            # If recycle swapped the instance, update the sticky binding
+            # so future acquires see the new one.
+            async with self._sticky_lock:  # noqa: SLF001
+                binding = self._sticky_bindings.get(key)  # noqa: SLF001
+                if binding is not None and binding.instance is not instance:
+                    binding.instance = instance
+        except Exception:
+            log.exception(
+                "acquire_sticky: recycle failed for key=%s tenant=%s; "
+                "returning uncycled instance (degraded)",
+                key, tenant_id,
+            )
+            # Bind to the target tenant anyway so subsequent acquires see
+            # a match instead of raising StickyTenantMismatch; the
+            # instance still works without the tenant soul.
+            instance._pool_tenant_id = tenant_id  # type: ignore[attr-defined]
+
+        return instance
+
     async def query(self, prompt: str, **kwargs: Any) -> AsyncIterator[Message]:
         """Convenience: checkout, query, yield messages, checkin."""
         async with self.acquire() as instance:
@@ -391,15 +489,22 @@ class CCPool(AsyncPool[CCClient]):
                 yield msg
 
     async def session_query(
-        self, chat_id: str, prompt: str, **kwargs: Any,
+        self, chat_id: str, prompt: str,
+        *, tenant_id: str | None = None,
+        **kwargs: Any,
     ) -> AsyncIterator[Message]:
         """Stateful multi-turn query: chat_id is sticky-bound to a CC instance.
 
         The same chat_id always gets the same Claude Code subprocess,
         preserving conversation context across multiple calls.
         Use end_session() to release the binding when the conversation ends.
+
+        When tenant_id is provided, the sticky instance is bound to that
+        tenant's soul + KB tool on first acquire. Subsequent calls for the
+        same chat_id MUST pass the same tenant_id or StickyTenantMismatch
+        is raised.
         """
-        instance = await self.acquire_sticky(chat_id)
+        instance = await self.acquire_sticky(chat_id, tenant_id=tenant_id)
         instance.query_count += 1
         session_id = kwargs.pop("session_id", chat_id)
         await instance.client.query(prompt, session_id=session_id)
@@ -821,6 +926,11 @@ _dream_pool: AsyncPool[CCClient] | None = None
 _dream_pool_lock = asyncio.Lock()
 
 
+# Sentinel for "attribute never set". ``None`` is a legitimate tenant_id
+# value (meaning "use fallback"), so we need a distinct marker.
+_UNSET: Any = object()
+
+
 async def _get_dream_pool() -> AsyncPool[CCClient]:
     """Lazily build the module-level dream pool.
 
@@ -878,35 +988,16 @@ async def _acquire_dream(
 
     instance = await pool.checkout(timeout=timeout)
     try:
-        # Dream pool uses its own tag name for backward-compat; translate
-        # to the generic ``_pool_tenant_id`` sentinel the helper expects.
-        # An instance warmed by the pool factory has neither tag set, so
-        # the helper's ``_UNSET`` path still fires — rebuilding with the
-        # target tenant's soul. The recycle only happens when the tenant
-        # actually changed (or on first real use of a warm instance), so
-        # repeat acquires for the same tenant are zero-cost hot-path
-        # lookups.
-        existing_tid = getattr(instance, "_dream_tenant_id", _UNSET)
-        if existing_tid is not _UNSET:
-            instance._pool_tenant_id = existing_tid  # type: ignore[attr-defined]
-
         instance = await _recycle_instance_for_tenant(
             pool, instance,
             role="dream",
             tenant_id=tenant_id,
-            config=pool._config,  # noqa: SLF001
         )
         # Tag the instance so release / leak-detection can identify it.
         instance._pool_role = "dream"  # type: ignore[attr-defined]
-        instance._dream_tenant_id = tenant_id  # type: ignore[attr-defined]
         yield instance
     finally:
         await pool.checkin(instance)
-
-
-# Sentinel for "attribute never set". ``None`` is a legitimate tenant_id
-# value (meaning "use fallback"), so we need a distinct marker.
-_UNSET: Any = object()
 
 
 async def _make_tenant_instance(
@@ -936,9 +1027,11 @@ async def _make_tenant_instance(
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.
-        # TODO(task-2): enable_kb_tool=(role == "customer" and tenant_id is not None)
         client = await create_cc_client(
-            cfg, role=role, tenant_id=tenant_id,
+            cfg,
+            role=role,
+            tenant_id=tenant_id,
+            enable_kb_tool=(role == "customer" and tenant_id is not None),
         )
     pool._instance_counter += 1  # noqa: SLF001
     instance_id = (
@@ -959,7 +1052,6 @@ async def _recycle_instance_for_tenant(
     *,
     role: str,
     tenant_id: str | None,
-    config: PoolConfig,  # accepted for API symmetry; currently unused
 ) -> PooledInstance[CCClient]:
     """Ensure *instance* has the right soul for (role, tenant_id); rebuild if not.
 

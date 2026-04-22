@@ -57,7 +57,7 @@ const defaultSession = {
 };
 
 beforeEach(() => {
-  useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: 'acme' });
+  useAdminStore.setState({ ...initialState, tenantId: 'acme' });
   useSessionModeMock.mockReset();
   useSessionModeMock.mockReturnValue({
     data: defaultSession,

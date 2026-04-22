@@ -192,7 +192,6 @@
 
   "admin.login.title": "AutoService Admin",
   "admin.login.subtitle": "Enter your tenant ID to sign in",
-  "admin.login.tenant_id": "Tenant ID",
   "admin.nav.management_chat": "Management",
   "admin.nav.dashboard": "Dashboard",
   "admin.nav.wizard": "Wizard",

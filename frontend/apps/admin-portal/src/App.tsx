@@ -16,7 +16,9 @@
  *
  * See: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §3.6, §4.5
  */
+import { useEffect } from 'react';
 import { useSessionMode } from '@autoservice/shared';
+import { useAdminStore } from './store/adminStore';
 import { AuthGate } from './components/auth/AuthGate';
 import { LoginPage } from './components/auth/LoginPage';
 import { MasterLayout } from './layouts/MasterLayout';
@@ -46,6 +48,17 @@ function ModeDispatch() {
 export function App() {
   const pathname =
     typeof window !== 'undefined' ? window.location.pathname : '';
+  const pathTenantId = tenantIdFromAdminPath(pathname);
+
+  const { data } = useSessionMode();
+  const setTenantId = useAdminStore((s) => s.setTenantId);
+
+  useEffect(() => {
+    // URL path-tenant wins over session (matches useTenantId semantics at
+    // frontend/packages/shared/useTenantId.ts:50-51). When neither is
+    // present (anon or master session), clear any stale persisted value.
+    setTenantId(pathTenantId ?? data?.tenant_id ?? null);
+  }, [pathTenantId, data?.tenant_id, setTenantId]);
 
   // `/login` public — no gate.
   if (pathname === '/login' || pathname.startsWith('/login/')) {
@@ -55,7 +68,6 @@ export function App() {
   // `/tenant/<tid>/admin` path-tenant short-circuit (preserved from M1). Must
   // still pass through AuthGate so anon visitors don't see the tenant
   // shell before the redirect.
-  const pathTenantId = tenantIdFromAdminPath(pathname);
   if (pathTenantId) {
     return (
       <AuthGate>

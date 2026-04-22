@@ -1,20 +1,19 @@
 /**
  * T1F.7 · MasterLayout route dispatch tests
  *
- * Covers the pathname-aware dispatch introduced in T1F.7:
+ * Covers the pathname-aware dispatch:
  *  - /master/tenants/new  → WizardTab (new-tenant wizard)
  *  - /admin/wizard        → WizardTab (backward-compat alias)
- *  - any other path        → AdminWorkspace (tab shell)
- *  - unauthenticated       → LoginPage
+ *  - any other path       → AdminWorkspace (tab shell)
+ *
+ * Auth is handled upstream by <AuthGate> in App.tsx — MasterLayout itself
+ * no longer gates rendering. These tests verify route dispatch unconditionally.
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useAdminStore, initialState } from '../store/adminStore';
 
-vi.mock('../components/LoginPage', () => ({
-  LoginPage: () => <div data-testid="login-page">login</div>,
-}));
 vi.mock('../components/AdminWorkspace', () => ({
   AdminWorkspace: () => <div data-testid="admin-workspace-stub">workspace</div>,
 }));
@@ -33,22 +32,19 @@ vi.mock('../components/shell/AdminShell', () => ({
 import { MasterLayout } from '../layouts/MasterLayout';
 
 function setPathname(path: string) {
-  // jsdom allows location mutation via assignment on pathname through history.
   window.history.replaceState({}, '', path);
 }
 
 describe('MasterLayout (T1F.7 route dispatch)', () => {
   beforeEach(() => {
-    useAdminStore.setState({ ...initialState, isLoggedIn: true });
+    useAdminStore.setState(initialState);
     setPathname('/');
   });
 
-  it('renders LoginPage when not authenticated regardless of path', () => {
-    useAdminStore.setState({ ...initialState, isLoggedIn: false });
-    setPathname('/master/tenants/new');
+  it('renders MasterRoutes unconditionally — AuthGate handles auth upstream', () => {
+    setPathname('/');
     render(<MasterLayout />);
-    expect(screen.getByTestId('login-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('master-wizard-route')).not.toBeInTheDocument();
+    expect(screen.getByTestId('admin-workspace-stub')).toBeInTheDocument();
   });
 
   it('renders AdminWorkspace on the default path', () => {

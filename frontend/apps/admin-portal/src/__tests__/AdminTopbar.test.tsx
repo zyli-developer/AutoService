@@ -5,7 +5,7 @@ import { useAdminStore, initialState } from '../store/adminStore';
 import { AdminTopbar } from '../components/shell/AdminTopbar';
 
 beforeEach(() => {
-  useAdminStore.setState({ ...initialState, isLoggedIn: true, tenantId: 'acme-corp' });
+  useAdminStore.setState({ ...initialState, tenantId: 'acme-corp' });
 });
 
 describe('AdminTopbar', () => {

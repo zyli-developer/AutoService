@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { useAdminStore, initialState } from '../store/adminStore';
 
 const useSessionModeMock = vi.fn();
 vi.mock('@autoservice/shared', () => ({
@@ -163,5 +164,67 @@ describe('App dispatch (T6F.2 AuthGate + mode)', () => {
     expect(screen.getByTestId('login-page-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('auth-splash')).not.toBeInTheDocument();
     expect(screen.queryByTestId('master-layout')).not.toBeInTheDocument();
+  });
+});
+
+describe('App adminStore.tenantId sync (legacy-gate removal)', () => {
+  beforeEach(() => {
+    useAdminStore.setState(initialState);
+  });
+
+  it('syncs session.tenant_id into adminStore on mount (tenant mode)', () => {
+    useSessionModeMock.mockReturnValue({
+      data: {
+        mode: 'tenant',
+        tenant_id: 'acme',
+        authenticated: true,
+        authenticated_as: 'admin@acme.com',
+        tier: 1,
+        brand_name: 'Acme',
+      },
+      loading: false,
+      error: null,
+      refetch: () => {},
+    });
+    render(<App />);
+    expect(useAdminStore.getState().tenantId).toBe('acme');
+  });
+
+  it('syncs null when master session has no tenant_id', () => {
+    useAdminStore.setState({ ...initialState, tenantId: 'stale' });
+    useSessionModeMock.mockReturnValue({
+      data: {
+        mode: 'master',
+        tenant_id: null,
+        authenticated: true,
+        authenticated_as: 'admin@ops.com',
+        tier: 0,
+        brand_name: 'AutoService',
+      },
+      loading: false,
+      error: null,
+      refetch: () => {},
+    });
+    render(<App />);
+    expect(useAdminStore.getState().tenantId).toBeNull();
+  });
+
+  it('URL /tenant/<tid>/admin wins over session.tenant_id', () => {
+    useSessionModeMock.mockReturnValue({
+      data: {
+        mode: 'master',
+        tenant_id: null,
+        authenticated: true,
+        authenticated_as: 'admin@ops.com',
+        tier: 0,
+        brand_name: 'AutoService',
+      },
+      loading: false,
+      error: null,
+      refetch: () => {},
+    });
+    setPath('/tenant/path_tenant/admin');
+    render(<App />);
+    expect(useAdminStore.getState().tenantId).toBe('path_tenant');
   });
 });
