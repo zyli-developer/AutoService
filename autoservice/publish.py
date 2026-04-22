@@ -484,8 +484,14 @@ class GitHubApiForkCreator:
         )
 
         # Steps 5-7: git add + commit + push.
+        # ``-f`` is required: upstream .gitignore excludes ``.autoservice/``
+        # (runtime data), so a plain ``git add`` of the tenant's
+        # config.local.yaml silently refuses with "paths are ignored".  The
+        # fork's ``config.local.yaml`` is the identity card that flips the
+        # runtime into tenant-mode — it MUST be tracked.  ``-f`` on
+        # ``plugins/`` is harmless (not gitignored).
         self._run_git(
-            ["git", "add", "plugins/", ".autoservice/config.local.yaml"],
+            ["git", "add", "-f", "plugins/", ".autoservice/config.local.yaml"],
             cwd=clone_dir,
             phase="git-add",
             fork_name=fork_name,

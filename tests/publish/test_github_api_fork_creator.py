@@ -587,6 +587,48 @@ def test_create_extracts_with_data_filter_safely(tmp_path, monkeypatch) -> None:
     )
 
 
+def test_create_force_adds_gitignored_config(tmp_path, monkeypatch) -> None:
+    """git add MUST use -f so ``.autoservice/config.local.yaml`` is tracked.
+
+    The upstream repo's ``.gitignore`` excludes ``.autoservice/`` (runtime
+    data).  Forks inherit this, but the fork's ``config.local.yaml`` is
+    the identity card that flips the runtime into tenant-mode — it MUST
+    be tracked.  Without ``-f``, ``git add`` silently refuses and the
+    publish fails at phase=git-add.
+
+    Regression guard for the live smoke-test failure on 2026-04-22:
+    ``The following paths are ignored by one of your .gitignore files:
+    .autoservice``.
+    """
+    monkeypatch.setattr(pub_mod, "PUBLISHED_ROOT", tmp_path / "published")
+    artifact = _make_fake_artifact(tmp_path, "acme")
+
+    creator = GitHubApiForkCreator()
+    call_log: list = []
+    with patch(
+        "subprocess.run",
+        side_effect=_make_subprocess_dispatcher(call_log),
+    ):
+        creator.create("acme", artifact)
+
+    # Find git-add invocations; at least one must include -f AND target the
+    # config file.
+    git_adds = [a for (k, a, _k) in call_log if k == "git-add"]
+    assert git_adds, "expected at least one git add call"
+
+    def _forces_config(argv: list) -> bool:
+        if "-f" not in argv:
+            return False
+        # Every arg after `-f` is a path; one of them must be the config.
+        after_f = argv[argv.index("-f") + 1:]
+        return any(".autoservice/config.local.yaml" in p for p in after_f)
+
+    assert any(_forces_config(a) for a in git_adds), (
+        f"git add must use `-f .autoservice/config.local.yaml` (gitignored "
+        f"in forks); got: {git_adds}"
+    )
+
+
 def test_clone_failure_cleans_up_temp_parent(tmp_path, monkeypatch) -> None:
     """On clone failure, the empty temp parent dir must be cleaned up.
 

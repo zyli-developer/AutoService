@@ -738,6 +738,19 @@ class TestPublishEndpoint:
         monkeypatch.setattr(pub_mod, "ARCHIVED_ROOT", layout["archived"])
         monkeypatch.setattr(pub_mod, "PUBLISHED_ROOT", layout["published"])
 
+        # Point the route's fork_creator selector at a non-existent tmp
+        # config file so these tests NEVER pick up the developer's real
+        # `fork_creator: github_api` — otherwise running pytest locally
+        # would cut real `gh repo fork` calls (smoke-test finding
+        # 2026-04-22: this leaked `AutoService-tenant_http` onto the
+        # developer's GitHub account).
+        from autoservice import api_routes
+        monkeypatch.setattr(
+            api_routes,
+            "_PUBLISH_CONFIG_PATH",
+            layout["tmp"] / "test-no-config.yaml",
+        )
+
         from fastapi import FastAPI
         from starlette.testclient import TestClient
         from autoservice.api_routes import api_router
@@ -788,6 +801,38 @@ class TestPublishEndpoint:
         assert body["status"] == "blocked"
         assert any(
             "pending review" in r for r in body["gate"]["blocking_reasons"]
+        )
+
+    def test_endpoint_tests_do_not_read_developers_config_local_yaml(
+        self, isolated_layout, monkeypatch
+    ):
+        """Regression — `_client()` MUST isolate the fork_creator selector.
+
+        Without the monkeypatch in ``_client``, any developer with
+        ``fork_creator: github_api`` in their real ``.autoservice/config.local.yaml``
+        would have pytest trigger real ``gh repo fork`` / ``git push`` calls.
+        This test asserts the isolation is wired: the path the route reads
+        must NOT be the repo-root config.
+        """
+        from pathlib import Path
+
+        from autoservice import api_routes
+
+        client = self._client(monkeypatch, isolated_layout)  # noqa: F841
+        # After _client() ran its monkeypatches, the module-level path must
+        # live under the isolated tmp dir — not the repo root.
+        actual = api_routes._PUBLISH_CONFIG_PATH
+        repo_root_config = (
+            Path(__file__).resolve().parent.parent.parent
+            / ".autoservice" / "config.local.yaml"
+        )
+        assert actual != repo_root_config, (
+            f"_client() must monkeypatch _PUBLISH_CONFIG_PATH away from the "
+            f"repo-root config; got {actual}"
+        )
+        assert not actual.exists(), (
+            f"isolated config path must not exist so the selector returns "
+            f"None; got a present {actual}"
         )
 
     def test_publish_override_requires_signer(self, isolated_layout, monkeypatch):
