@@ -121,7 +121,10 @@ by skill-4 and recorded in `.artifacts/e2e-reports/e2e-report-voice-call-fab.md`
    in voice_gateway's E2E session; acceptable MVP behavior is the
    "disconnected, tap to reconnect" prompt.
 4. **Cloudflare Tunnel `/ws` path routing** — eval-doc-022 §8 preflight
-   check remains unverified (no access to `~h2oslabs/.cloudflared/config.yml`).
+   check remains unverified. `~h2oslabs/.cloudflared/config.yml` is ops-owned
+   (not in cc-openclaw code tree), still unreadable here. Local workaround:
+   verify UI-layer via `http://localhost:13036` (localhost is a secure-context
+   exception, bypasses the tunnel for dev).
 
 ## Validation checklist
 

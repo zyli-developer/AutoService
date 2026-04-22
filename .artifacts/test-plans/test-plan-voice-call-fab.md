@@ -17,7 +17,7 @@ decisions_frozen:
   D4: "UX 为两次点击（父页 FAB + iframe 内 Start Call）；iOS Safari 依赖 iframe 内用户手势解锁 AudioContext"
   D5: "14 个 TC 按 unit / integration / manual-device-test 分层；依赖真实 gateway 的 E2E 默认 skip（RUN_VOICE_E2E=1 开启）"
   D6: "Permissions-Policy 响应头落在部署层（nginx/CF Pages），不纳入 CI"
-  D7: "cc-openclaw 侧改造（voice-web page.tsx 读 query、session.py 读 call_id、Makefile 补 channel-server）为外部 PR，不在本仓 test 范围"
+  D7: "cc-openclaw 侧改造（voice-web page.tsx 读 query、session.py 读 call_id、Makefile 补 channel-server）为本地改动（2026-04-22 已复制到 ~/cc-openclaw，可读写但无 git），不在 AutoService 仓 test 范围"
 ---
 
 # Test Plan: customer-chat voice call FAB
@@ -214,8 +214,8 @@ docs/manual-tests/                           （新建）
 - **CI**: skip 默认
 - **前置**: 测试前 `kill` 掉 channel_server
 - **步骤**: 走完授权 → 说一句话 → 等 60s+
-- **预期**: gateway 记录 `ActorBridge.query timeout`；前端 Modal 出现"助手暂时无法回复"类降级文案（**此文案需在 cc-openclaw 侧 PR 补实现**，见 eval-doc §7 Q7）
-- **已知 gap**: 当前 `session.py` 无 fallback 文案路径，TC 会失败 —— 作为 cc-openclaw 侧 PR 的验收门槛
+- **预期**: gateway 记录 `ActorBridge.query timeout`；前端 Modal 出现"助手暂时无法回复"类降级文案（**此文案需在 cc-openclaw 侧本地补实现**，见 eval-doc §7 Q7）
+- **已知 gap**: 当前 `session.py` 无 fallback 文案路径，TC 会失败 —— 作为 cc-openclaw 本地改动的验收门槛
 
 ### 分组 D · Manual / Device-test（不进 CI，负责人手工跑，TC-022-012、013、014）
 
@@ -297,7 +297,7 @@ docs/manual-tests/                           （新建）
 8. **Manual markdown**：列出设备、步骤、截图位、pass/fail 记录字段，给 QA 照着跑
 9. **CI 配置**：现有 `package.json` 的 `test` 脚本跑 Vitest，新加测试自动被拾取；无需改配置
 10. **E2E 独立 script**：`package.json` 新加 `test:e2e: "RUN_VOICE_E2E=${RUN_VOICE_E2E:-0} playwright test"` 或等效命令；只有设置 `RUN_VOICE_E2E=1` 才跑
-11. **不改 cc-openclaw 代码**：本 test-plan 只测 AutoService 侧；cc-openclaw 侧的 page.tsx/voice-client/session.py/Makefile 改动走 cc-openclaw 仓库自己的 PR 与测试
+11. **不在本 test-plan 内测 cc-openclaw**：本 test-plan 只测 AutoService 侧；cc-openclaw 侧的 page.tsx/voice-client/session.py/Makefile 改动是本地改动（2026-04-22 后在 `~/cc-openclaw` 直接编辑，无 git），验证靠手工冒烟 + §5.C 的 E2E 组（`RUN_VOICE_E2E=1`）
 
 ---
 

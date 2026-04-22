@@ -42,10 +42,10 @@ C 端访客（EndUser）在 customer-chat SPA 浮窗的 📞 按钮上点一下�
 | 电话 FAB icon（装饰占位） | ✅ 已渲染 | `frontend/apps/customer-chat/src/components/ChatFAB.tsx:12` |
 | 浮动按钮 + iframe 模式的工程先例 | ✅ T1B.5 `@autoservice/embed-sdk` 已用 iframe 嵌 SPA | `frontend/packages/embed-sdk/src/iframe.ts` |
 | i18n | ✅ `@autoservice/i18n` 可用于"正在接通/挂断"文案 | `frontend/packages/i18n/` |
-| voice-web（Next.js + AudioWorklet + WS client） | ✅ 完整 | `/Users/h2oslabs/cc-openclaw/voice-web/` |
-| voice_gateway（aiohttp, 豆包 E2E + 火山 Realtime） | ✅ 完整 | `/Users/h2oslabs/cc-openclaw/voice_gateway/` |
-| channel_server（CC actor bridge :8765） | ✅ 完整 | `/Users/h2oslabs/cc-openclaw/channel_server/` |
-| Cloudflare Tunnel → voice.ezagent.chat | ✅ 进程在跑 | 配置在 `~h2oslabs/.cloudflared/config.yml`（不可读） |
+| voice-web（Next.js + AudioWorklet + WS client） | ✅ 完整 | `~/cc-openclaw/voice-web/`（2026-04-22 已复制到 `li.zhenyu` 家目录，可读写；无 git 版本管）|
+| voice_gateway（aiohttp, 豆包 E2E + 火山 Realtime） | ✅ 完整 | `~/cc-openclaw/voice_gateway/` |
+| channel_server（CC actor bridge :8765） | ✅ 完整 | `~/cc-openclaw/channel_server/`（**当前未在跑**） |
+| Cloudflare Tunnel → voice.ezagent.chat | ⚠️ 进程在跑，ingress 分流未核实 | 配置在 `~h2oslabs/.cloudflared/config.yml`（本地仍不可读；要 CF dashboard 确认） |
 
 ### 2.2 缺失（本任务要补）
 
@@ -58,8 +58,8 @@ C 端访客（EndUser）在 customer-chat SPA 浮窗的 📞 按钮上点一下�
 | postMessage 协议（voice-web → AutoService 的 `as:voice:close/error`） | voice-web `page.tsx` 发、AutoService 监听 |
 | voice-web 支持从 URL query 初始化 VoiceClient 配置 | cc-openclaw: `voice-web/src/app/page.tsx` 读 `URLSearchParams` |
 | AutoService 响应头 `Permissions-Policy: microphone=(self "https://voice.ezagent.chat")` | 待定：customer-chat 的 nginx/CDN 配置（dev 不需要）|
-| cc-openclaw Makefile 纳入 channel_server 启动 | cc-openclaw 侧 `Makefile` |
-| Cloudflare Tunnel ingress 路径分流验证（`/ws` → :8089） | ~h2oslabs/.cloudflared/config.yml（Cloudflare 控制台也可查）|
+| cc-openclaw Makefile 纳入 channel_server 启动 | `~/cc-openclaw/Makefile`（可直接改）|
+| Cloudflare Tunnel ingress 路径分流验证（`/ws` → :8089） | ~h2oslabs/.cloudflared/config.yml（本机不可读；需 Cloudflare 控制台确认 ingress 规则）|
 
 ---
 
@@ -111,7 +111,7 @@ https://voice.ezagent.chat/?
   &comfortText=<url-encoded>   # 可选，覆盖 "稍等我帮你查一下"
 ```
 
-voice-web 改造（cc-openclaw 侧 PR）：`page.tsx` 在挂载时读 `URLSearchParams`，把 `tenant_id/customer_id/call_id` 透传给 `VoiceClient.start({...})` 的首帧 `{type:"start",...}`，gateway 侧 `Session` 把 `call_id` 注入日志 + ActorBridge 的 query metadata。
+voice-web 改造（**cc-openclaw 侧本地改动**，当前无 upstream git，改动只在 `~/cc-openclaw` 生效）：`page.tsx` 在挂载时读 `URLSearchParams`，把 `tenant_id/customer_id/call_id` 透传给 `VoiceClient.start({...})` 的首帧 `{type:"start",...}`，gateway 侧 `Session` 把 `call_id` 注入日志 + ActorBridge 的 query metadata。
 
 ### 3.3 postMessage 协议（voice-web → customer-chat）
 
@@ -142,7 +142,7 @@ frontend/apps/customer-chat/src/
   index.css                     [edit] .web-voice-modal 样式
 ```
 
-cc-openclaw 侧 PR：
+cc-openclaw 侧本地改动（在 `~/cc-openclaw` 直接编辑；当前无 git 管理，不走 PR）：
 ```
 voice-web/src/app/page.tsx     [edit] 读 URLSearchParams；embed=1 时隐藏 dev 输入框
 voice-web/src/lib/voice-client.ts  [edit] 把 tenant_id/customer_id/call_id 透传首帧
@@ -213,9 +213,9 @@ Makefile                       [edit] 补 channel_server target；或文档说�
 
 | 风险 | 等级 | 缓解 |
 |---|---|---|
-| Cloudflare Tunnel ingress 未分流 `/ws` → :8089 | 高 | 先在 CF 控制台确认 ingress rules；若不对，添加规则 `voice.ezagent.chat/ws → http://localhost:8089` 排在 `/*` 之前；或通过 `!` 前缀调用 `sudo cat ~h2oslabs/.cloudflared/config.yml` 验证 |
+| Cloudflare Tunnel ingress 未分流 `/ws` → :8089 | 高 | 方案一：CF Dashboard 查/改 ingress 规则（要访问权限）。方案二：本机直连 `http://localhost:13036`（localhost 算 secure context）绕开 tunnel 验证 UI 层链路 |
 | iOS Safari AudioContext 解锁 | 高 | voice-web `page.tsx` embed 模式加"Tap to start"一次性过渡按钮（在 iframe 内），把 getUserMedia + AudioContext resume 都放到这个 click handler |
-| channel_server 未开机自启 | 中 | 补 `deploy/ai.openclaw.channel-server.plist` 验证 load 状态；Makefile 增加 `channel-server` target；cc-openclaw 侧 PR |
+| channel_server 未开机自启 | 中 | 补 `deploy/ai.openclaw.channel-server.plist`；在 `~/cc-openclaw/Makefile` 加 `channel-server` target 并让 `start` 依赖它（可直接本地改） |
 | customer-chat 无 HTTPS 域 → 无法 iframe voice-web | 中 | 与部署团队对齐：customer-chat 域名方案（子域 `chat.ezagent.chat` 或 `voice.ezagent.chat/chat/*` 反代）|
 | 跨 origin postMessage 被中间扩展劫持 | 低 | 上线前 `targetOrigin` 由 `*` 收紧到 `https://voice.ezagent.chat` + 消息类型白名单 |
 | 豆包 API 配额/计费 | 低 | 生产切 AutoService 租户凭据；监控用量；设每日预算上限 |
@@ -226,11 +226,11 @@ Makefile                       [edit] 补 channel_server target；或文档说�
 ## 7. 未决问题
 
 1. **customer-chat 的域名策略**：独立子域（`chat.<env>.ezagent.chat`）还是挂在 `voice.ezagent.chat/chat/*` 下？前者更清晰；后者省一条 CF 规则但 SPA 构建时 basename 要处理。**Owner: @zyli-developer**，需要和部署团队对齐。
-2. **Cloudflare Tunnel 路径分流现状**：`voice.ezagent.chat/ws` 是否已路由到 `localhost:8089`？当前 `li.zhenyu` 账号无法读 `~h2oslabs/.cloudflared/config.yml`。需要有 CF 控制台访问的人查 Zero Trust → Networks → Tunnels。
+2. **Cloudflare Tunnel 路径分流现状**：`voice.ezagent.chat/ws` 是否已路由到 `localhost:8089`？`~h2oslabs/.cloudflared/config.yml` 仍不可读（tunnel 配置在机器级 ops 领域，不跟 cc-openclaw 代码走）。需要有 CF 控制台访问的人查 Zero Trust → Networks → Tunnels，或在本机直接 `http://localhost:13036` 验证 UI 层。
 3. **跨 origin cookie**：MVP 不共享 AutoService 的 operator_session cookie；所有上下文用 URL query 传。若后续要让 voice-web 回调 AutoService 写转写记录，需设 `SameSite=None; Secure` + CORS credentials。
 4. **浏览器兼容矩阵**：MVP 目标 Chromium 桌面通；iOS Safari / Android Chrome 降级策略（"请使用 Chrome 浏览器"还是做 Tap-to-Start）？
 5. **语音 UI 与文字 IM 的切换**：同一 SPA 里文字聊天 Modal 和语音 Modal 是否互斥？当前 ChatFAB 返回两个按钮（📞 + 💬），推荐**互斥**（打开一个自动关另一个）但需要产品确认。
-6. **voice-web 的 embed 模式改造归属**：这是 cc-openclaw 的变更。谁在 cc-openclaw 提 PR？需要在两仓协调。
+6. ~~**voice-web 的 embed 模式改造归属**：这是 cc-openclaw 的变更。谁在 cc-openclaw 提 PR？需要在两仓协调。~~ **(2026-04-22 更新)** cc-openclaw 已复制到 `~/cc-openclaw`，在本机直接改即可；当前无 git 管理，只影响本机 dev 环境，不走 upstream PR。
 7. **session.py 的 fallback 文案**（TC-9）：channel_server 超时时是走豆包默认回复，还是 gateway 主动合成"助手暂时无法回复"？
 
 ---
@@ -271,7 +271,7 @@ Makefile                       [edit] 补 channel_server target；或文档说�
 
 **本次验证通过的含义**：路线 A 的全部技术前提都成立，剩下工作只是"把 FAB 接 onClick + 做个 VoiceCallModal"这种纯前端实现，零技术未知。
 
-**本次验证失败的含义**：优先修复 Q2 / channel_server 启动等 cc-openclaw 侧基建问题，不要先改 AutoService 代码。
+**本次验证失败的含义**：优先修复 Q2 / channel_server 启动等 cc-openclaw 侧基建问题（现在可在 `~/cc-openclaw` 直接改），不要先改 AutoService 代码。
 
 **测试人**：任何能访问 `voice.ezagent.chat` 的开发者，不需要 AutoService 代码权限。
 
@@ -329,7 +329,7 @@ Makefile                       [edit] 补 channel_server target；或文档说�
 | 8 | `frontend/apps/customer-chat/vite.config.ts` | **edit** | `VITE_VOICE_WEB_URL` 环境变量 |
 | 9 | （部署层）nginx/CF Pages 配置 | **edit** | `Permissions-Policy` 响应头 |
 
-### cc-openclaw 侧（外部 PR）
+### cc-openclaw 侧（本地改动，**无 upstream git**，当前只影响 `~/cc-openclaw` dev 环境）
 
 | # | 文件 | 动作 | 说明 |
 |---|------|------|------|
@@ -350,6 +350,13 @@ Makefile                       [edit] 补 channel_server target；或文档说�
 - [ ] Skill 2 消费本 eval-doc，生成 TC-001~014 对应 test-plan
 - [ ] Skill 3 从 test-plan 产出 test-diff
 - [ ] Skill 4 执行测试产出 e2e-report
+
+---
+
+## 12. Changelog
+
+- **2026-04-22 (initial)** — eval-doc 生成（simulate），confirmed；14 TC；假设 cc-openclaw 只读、改动需走外部 PR。
+- **2026-04-22 (path update)** — cc-openclaw 已复制到 `~/cc-openclaw`（`li.zhenyu` 家目录），可读写，但**无 git 管理**。所有"cc-openclaw 侧 PR"的表述更正为"cc-openclaw 侧本地改动"。Q6 已解决（不再需要两仓协调，但仍需正式版本管理策略）。`voice-web` / `voice_gateway` 已在新位置启动；`channel_server` 仍未启动。Cloudflare Tunnel ingress 验证与 tunnel 配置仍属 ops 领域，未变。
 
 ---
 
