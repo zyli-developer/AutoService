@@ -17,6 +17,7 @@ from typing import Any, TYPE_CHECKING
 
 from datetime import datetime, timezone
 
+from autoservice.cc_pool import StickyTenantMismatch
 from autoservice.conversation_engine import ConversationEngine
 from autoservice.conversation_engine.errors import ConversationNotFound
 from autoservice.conversation_engine.types import MessageVisibility, Participant, ParticipantRole
@@ -1169,15 +1170,31 @@ async def _generate_agent_reply(
             else _role_stream()
         )
 
-        async for msg in iterator:
-            cls = type(msg).__name__
-            logger.debug("Agent reply: stream msg type=%s", cls)
-            if isinstance(msg, AssistantMessage) and msg.content:
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        reply_text += block.text
-            elif isinstance(msg, ResultMessage) and msg.result:
-                reply_text = msg.result
+        try:
+            async for msg in iterator:
+                cls = type(msg).__name__
+                logger.debug("Agent reply: stream msg type=%s", cls)
+                if isinstance(msg, AssistantMessage) and msg.content:
+                    for block in msg.content:
+                        if hasattr(block, "text"):
+                            reply_text += block.text
+                elif isinstance(msg, ResultMessage) and msg.result:
+                    reply_text = msg.result
+        except StickyTenantMismatch as exc:
+            logger.warning("Sticky tenant mismatch conv=%s: %s", conv_id, exc)
+            try:
+                await engine.send_message(
+                    conv_id, source="triage",
+                    content=f"[系统] 会话 tenant 状态冲突（{exc}），本轮跳过 AI 回复。",
+                    requested_visibility=MessageVisibility.SIDE,
+                    metadata={"type": "sticky_tenant_mismatch"},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to write sticky_tenant_mismatch SIDE for conv=%s",
+                    conv_id,
+                )
+            return
 
         if not reply_text.strip():
             logger.warning("Agent reply: empty response from CC SDK")
