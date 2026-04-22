@@ -719,7 +719,6 @@ html, body, #root {
   color: var(--color-text);
   line-height: 1.6;
   letter-spacing: 0.1px;
-  white-space: pre-wrap;
 }
 
 .op-msg.side .op-msg-text {

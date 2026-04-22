@@ -224,26 +224,35 @@ export function useOperatorWS(url: string): {
                 unreadCount: 1,
               });
             } else {
-              updateConversation(convId, {
+              const existing = state.conversations[convId];
+              const patch: Partial<typeof existing> = {
                 lastMessage: content,
                 lastActivityTs: ts,
-                unreadCount: (state.conversations[convId].unreadCount ?? 0) + 1,
-              });
+                unreadCount: (existing.unreadCount ?? 0) + 1,
+              };
+              // Backfill customerId on the first real customer message — when
+              // a conv is auto-created by an agent greeting, customerId is the
+              // literal "customer" placeholder. The first customer-sourced
+              // frame carries the real id in srcDisplay.id.
+              if (role === 'customer' && existing.customerId === 'customer' && srcDisplay?.id) {
+                patch.customerId = srcDisplay.id as string;
+              }
+              updateConversation(convId, patch);
             }
 
-            // Add to copilot if this conversation is open
-            if (state.activeCopilotConvId === convId) {
-              const sender = role === 'customer' ? 'customer' as const
-                : role === 'operator' ? 'operator' as const
-                : 'agent' as const;
-              addCopilotMessage(convId, {
-                id: (msg?.id as string) ?? crypto.randomUUID(),
-                text: content,
-                sender,
-                ts,
-                visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
-              });
-            }
+            // Add to copilot store unconditionally — render layer filters by
+            // activeCopilotConvId. Gating here lost SIDE/placeholder/streaming
+            // frames that arrived before the operator clicked the card.
+            const sender = role === 'customer' ? 'customer' as const
+              : role === 'operator' ? 'operator' as const
+              : 'agent' as const;
+            addCopilotMessage(convId, {
+              id: (msg?.id as string) ?? crypto.randomUUID(),
+              text: content,
+              sender,
+              ts,
+              visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
+            });
           }
         }
 
