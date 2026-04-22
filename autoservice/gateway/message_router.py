@@ -908,6 +908,35 @@ async def _drain_with_placeholder(
     return reply_text, placeholder_msg
 
 
+async def _send_direct_reply(
+    engine: ConversationEngine,
+    ws: "WebSocket",
+    conv_id: str,
+    reply_text: str,
+) -> None:
+    """Persist + push a triage-originated direct reply.
+
+    Used when :class:`TriageDecision.role` is ``"direct"`` — the gateway
+    short-circuits the CC pool entirely and sends the template text
+    verbatim. Writes via ``source="agent"`` so downstream audit/history
+    treats it identically to a pool-generated reply; the fact that it
+    came from triage lives in the SIDE message emitted by
+    :func:`triage_and_route`.
+    """
+    agent_msg = await engine.send_message(
+        conv_id, source="agent", content=reply_text.strip(),
+    )
+    frame = _message_frame(agent_msg)
+    try:
+        await ws.send_json(frame)
+    except Exception:
+        logger.warning("Direct reply push failed conv=%s", conv_id)
+    try:
+        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+    except Exception:
+        logger.debug("Direct reply broadcast failed conv=%s", conv_id)
+
+
 async def _cleanup_stranded_placeholder(
     engine: ConversationEngine,
     ws: "WebSocket",
@@ -1248,6 +1277,13 @@ async def _generate_agent_reply(
     Falls back gracefully if pool is unavailable.
     """
     try:
+        # Yield once so the enclosing customer_message handler's
+        # `message_confirm` frame reaches the wire before we start. The
+        # direct-reply triage path completes in pure Python without network
+        # I/O and previously raced the outer send_json; sonnet replies used
+        # to mask this by taking seconds to produce a first token.
+        await asyncio.sleep(0)
+
         logger.info("Agent reply: starting for conv=%s text=%.40s", conv_id, customer_text)
         from autoservice.web_gateway import _get_pool
         pool = await _get_pool()
@@ -1269,6 +1305,7 @@ async def _generate_agent_reply(
         target_role = "customer"
         previous_role = None
         detected_language: str | None = None
+        direct_reply_text: str | None = None
         if triage_enabled:
             try:
                 decision = await triage_and_route(
@@ -1278,8 +1315,19 @@ async def _generate_agent_reply(
                 target_role = decision.role
                 previous_role = decision.previous_role
                 detected_language = decision.detected_language
+                direct_reply_text = decision.direct_reply
             except Exception:
                 logger.exception("triage_and_route failed; falling back to customer")
+
+        # Direct-reply short-circuit: triage identified a template-driven
+        # social pattern (greeting/thanks/bye). Skip pool entirely.
+        if target_role == "direct" and direct_reply_text:
+            logger.info(
+                "Agent reply via direct: conv=%s intent=%s",
+                conv_id, getattr(decision, "intent", "?"),
+            )
+            await _send_direct_reply(engine, ws, conv_id, direct_reply_text)
+            return
 
         # Re-seed history if role switched
         if previous_role and previous_role != target_role:

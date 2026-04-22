@@ -38,6 +38,38 @@ intents:
     model_tier: fast    # 简单问题用快模型
     priority: normal
 
+  # ─── 直回类（纯社交语）────────────────────────────────
+  # 以下三类 route_to: direct，不走任何 CC pool，由 triage 直接发模板回复。
+  # 仅限"与业务无关、答错无害"的社交模式 — 不要在此加 FAQ/价格/产品问题,
+  # 它们的答案租户专属,必须走 customer + KB.
+
+  greeting:
+    description: "招呼语、寒暄"
+    keywords: ["你好", "您好", "hi", "hello", "嗨", "在吗", "在不在"]
+    route_to: direct
+    model_tier: fast
+    priority: normal
+    direct_reply: "您好,请问有什么可以帮您?"
+    direct_reply_en: "Hello! How can I help you today?"
+
+  thanks:
+    description: "致谢"
+    keywords: ["谢谢", "感谢", "thanks", "thank you", "多谢"]
+    route_to: direct
+    model_tier: fast
+    priority: normal
+    direct_reply: "不客气!如果还有其他问题,随时告诉我。"
+    direct_reply_en: "You're welcome! Let me know if you need anything else."
+
+  bye:
+    description: "告别"
+    keywords: ["再见", "拜拜", "bye", "goodbye", "886"]
+    route_to: direct
+    model_tier: fast
+    priority: normal
+    direct_reply: "再见,祝您生活愉快!"
+    direct_reply_en: "Goodbye! Have a great day!"
+
 # 模型层级配置
 model_tiers:
   fast:

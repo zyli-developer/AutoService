@@ -26,10 +26,14 @@ _TRIAGE_OUTPUT_RE = re.compile(
     r"路由\s*:\s*(?P<route_to>\w+)\s*\|\s*"
     r"原因\s*:\s*(?P<reason>[^|]+?)"
     r"(?:\s*\|\s*摘要\s*:\s*\"(?P<summary>[^\"]+)\")?"
+    r"(?:\s*\|\s*回复\s*:\s*\"(?P<direct_reply>[^\"]+)\")?"
     r"\s*$"
 )
 
-_TRIAGE_ROLE_WHITELIST = {"customer", "lead", "translate"}
+#: Accepted ``路由`` values from a triage agent. ``direct`` is the new
+#: short-circuit route (template reply sent by gateway, no pool call);
+#: see :class:`AgentRole` for the corresponding enum value.
+_TRIAGE_ROLE_WHITELIST = {"customer", "lead", "translate", "direct"}
 
 
 def _parse_triage_output(raw: str) -> dict | None:
@@ -52,6 +56,7 @@ def _parse_triage_output(raw: str) -> dict | None:
                 "route_to": role,
                 "reason": m.group("reason").strip(),
                 "summary": m.group("summary"),
+                "direct_reply": m.group("direct_reply"),
             }
     return None
 
@@ -62,6 +67,13 @@ class Intent(str, Enum):
     PURCHASE_INTENT = "purchase_intent"
     LANGUAGE_BARRIER = "language_barrier"
     GENERAL_QUESTION = "general_question"
+    # Social-pattern intents that skip the pool entirely (direct reply
+    # from a template in classify_intent.yaml). Safe because the reply
+    # text is data-driven, never LLM-generated — no hallucination risk
+    # on business facts.
+    GREETING = "greeting"
+    THANKS = "thanks"
+    BYE = "bye"
 
 
 class ModelTier(str, Enum):
@@ -74,6 +86,10 @@ class AgentRole(str, Enum):
     TRANSLATE = "translate"
     LEAD = "lead"
     TRIAGE = "triage"
+    #: Pseudo-role for template-driven direct replies. Not a real CC
+    #: sub-pool — the gateway short-circuits on this value and sends
+    #: ``ClassificationResult.direct_reply`` via ``engine.send_message``.
+    DIRECT = "direct"
 
 
 @dataclass
@@ -84,6 +100,9 @@ class ClassificationResult:
     model_tier: ModelTier
     priority: str = "normal"        # normal | high
     summary: Optional[str] = None   # 低信心时附加摘要
+    #: Set iff ``route_to == AgentRole.DIRECT`` — the template reply the
+    #: gateway sends verbatim without invoking any pool.
+    direct_reply: Optional[str] = None
 
 
 @dataclass
@@ -98,7 +117,7 @@ class RoutingDecision:
 @dataclass
 class TriageDecision:
     """Triage-and-route decision consumed by triage_and_route()."""
-    role: str                          # customer | lead | translate
+    role: str                          # customer | lead | translate | direct
     confidence: float
     source: Literal["fastpath", "triage_agent", "fallback"]
     intent: str
@@ -106,6 +125,9 @@ class TriageDecision:
     summary: Optional[str] = None
     needs_operator_notice: bool = False
     previous_role: Optional[str] = None
+    #: Populated only when ``role == "direct"``. The gateway persists this
+    #: via ``engine.send_message`` and returns without touching any pool.
+    direct_reply: Optional[str] = None
 
 
 class _TenantConfigLike(Protocol):
@@ -209,6 +231,17 @@ class FastClassifier:
 
         intent_cfg = self._intents[best_intent]
 
+        # Direct-reply template lookup — only meaningful when the config
+        # routes this intent to AgentRole.DIRECT. For English messages we
+        # prefer ``direct_reply_en`` when present, falling back to the
+        # canonical ``direct_reply`` (Chinese).
+        direct_reply = None
+        if intent_cfg.get("route_to") == AgentRole.DIRECT.value:
+            if detected_language and detected_language.lower().startswith("en"):
+                direct_reply = intent_cfg.get("direct_reply_en") or intent_cfg.get("direct_reply")
+            else:
+                direct_reply = intent_cfg.get("direct_reply")
+
         return ClassificationResult(
             intent=Intent(best_intent),
             confidence=best_score,
@@ -216,6 +249,7 @@ class FastClassifier:
             model_tier=ModelTier(intent_cfg["model_tier"]),
             priority=intent_cfg.get("priority", "normal"),
             summary=message[:100] if best_score < self._thresholds["medium"] else None,
+            direct_reply=direct_reply,
         )
 
 
@@ -328,6 +362,7 @@ class ModelRouter:
                 summary=fast.summary,
                 needs_operator_notice=fast.confidence < self._thresholds["high"],
                 previous_role=previous_role,
+                direct_reply=fast.direct_reply,
             )
 
         return await self._invoke_triage_agent(
@@ -383,6 +418,7 @@ class ModelRouter:
             summary=(fast_result.summary or message[:100]),
             needs_operator_notice=True,
             previous_role=previous_role,
+            direct_reply=fast_result.direct_reply,
         )
 
     async def _invoke_triage_agent(
@@ -424,6 +460,7 @@ class ModelRouter:
             summary=parsed.get("summary"),
             needs_operator_notice=parsed["confidence"] < self._thresholds["medium"],
             previous_role=previous_role,
+            direct_reply=parsed.get("direct_reply"),
         )
 
     def should_use_placeholder(self, decision: RoutingDecision) -> bool:
