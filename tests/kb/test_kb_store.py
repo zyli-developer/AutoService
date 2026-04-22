@@ -148,26 +148,17 @@ class TestSaveAndClear:
             row = conn.execute("SELECT content FROM kb_chunks").fetchone()
             assert row[0] == "updated"
             # FTS must also reflect the update — verify the kb_ad+kb_ai trigger
-            # chain fires on INSERT OR REPLACE so stale payload doesn't linger.
-            # NOTE: we check the FTS content-row set directly rather than with
-            # `kb_fts MATCH 'original'`. `INSERT OR REPLACE` in SQLite FTS5
-            # external-content tables leaves the trigram segment index in a
-            # state where MATCH against a removed term raises "database disk
-            # image is malformed" even though the content payload is consistent
-            # (see parent report — root fix is DELETE-then-INSERT in save_chunk,
-            # out of scope here). The payload check still proves the DELETE
-            # trigger fired: without kb_ad, 'original' would remain in kb_fts.
-            fts_rows = conn.execute(
-                "SELECT content FROM kb_fts"
-            ).fetchall()
+            # chain fires on REPLACE (implemented as DELETE+INSERT in save_chunk)
+            # so stale trigrams don't linger.
             fresh = conn.execute(
                 "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("updated",),
             ).fetchall()
+            stale = conn.execute(
+                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("original",),
+            ).fetchall()
             conn.close()
-            assert fts_rows == [("updated",)], (
-                f"kb_fts should reflect the REPLACE exactly — got {fts_rows!r}"
-            )
             assert len(fresh) == 1 and fresh[0][0] == "updated"
+            assert stale == [], f"stale FTS trigrams linger: {stale!r}"
         finally:
             store.close()
 
@@ -180,3 +171,25 @@ class TestSaveAndClear:
         # After exit, further writes on the stored connection should error.
         with pytest.raises(sqlite3.ProgrammingError):
             store._conn.execute("SELECT 1")
+
+    def test_fts_full_integrity_check_passes_after_replace(self, tmp_path: Path):
+        """Guard against the INSERT OR REPLACE corruption bug regressing.
+
+        SQLite's FTS5 full integrity-check (`rank=1`) raises
+        DatabaseError("database disk image is malformed") when the trigram
+        segment index is corrupted. With DELETE+INSERT as the replace strategy,
+        it must pass.
+        """
+        store = KBStore(tmp_path / "kb.db")
+        try:
+            c = self._chunk("src_a", 0, "original content text that trigrams will index")
+            store.save_chunk(c)
+            c["content"] = "updated content text with different trigrams"
+            store.save_chunk(c)  # replace
+            conn = sqlite3.connect(str(store.db_path))
+            try:
+                conn.execute("INSERT INTO kb_fts(kb_fts, rank) VALUES('integrity-check', 1)")
+            finally:
+                conn.close()
+        finally:
+            store.close()

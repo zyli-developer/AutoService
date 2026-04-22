@@ -158,11 +158,22 @@ class KBStore:
     # ── writes ─────────────────────────────────────────────────────────
 
     def save_chunk(self, chunk: dict, *, debug_dir: Path | None = None) -> None:
-        """Insert-or-replace one chunk row; FTS is kept in sync via trigger."""
+        """Insert (or replace via DELETE+INSERT) one chunk; FTS stays in sync via triggers.
+
+        Uses explicit ``DELETE WHERE id=?`` then ``INSERT`` instead of
+        ``INSERT OR REPLACE`` because the latter causes SQLite to assign a
+        new rowid on replacement, which leaves the trigram FTS5 external-
+        content segment index in a malformed state. Explicit delete reuses
+        the same rowid slot and keeps the FTS index coherent. Verified:
+        ``MATCH 'old-term'`` returns [] after replace, and the FTS5 full
+        integrity-check passes — with INSERT OR REPLACE it raises
+        ``sqlite3.DatabaseError: database disk image is malformed``.
+        """
         c = self._conn
+        c.execute("DELETE FROM kb_chunks WHERE id = ?", (chunk["id"],))
         c.execute(
             """
-            INSERT OR REPLACE INTO kb_chunks
+            INSERT INTO kb_chunks
                 (id, source_id, source_type, source_name, source_url, file_path,
                  section, content, created_at, domain, region, language, page_number)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -189,20 +200,24 @@ class KBStore:
         *,
         debug_dir: Path | None = None,
     ) -> int:
-        """Insert-or-replace many chunks as a single SQLite transaction.
+        """Insert (or replace) many chunks as a single SQLite transaction.
 
         Much faster than calling :meth:`save_chunk` in a loop because there is
-        exactly one commit (and thus one WAL fsync) for the whole batch. On any
-        per-chunk error, rolls back the whole batch — partial batch state never
-        lands. Returns the number of rows written.
+        exactly one commit (and thus one WAL fsync) for the whole batch. Uses
+        explicit ``DELETE WHERE id=?`` before each ``INSERT`` — see
+        :meth:`save_chunk` for why ``INSERT OR REPLACE`` is unsafe with the
+        trigram FTS external-content index. On any per-chunk error, rolls back
+        the whole batch — partial batch state never lands. Returns the number
+        of rows written.
         """
         chunks_list = list(chunks)
         c = self._conn
         try:
             for chunk in chunks_list:
+                c.execute("DELETE FROM kb_chunks WHERE id = ?", (chunk["id"],))
                 c.execute(
                     """
-                    INSERT OR REPLACE INTO kb_chunks
+                    INSERT INTO kb_chunks
                         (id, source_id, source_type, source_name, source_url, file_path,
                          section, content, created_at, domain, region, language, page_number)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
