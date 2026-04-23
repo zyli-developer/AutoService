@@ -1,5 +1,5 @@
 // src/__tests__/asr-client.test.ts
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { parseAsrFrame } from '../voice/asr-client';
 
 describe('parseAsrFrame', () => {

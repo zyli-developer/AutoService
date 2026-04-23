@@ -51,7 +51,6 @@ describe('VoiceCallController state machine', () => {
     // Still thinking — reply queued, waiting for comfort TTS done
     expect(c.state).toBe('thinking');
     // Simulate tts done event → should promote to speaking
-    // @ts-expect-error access private method
     (c as any)._onTtsDone();
     expect(c.state).toBe('speaking');
   });
@@ -83,7 +82,6 @@ describe('VoiceCallController state machine', () => {
     const c = makeController({ comfortPool: ['a', 'b', 'c', 'd'] });
     const seen: string[] = [];
     for (let i = 0; i < 20; i++) {
-      // @ts-expect-error access private method through any
       seen.push((c as any).pickComfort());
     }
     // No window of 4 consecutive identical
