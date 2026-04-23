@@ -4,7 +4,7 @@
 
 ## 1. Goal
 
-Replace the generic 1.5s-delayed static placeholder (`"正在为您查询，请稍候..."` / `"Just a moment while I look into this..."`) with a context-aware soothing line selected from a YAML template bank, keyed by the `intent` already produced by `triage_and_route`. Emit the placeholder **immediately** after triage (no 1.5s wait) so users see acknowledgement within ~50ms instead of 1500ms.
+Replace the generic 1.5s-delayed static placeholder (`"正在为您查询，请稍候..."` / `"Just a moment while I look into this..."`) with a context-aware soothing line selected from a YAML template bank, keyed by the `intent` already produced by `triage_and_route`. Emit the placeholder after an intent-aware random delay (1.0-3.0s depending on intent; see §10) — mimicking real-agent reading cadence — with context-aware text chosen by triage `intent × lang`. Immediate emission was investigated and rejected on 2026-04-23: <200ms feedback felt robotic/AI. The actual UX win is (a) contextually relevant text and (b) humanized pacing, not raw speed.
 
 ## 2. Current state (2026-04-22 baseline)
 
@@ -242,9 +242,21 @@ reply_text, placeholder_msg = await _drain_with_placeholder(
 )
 ```
 
-### 7.4 Delay reduction
+### 7.4 Delay (intent-aware jitter)
 
-`PLACEHOLDER_DELAY_S: 1.5 → 0.0`. Retain the parameter (don't inline `0.0`) so single tests and future tuning can set it back without editing production code.
+`PLACEHOLDER_DELAY_S = 1.5` is retained as the rollback baseline — flag-off path returns this exactly for byte-for-byte 2026-04-22 parity.
+
+When `SOOTHE_ENABLED=True`, `_effective_placeholder_delay_s(intent)` returns `random.uniform(lo, hi)` where `(lo, hi)` comes from `SOOTHE_DELAY_RANGES[intent]`, or `SOOTHE_DELAY_DEFAULT_RANGE = (1.5, 2.5)` for unknown / None intent:
+
+| Intent | Range | Rationale |
+|---|---|---|
+| `complaint` | (1.0, 1.8) | Frustrated user — faster ack reduces empathy latency |
+| `product_inquiry` | (1.5, 2.5) | Neutral "thinking" pace |
+| `purchase_intent` | (2.0, 3.0) | Lead qualification — salesperson gravitas |
+| `general_question` | (1.2, 2.0) | Casual, low-stakes |
+| (default) | (1.5, 2.5) | Safe middle ground |
+
+The randomness is load-bearing: a fixed delay (even a humanized one like 2.0s) becomes a detectable AI signature over a few interactions. Uniform distribution within each range prevents the pattern from surfacing.
 
 ## 8. Non-goals (explicit)
 
@@ -267,7 +279,7 @@ No new event types. Reuse existing channels:
 |---|---|---|
 | Soothe template distribution | `log.info("soothe picked …")` at pick site | log aggregation / grep |
 | Fallback rate (wildcard or defaults) | `template_id` starts with `"*_"` or equals `"static_fallback"` / `"fallback_<lang>"` | same |
-| Placeholder emit latency | Existing `sla_placeholder` SLA timer (1s budget) — should drop from ~1500ms to <50ms | `EventBus.query("sla_placeholder")` / SLA dashboard |
+| Placeholder emit latency | Existing `sla_placeholder` SLA timer (1s budget, defined at `autoservice/conversation_engine/types.py`) will consistently exceed its budget — by design. Real emission will be ~1.0–3.0s depending on intent. **The 1s budget is now stale for its original purpose** (it was set when "placeholder" meant "quick acknowledgement token"); raising it to 3s or redefining it against main-reply latency is a PRD-level follow-up, not in this feature's scope. | SLA dashboard |
 | Unknown intent | `log.warning` at picker load + pick time | log alert |
 | Placeholder → final reply replacement | Existing `message_edited` metric | unchanged dashboard |
 
@@ -326,13 +338,14 @@ If any metric is off by >10×, treat as a design bug and investigate.
 
 ## 13. Acceptance (smoke test)
 
-1. customer slow turn (sonnet, >1.5s): placeholder arrives on frontend within **50ms** of triage decision (currently 1500ms)
+1. customer slow turn (sonnet, >3s): placeholder arrives on frontend at `triage-decision-time + random[lo, hi]` where `(lo, hi)` is the intent's range from §7.4. The placeholder MUST NOT fire within <1.0s under any intent — the jitter floor prevents the robotic-feel regression identified on 2026-04-23.
 2. customer fast turn (<200ms): placeholder still arrives; then `message_edited` replaces with final reply without UI error
 3. lead turn: same as (1)
 4. translate / direct turn: **no** placeholder — no regression vs 2026-04-22 baseline
 5. Same intent requested 3× consecutively: observed `template_id` values include ≥2 distinct
 6. Delete `soothe_templates.yaml` and restart: placeholder still appears (code-level fallback); log contains an `error` line; main reply chain unaffected
-7. Set `SOOTHE_PLACEHOLDER_ENABLED=0` and restart: behavior reverts exactly to 2026-04-22 baseline (1.5s wait + static text)
+7. intent routing: over 50 complaint-intent turns, observed delays fall within [1.0, 1.8]s (none below, none above). Likewise for the other 3 intent-range pairs. Unknown intents land in the default (1.5, 2.5)s range.
+8. Set `SOOTHE_PLACEHOLDER_ENABLED=0` and restart: behavior reverts exactly to 2026-04-22 baseline (1.5s wait + static text)
 
 ## 14. Risks & mitigations
 

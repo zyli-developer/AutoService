@@ -242,3 +242,13 @@ def test_fallback_picker_returns_static_text():
     assert zh.text == "正在为您查询，请稍候..."
     assert en.template_id == "static_fallback"
     assert en.text == "Just a moment while I look into this..."
+
+
+def test_none_intent_no_wildcard_falls_to_defaults():
+    """intent=None + no wildcard ("*", lang) in bank → defaults.fallback
+    (step 3). Complements test_none_intent_goes_to_wildcard_or_defaults
+    by directly exercising the defaults path for None intent."""
+    picker = SoothePicker(bank=_bank(), rng=random.Random(0))  # no wildcard
+    pick = picker.pick(intent=None, lang="zh")
+    assert pick.template_id == "fallback_zh"
+    assert pick.text == "好的，我帮您看看…"

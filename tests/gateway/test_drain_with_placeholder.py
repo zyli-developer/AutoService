@@ -560,17 +560,68 @@ async def test_drain_passes_intent_to_placeholder_text(monkeypatch):
 # Task 9 — _effective_placeholder_delay_s
 # ---------------------------------------------------------------------------
 
-def test_default_delay_is_zero_when_enabled(monkeypatch):
-    """With soothe on, the default PLACEHOLDER_DELAY_S is effectively 0
-    so the placeholder arrives immediately."""
+def test_default_delay_in_default_range_when_enabled_and_no_intent(monkeypatch):
+    """With soothe on and no intent, delay samples uniformly from the
+    default range (1.5-2.5s)."""
     from autoservice.gateway import message_router as mr
-
     monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
-    assert mr._effective_placeholder_delay_s() == 0.0
+    # Sample many times; each draw must be in range.
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s()
+        assert 1.5 <= d <= 2.5, f"delay {d} outside default range [1.5, 2.5]"
+
+
+def test_complaint_intent_delay_in_faster_range(monkeypatch):
+    """Complaint intent uses a faster range (1.0-1.8s) — frustrated
+    users need quicker acknowledgement."""
+    from autoservice.gateway import message_router as mr
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s(intent="complaint")
+        assert 1.0 <= d <= 1.8, f"delay {d} outside complaint range [1.0, 1.8]"
+
+
+def test_purchase_intent_delay_in_slower_range(monkeypatch):
+    """Purchase_intent uses a slower range (2.0-3.0s) — lead qualification
+    pacing."""
+    from autoservice.gateway import message_router as mr
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s(intent="purchase_intent")
+        assert 2.0 <= d <= 3.0, f"delay {d} outside purchase_intent range [2.0, 3.0]"
+
+
+def test_product_inquiry_delay_in_neutral_range(monkeypatch):
+    from autoservice.gateway import message_router as mr
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s(intent="product_inquiry")
+        assert 1.5 <= d <= 2.5, f"delay {d} outside product_inquiry range [1.5, 2.5]"
+
+
+def test_general_question_delay_in_casual_range(monkeypatch):
+    from autoservice.gateway import message_router as mr
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s(intent="general_question")
+        assert 1.2 <= d <= 2.0, f"delay {d} outside general_question range [1.2, 2.0]"
+
+
+def test_unknown_intent_falls_to_default_range(monkeypatch):
+    """Intent not in SOOTHE_DELAY_RANGES falls to the default (1.5-2.5s)."""
+    from autoservice.gateway import message_router as mr
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    for _ in range(50):
+        d = mr._effective_placeholder_delay_s(intent="unknown_xyz")
+        assert 1.5 <= d <= 2.5, f"delay {d} outside default range [1.5, 2.5]"
 
 
 def test_default_delay_restores_1p5s_when_disabled(monkeypatch):
+    """Flag off: exactly PLACEHOLDER_DELAY_S (1.5s), no jitter, no intent
+    routing — byte-for-byte 2026-04-22 rollback parity."""
     from autoservice.gateway import message_router as mr
-
     monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)
+    # Intent is ignored when flag is off.
     assert mr._effective_placeholder_delay_s() == 1.5
+    assert mr._effective_placeholder_delay_s(intent="complaint") == 1.5
+    assert mr._effective_placeholder_delay_s(intent="anything") == 1.5

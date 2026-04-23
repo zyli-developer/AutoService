@@ -42,6 +42,7 @@ class SoothePicker:
         known_intents: set[str] | None = None,
     ) -> None:
         self._rng = rng or random.Random()
+        # Index: (intent, lang) → (template_id, lines)
         self._index: dict[tuple[str, str], tuple[str, list[str]]] = {}
         seen_keys: set[tuple[str, str]] = set()
         required = ("id", "intent", "lang", "lines")

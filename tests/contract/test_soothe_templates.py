@@ -82,3 +82,29 @@ def test_intent_alignment(bank, known_intents):
             f"template {entry['id']!r} uses intent {intent!r} "
             f"not defined in classify_intent.yaml (known={sorted(known_intents)})"
         )
+
+
+#: Template IDs that MUST exist in the bank. A YAML truncation bug that
+#: dropped the `templates:` list (leaving only `version:` + `defaults:`)
+#: would silently pass the other contract tests because they iterate
+#: over `templates` which would be empty. This test is the structural
+#: canary.
+REQUIRED_TEMPLATE_IDS = frozenset({
+    "complaint_zh",
+    "complaint_en",
+    "product_inquiry_zh",
+    "product_inquiry_en",
+    "purchase_intent_zh",
+    "purchase_intent_en",
+    "general_question_zh",
+    "general_question_en",
+})
+
+
+def test_required_template_ids_present(bank):
+    present = {entry["id"] for entry in bank.get("templates", [])}
+    missing = REQUIRED_TEMPLATE_IDS - present
+    assert not missing, (
+        f"required template IDs missing from soothe_templates.yaml: "
+        f"{sorted(missing)}"
+    )

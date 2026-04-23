@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import re
 from typing import Any, TYPE_CHECKING
 
@@ -822,6 +823,30 @@ _PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."
 #: static text + 1.5s delay. See spec §10.
 SOOTHE_ENABLED: bool = os.getenv("SOOTHE_PLACEHOLDER_ENABLED", "1") != "0"
 
+#: Intent-keyed random-jitter ranges (min_s, max_s) for soothe
+#: placeholder emission. Mimics real-agent reading cadence with
+#: intent-appropriate variation — a frustrated customer gets faster
+#: acknowledgement; a lead prospect gets a slightly longer "considering
+#: your needs" pause. Uniform distribution within each range.
+#:
+#: Rationale per intent:
+#:   complaint        : frustrated user, faster ack reduces perceived
+#:                      latency of empathy → (1.0, 1.8)
+#:   product_inquiry  : neutral thinking pace → (1.5, 2.5)
+#:   purchase_intent  : lead qualification, salesperson-gravitas feel
+#:                      → (2.0, 3.0)
+#:   general_question : casual, low-stakes → (1.2, 2.0)
+#:   (None / unknown) : safe default matching product_inquiry → (1.5, 2.5)
+#:
+#: Values are policy, not schema — tune in code, not YAML.
+SOOTHE_DELAY_RANGES: dict[str, tuple[float, float]] = {
+    "complaint":        (1.0, 1.8),
+    "product_inquiry":  (1.5, 2.5),
+    "purchase_intent":  (2.0, 3.0),
+    "general_question": (1.2, 2.0),
+}
+SOOTHE_DELAY_DEFAULT_RANGE: tuple[float, float] = (1.5, 2.5)
+
 
 def _placeholder_text(
     detected_language: str | None,
@@ -858,13 +883,22 @@ def _placeholder_text(
         return _static()
 
 
-def _effective_placeholder_delay_s() -> float:
+def _effective_placeholder_delay_s(intent: str | None = None) -> float:
     """Resolve the actual delay used at call time.
 
-    With SOOTHE_ENABLED=True, emit the placeholder immediately (0.0s).
-    With the flag off, keep the 1.5s race (2026-04-22 baseline).
+    With SOOTHE_ENABLED=True, return a random delay sampled from the
+    intent-specific range (or the default range for unknown / None
+    intent). With the flag off, return the PLACEHOLDER_DELAY_S baseline
+    unchanged — exact 2026-04-22 rollback parity.
+
+    The random jitter is intentional: a fixed delay (even a humanized
+    one like 2.0s) becomes a detectable AI signature over a few
+    interactions. Uniform randomness prevents that pattern.
     """
-    return 0.0 if SOOTHE_ENABLED else PLACEHOLDER_DELAY_S
+    if not SOOTHE_ENABLED:
+        return PLACEHOLDER_DELAY_S
+    lo, hi = SOOTHE_DELAY_RANGES.get(intent or "", SOOTHE_DELAY_DEFAULT_RANGE)
+    return random.uniform(lo, hi)
 
 
 async def _drain_with_placeholder(
@@ -920,7 +954,7 @@ async def _drain_with_placeholder(
     vs. ``send_message`` + ``message`` frame.
     """
     if delay_s is None:
-        delay_s = _effective_placeholder_delay_s()
+        delay_s = _effective_placeholder_delay_s(intent=intent)
 
     # Imported lazily so the gateway module stays import-cheap for tests
     # that don't exercise the CC stream.
