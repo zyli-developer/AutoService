@@ -15,12 +15,12 @@ run-channel:
 
 run-web:
 	@mkdir -p .autoservice/logs
-	AUTH_DEV_MODE=1 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
+	AUTH_DEV_MODE=1 PLACEHOLDER_ENABLED=0 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
 # Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
 run-gateway:
 	@mkdir -p .autoservice/logs
-	uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
+	PLACEHOLDER_ENABLED=0 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
 
 run-server:
 	uv run python3 channels/feishu/channel_server.py

@@ -913,6 +913,7 @@ async def _drain_with_placeholder(
     eligible: bool = True,
     delay_s: float | None = None,    # was: = PLACEHOLDER_DELAY_S
     intent: str | None = None,
+    perf_out: dict | None = None,
 ) -> tuple[str, Any | None]:
     """Drain the CC SDK stream and — if eligible and slow — emit a
     placeholder bubble that the caller can later replace via
@@ -1059,18 +1060,49 @@ async def _drain_with_placeholder(
             # are ignored — they're not user-visible reply content.
             if isinstance(item, StreamEvent):
                 event = getattr(item, "event", None) or {}
-                if event.get("type") == "content_block_delta":
+                ev_type = event.get("type")
+                if ev_type == "content_block_start":
+                    block = event.get("content_block") or {}
+                    if block.get("type") == "tool_use" and perf_out is not None:
+                        perf_out["tool_use_count"] = perf_out.get("tool_use_count", 0) + 1
+                elif ev_type == "content_block_delta":
                     delta = event.get("delta") or {}
                     if delta.get("type") == "text_delta":
                         chunk = delta.get("text") or ""
                         if chunk:
                             if not first_token_seen.is_set():
                                 first_token_seen.set()
+                                if perf_out is not None and "first_token_t" not in perf_out:
+                                    perf_out["first_token_t"] = _time.perf_counter()
+                            # first *real text* timestamp — distinct from first_token_t
+                            # which is polluted by tool_use AssistantMessages (fallback
+                            # branch). Diff between the two reveals pre-text tool work.
+                            if perf_out is not None and "first_text_t" not in perf_out:
+                                perf_out["first_text_t"] = _time.perf_counter()
                             reply_text += chunk
                             saw_stream_text = True
             elif isinstance(item, AssistantMessage) and item.content:
+                # tool_use blocks may appear here before any text (haiku deciding
+                # to call kb_search before answering). Count them so we can see
+                # whether the reply round-tripped through tools.
+                has_text = False
+                has_tool = False
+                for block in item.content:
+                    btype = getattr(block, "type", None)
+                    if btype == "tool_use" or hasattr(block, "input"):
+                        has_tool = True
+                    elif hasattr(block, "text"):
+                        has_text = True
+                if has_tool and perf_out is not None and not saw_stream_text:
+                    # Only count here when StreamEvent didn't already count (covers
+                    # include_partial_messages=False fallback path).
+                    perf_out["tool_use_count"] = perf_out.get("tool_use_count", 0) + 1
                 if not first_token_seen.is_set():
                     first_token_seen.set()
+                    if perf_out is not None and "first_token_t" not in perf_out:
+                        perf_out["first_token_t"] = _time.perf_counter()
+                if has_text and perf_out is not None and "first_text_t" not in perf_out:
+                    perf_out["first_text_t"] = _time.perf_counter()
                 # Skip text accumulation when StreamEvent deltas already built
                 # reply_text; AssistantMessage.content is the same fully-assembled
                 # text and would double the output. Fallback path (no partial
@@ -1082,6 +1114,10 @@ async def _drain_with_placeholder(
             elif isinstance(item, ResultMessage) and item.result:
                 if not first_token_seen.is_set():
                     first_token_seen.set()
+                    if perf_out is not None and "first_token_t" not in perf_out:
+                        perf_out["first_token_t"] = _time.perf_counter()
+                if perf_out is not None and "first_text_t" not in perf_out:
+                    perf_out["first_text_t"] = _time.perf_counter()
                 if not saw_stream_text:
                     reply_text = item.result
 
@@ -1487,6 +1523,11 @@ async def _generate_agent_reply(
         # to mask this by taking seconds to produce a first token.
         await asyncio.sleep(0)
 
+        # Per-request perf checkpoints. perf["t0"] = entry; other keys set
+        # incrementally so we can log a single summary line at the end even
+        # if an exception short-circuits us.
+        perf: dict = {"t0": _time.perf_counter()}
+
         logger.info("Agent reply: starting for conv=%s text=%.40s", conv_id, customer_text)
         from autoservice.web_gateway import _get_pool
         pool = await _get_pool()
@@ -1494,6 +1535,7 @@ async def _generate_agent_reply(
             logger.warning("Agent reply: no CCPool available, skipping")
             return
 
+        perf["t_pool_ready"] = _time.perf_counter()
         logger.info("Agent reply: pool ready, sending to CC SDK...")
 
         # --- Triage & route (spec 2026-04-21) ---
@@ -1524,6 +1566,7 @@ async def _generate_agent_reply(
                 tier_hint = decision.tier
             except Exception:
                 logger.exception("triage_and_route failed; falling back to customer")
+        perf["t_triage"] = _time.perf_counter()
 
         # Direct-reply short-circuit: triage identified a template-driven
         # social pattern (greeting/thanks/bye). Skip pool entirely.
@@ -1587,6 +1630,8 @@ async def _generate_agent_reply(
                     f"Customer message: {customer_text_for_prompt}\n\nReply briefly in the same language as the customer."
                 )
             prompt = "\n".join(prompt_parts)
+        perf["t_prompt_built"] = _time.perf_counter()
+        perf["prompt_chars"] = len(prompt)
 
         # Collect response. Placeholder-then-stream (designs 2026-04-22 + 2026-04-23):
         # eligible roles get a soothe bubble if the model hasn't emitted a token
@@ -1649,6 +1694,7 @@ async def _generate_agent_reply(
             else _role_stream()
         )
 
+        perf["t_llm_start"] = _time.perf_counter()
         try:
             reply_text, placeholder_msg = await _drain_with_placeholder(
                 iterator,
@@ -1656,6 +1702,7 @@ async def _generate_agent_reply(
                 detected_language=detected_language,
                 eligible=placeholder_eligible,
                 intent=getattr(decision, "intent", None) if decision else None,
+                perf_out=perf,
             )
         except StickyTenantMismatch as exc:
             logger.warning("Sticky tenant mismatch conv=%s: %s", conv_id, exc)
@@ -1776,8 +1823,40 @@ async def _generate_agent_reply(
 
         # Push to customer via WebSocket
         await ws.send_json(frame)
+        perf["t_pushed"] = _time.perf_counter()
         logger.info("Agent reply pushed: conv=%s len=%d placeholder=%s",
                     conv_id, len(reply_text), placeholder_msg is not None)
+
+        # Single-line phase timing — use this to spot-check which phase
+        # dominates. first_token = TTFT from the start of the LLM call;
+        # stream = time between first token and final token; pool is the
+        # pool-ready gap (usually <5 ms when warm); triage = full
+        # triage_and_route (FastClassifier + possibly agent + SIDE write).
+        t0 = perf["t0"]
+        t_first = perf.get("first_token_t")
+        t_text = perf.get("first_text_t")
+        ttft_s = (t_first - perf["t_llm_start"]) if t_first else None
+        ttft_text_s = (t_text - perf["t_llm_start"]) if t_text else None
+        stream_s = (perf["t_pushed"] - t_text) if t_text else None
+        logger.info(
+            "Agent reply timing conv=%s role=%s intent=%s source=%s "
+            "pool=%.3fs triage=%.3fs prompt=%.3fs "
+            "ttft=%s ttft_text=%s stream=%s tool_calls=%d "
+            "total=%.3fs prompt_chars=%d reply_chars=%d",
+            conv_id, target_role,
+            getattr(decision, "intent", "?") if decision else "?",
+            getattr(decision, "source", "?") if decision else "?",
+            perf["t_pool_ready"] - t0,
+            perf["t_triage"] - perf["t_pool_ready"],
+            perf["t_prompt_built"] - perf["t_triage"],
+            f"{ttft_s:.3f}s" if ttft_s is not None else "n/a",
+            f"{ttft_text_s:.3f}s" if ttft_text_s is not None else "n/a",
+            f"{stream_s:.3f}s" if stream_s is not None else "n/a",
+            perf.get("tool_use_count", 0),
+            perf["t_pushed"] - t0,
+            perf.get("prompt_chars", 0),
+            len(reply_text),
+        )
 
         # Broadcast to operator connections subscribed to this squad (T6A.2)
         await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
