@@ -554,3 +554,23 @@ async def test_drain_passes_intent_to_placeholder_text(monkeypatch):
     )
     assert captured["intent"] == "complaint"
     assert captured["lang"] == "zh"
+
+
+# ---------------------------------------------------------------------------
+# Task 9 — _effective_placeholder_delay_s
+# ---------------------------------------------------------------------------
+
+def test_default_delay_is_zero_when_enabled(monkeypatch):
+    """With soothe on, the default PLACEHOLDER_DELAY_S is effectively 0
+    so the placeholder arrives immediately."""
+    from autoservice.gateway import message_router as mr
+
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+    assert mr._effective_placeholder_delay_s() == 0.0
+
+
+def test_default_delay_restores_1p5s_when_disabled(monkeypatch):
+    from autoservice.gateway import message_router as mr
+
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)
+    assert mr._effective_placeholder_delay_s() == 1.5

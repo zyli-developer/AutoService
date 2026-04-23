@@ -858,6 +858,15 @@ def _placeholder_text(
         return _static()
 
 
+def _effective_placeholder_delay_s() -> float:
+    """Resolve the actual delay used at call time.
+
+    With SOOTHE_ENABLED=True, emit the placeholder immediately (0.0s).
+    With the flag off, keep the 1.5s race (2026-04-22 baseline).
+    """
+    return 0.0 if SOOTHE_ENABLED else PLACEHOLDER_DELAY_S
+
+
 async def _drain_with_placeholder(
     iterator: Any,
     *,
@@ -867,7 +876,7 @@ async def _drain_with_placeholder(
     ws: "WebSocket",
     detected_language: str | None = None,
     eligible: bool = True,
-    delay_s: float = PLACEHOLDER_DELAY_S,
+    delay_s: float | None = None,    # was: = PLACEHOLDER_DELAY_S
     intent: str | None = None,
 ) -> tuple[str, Any | None]:
     """Drain the CC SDK stream and — if eligible and slow — emit a
@@ -910,6 +919,9 @@ async def _drain_with_placeholder(
     this to decide between ``edit_message`` + ``message_edited`` frame
     vs. ``send_message`` + ``message`` frame.
     """
+    if delay_s is None:
+        delay_s = _effective_placeholder_delay_s()
+
     # Imported lazily so the gateway module stays import-cheap for tests
     # that don't exercise the CC stream.
     from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
