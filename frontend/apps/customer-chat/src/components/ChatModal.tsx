@@ -8,6 +8,8 @@ import { TypingIndicator } from './TypingIndicator';
 import { ConnectionBanner } from './ConnectionBanner';
 import { CSATRating } from './CSATRating';
 import { useAutoScroll } from '../hooks/useAutoScroll';
+import type { VoiceState, VoiceErrorReason } from '../voice/VoiceCallController';
+import { VoiceStatusBar } from '../voice/VoiceStatusBar';
 
 interface ChatModalProps {
   messages: ChatMessage[];
@@ -20,6 +22,12 @@ interface ChatModalProps {
   replayCount?: number;
   sheet?: 'peek' | 'full';
   onToggleSheet?: () => void;
+  voiceState: VoiceState;
+  voiceErrorReason: VoiceErrorReason | null;
+  onVoiceStart: () => void;
+  onVoiceSkip: () => void;
+  onVoiceHangup: () => void;
+  onVoiceRetry: () => void;
 }
 
 export function ChatModal({
@@ -33,6 +41,12 @@ export function ChatModal({
   replayCount = 0,
   sheet = 'peek',
   onToggleSheet,
+  voiceState,
+  voiceErrorReason,
+  onVoiceStart,
+  onVoiceSkip,
+  onVoiceHangup,
+  onVoiceRetry,
 }: ChatModalProps) {
   const { t } = useTranslation();
   const isAgentTyping = useChatStore((s) => s.isAgentTyping);
@@ -98,6 +112,13 @@ export function ChatModal({
         isReplaying={isReplaying}
         replayCount={replayCount}
       />
+      <VoiceStatusBar
+        state={voiceState}
+        errorReason={voiceErrorReason}
+        onSkip={onVoiceSkip}
+        onHangup={onVoiceHangup}
+        onRetry={onVoiceRetry}
+      />
       <div className="web-modal-body" ref={bodyRef} data-testid="message-list">
         <div className="w-day">{t('customer.chat.day_today')}</div>
         {messages.map((msg) => (
@@ -107,7 +128,11 @@ export function ChatModal({
         <div ref={endRef} />
       </div>
       <div className="web-modal-input">
-        <ChatInput onSend={onSend} disabled={disabled} />
+        <ChatInput
+          onSend={onSend}
+          disabled={disabled}
+          onMicClick={voiceState === 'idle' ? onVoiceStart : undefined}
+        />
       </div>
       {csatRequest && <CSATRating onSubmit={onCsatSubmit} />}
     </div>
