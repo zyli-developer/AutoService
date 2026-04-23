@@ -39,17 +39,20 @@ export class VoiceCallController {
     this.setState('preparing', 'user_start');
 
     try {
-      // 1. AudioContext (in user gesture — browser unlock)
+      // 1. AudioContext
+      console.debug('[voice] start step 1: AudioContext');
       this.audioCtx = new AudioContext({ sampleRate: 16000 });
       playback.createPlayer();
-      if ((this.state as VoiceState) !== 'preparing') return; // hangup raced
+      if ((this.state as VoiceState) !== 'preparing') return;
 
       // 2. getUserMedia
+      console.debug('[voice] start step 2: getUserMedia');
       try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
         });
-      } catch {
+      } catch (e) {
+        console.debug('[voice] start fail: mic_denied', e);
         await this._cleanup();
         this._setError('mic_denied');
         return;
@@ -58,6 +61,7 @@ export class VoiceCallController {
 
       // 3. ASR + TTS connect (handlers passed into connect() so gateway's
       //    immediate response frames can't race against an absent onmessage).
+      console.debug('[voice] start step 3: asr.connect');
       this.asr = new AsrClient();
       this.tts = new TtsClient();
       try {
@@ -72,12 +76,15 @@ export class VoiceCallController {
             if (this.state !== 'error') this._setError('asr_dropped');
           },
         });
-      } catch {
+      } catch (e) {
+        console.debug('[voice] start fail: asr_unreachable', e);
         await this._cleanup();
         this._setError('asr_unreachable');
         return;
       }
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
+
+      console.debug('[voice] start step 4: tts.connect');
       try {
         await this.tts.connect(this.opts.ttsUrl, {
           onAudio: pcm => playback.enqueue(pcm),
@@ -91,16 +98,19 @@ export class VoiceCallController {
             }
           },
         });
-      } catch {
+      } catch (e) {
+        console.debug('[voice] start fail: tts_unreachable', e);
         await this._cleanup();
         this._setError('tts_unreachable');
         return;
       }
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
 
-      // 4. AudioWorklet
+      // 5. AudioWorklet
+      console.debug('[voice] start step 5: audioWorklet.addModule');
       await this.audioCtx.audioWorklet.addModule('/pcm-processor.js');
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
+      console.debug('[voice] start step 6: wire worklet');
       const src = this.audioCtx.createMediaStreamSource(this.mediaStream);
       this.workletNode = new AudioWorkletNode(this.audioCtx, 'pcm-processor');
       this.workletNode.port.onmessage = (ev) => {
@@ -110,13 +120,20 @@ export class VoiceCallController {
       src.connect(this.workletNode);
 
       this.setState('listening', 'ready');
-    } catch {
+    } catch (e) {
+      console.debug('[voice] start fail (unknown):', e);
       await this._cleanup();
       this._setError('unknown');
     }
   }
 
-  private _onTtsDone(): void {
+  private async _onTtsDone(): Promise<void> {
+    // Gateway reports `done` the moment it finishes streaming bytes, but the
+    // browser's audio-playback still has several seconds of scheduled buffers.
+    // Wait until the audio actually finishes so the skip button stays visible
+    // and the user isn't told we're "listening" while the AI is still talking.
+    await playback.waitForPlaybackDone();
+
     if (this.state === 'speaking') {
       this.setState('listening', 'tts_done');
     } else if (this.state === 'thinking') {
@@ -197,6 +214,11 @@ export class VoiceCallController {
     try { this.workletNode?.disconnect(); } catch {}
     try { this.mediaStream?.getTracks().forEach(t => t.stop()); } catch {}
     try { playback.closePlayer(); } catch {}
+    // Close the mic-capture AudioContext too — it was leaking between calls,
+    // and on the next start() a new AudioContext would be created but the
+    // browser's audioWorklet.addModule sometimes behaved oddly with a stale
+    // context still holding the device.
+    try { await this.audioCtx?.close(); } catch {}
     this.asr = null; this.tts = null;
     this.mediaStream = null; this.audioCtx = null; this.workletNode = null;
     this.pendingCcReply = null;

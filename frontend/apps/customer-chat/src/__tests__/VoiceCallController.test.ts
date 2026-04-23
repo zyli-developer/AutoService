@@ -44,14 +44,14 @@ describe('VoiceCallController state machine', () => {
     expect(onSend).toHaveBeenCalledWith('hello');
   });
 
-  it('from thinking WITH comfort still playing, CC reply is queued until comfort done', () => {
+  it('from thinking WITH comfort still playing, CC reply is queued until comfort done', async () => {
     const c = makeController();
     c._testForceState('thinking');
     (c as any).comfortPlaying = true;
     c.onCcReply('reply from CC');
     expect(c.state).toBe('thinking'); // queued
-    (c as any)._onTtsDone();           // comfort finishes
-    expect(c.state).toBe('speaking');  // promoted
+    await (c as any)._onTtsDone();    // comfort finishes (awaits playback-done)
+    expect(c.state).toBe('speaking'); // promoted
   });
 
   it('from thinking WITH comfort already finished, CC reply is spoken immediately', () => {
@@ -62,12 +62,12 @@ describe('VoiceCallController state machine', () => {
     expect(c.state).toBe('speaking');
   });
 
-  it('comfort finishing with no queued CC reply stays in thinking', () => {
+  it('comfort finishing with no queued CC reply stays in thinking', async () => {
     const c = makeController();
     c._testForceState('thinking');
     (c as any).comfortPlaying = true;
-    (c as any)._onTtsDone();
-    expect(c.state).toBe('thinking');  // waits for onCcReply
+    await (c as any)._onTtsDone();
+    expect(c.state).toBe('thinking'); // waits for onCcReply
     expect((c as any).comfortPlaying).toBe(false);
   });
 

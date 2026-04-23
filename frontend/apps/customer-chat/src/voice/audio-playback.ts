@@ -72,3 +72,25 @@ export function closePlayer(): void {
   }
   gainNode = null;
 }
+
+/** Time (in AudioContext clock) at which the last scheduled chunk finishes playing.
+ * Returns 0 if nothing is scheduled or the context is closed. */
+export function playbackEndTime(): number {
+  return nextStartTime;
+}
+
+/** Current AudioContext playback time, or 0 if no context. */
+export function currentPlaybackTime(): number {
+  return audioCtx?.currentTime ?? 0;
+}
+
+/** Resolve once all scheduled audio has finished playing (or immediately if
+ * nothing is queued). Resolves instantly on clearPlayback since the schedule
+ * is reset. */
+export async function waitForPlaybackDone(): Promise<void> {
+  if (!audioCtx) return;
+  const remaining = nextStartTime - audioCtx.currentTime;
+  if (remaining <= 0) return;
+  // Small cushion (20ms) to ensure the AudioBufferSourceNode's onended has fired.
+  await new Promise((resolve) => setTimeout(resolve, remaining * 1000 + 20));
+}
