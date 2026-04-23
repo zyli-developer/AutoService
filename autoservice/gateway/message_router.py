@@ -24,6 +24,7 @@ from autoservice.conversation_engine import ConversationEngine
 from autoservice.conversation_engine.errors import ConversationNotFound
 from autoservice.conversation_engine.types import MessageVisibility, Participant, ParticipantRole
 from autoservice.lead_summary import parse_lead_summary
+from autoservice.preamble_stripper import parse_customer_preamble
 
 from .connection import build_frame
 from .errors import ERR_INTERNAL, ERR_NOT_FOUND, ERR_VALIDATION, make_error_payload
@@ -1683,6 +1684,34 @@ async def _generate_agent_reply(
                     conv_id, tenant_id, lead_result.intent,
                     extra={"lead_summary": lead_result.to_log_fields()},
                 )
+
+        # Meta-monologue side channel: some replies open with the model
+        # narrating its own role / system prompt / decision process
+        # ("作为 X 客服代理, 根据我的系统提示 ... 让我回应客户：") before the
+        # actual answer. Strip it and route to SIDE so operators/logs
+        # keep the audit trail without the customer seeing it.
+        if reply_text:
+            preamble, reply_text = parse_customer_preamble(reply_text)
+            if preamble is not None:
+                logger.info(
+                    "Meta preamble stripped: conv=%s role=%s len=%d",
+                    conv_id, target_role, len(preamble),
+                )
+                try:
+                    await engine.send_message(
+                        conv_id, source="triage",
+                        content=f"[元独白·已剥离] {preamble}",
+                        requested_visibility=MessageVisibility.SIDE,
+                        metadata={
+                            "type": "meta_preamble_stripped",
+                            "target_role": target_role,
+                        },
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to write meta_preamble_stripped SIDE for conv=%s",
+                        conv_id,
+                    )
 
         if not reply_text.strip():
             logger.warning("Agent reply: empty response from CC SDK")
