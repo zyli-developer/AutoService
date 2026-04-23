@@ -294,6 +294,14 @@ class PoolConfig(_BasePoolConfig):
     cli_path: str | None = None
     # Enable partial/delta streaming events for progressive UI updates.
     include_partial_messages: bool = False
+    #: When set, the customer pool's warmup factory pre-creates tenant-pinned
+    #: instances (with that tenant's soul + KB tool) and stamps them so the
+    #: first customer message doesn't trigger destroy+rebuild in
+    #: ``_recycle_instance_for_tenant``. Also triggers eager creation of the
+    #: triage sub-pool for this tenant at ``start()``, so the first triage
+    #: hop doesn't cold-spawn inside the 2s ``_TRIAGE_AGENT_TIMEOUT``. Leave
+    #: ``None`` for multi-tenant deploys where no single tenant dominates.
+    warmup_tenant_id: str | None = None
 
 
 def load_pool_config(cwd: str | None = None) -> PoolConfig:
@@ -330,7 +338,8 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
     _FLOAT_FIELDS = {"max_lifetime_seconds", "health_check_interval", "checkout_timeout",
                       "sticky_idle_timeout"}
     _STR_FIELDS = {"cwd", "permission_mode", "model", "cli_path",
-                    "fast_model", "slow_model", "dream_model"}
+                    "fast_model", "slow_model", "dream_model",
+                    "warmup_tenant_id"}
 
     for field_name in _INT_FIELDS | _FLOAT_FIELDS | _STR_FIELDS:
         env_key = f"CC_POOL_{field_name.upper()}"
@@ -617,6 +626,12 @@ class CCPool(AsyncPool[CCClient]):
         # sub-pool factories (lead/translate/triage/dream) to consult.
         # Mutating ``cfg.model`` here would clobber slow_model/fast_model/
         # dream_model resolution for those roles.
+        #
+        # ``warmup_tenant_id`` (when set) pre-pins warmup instances to one
+        # tenant's soul + KB tool so the first real customer message skips
+        # the destroy+rebuild path in ``_recycle_instance_for_tenant``. Left
+        # ``None`` → legacy behavior (neutral warmup, recycle on first use).
+        warmup_tid = cfg.warmup_tenant_id
         super().__init__(
             config=cfg,
             factory=lambda: create_cc_client(
@@ -624,8 +639,8 @@ class CCPool(AsyncPool[CCClient]):
                 mcp_servers=mcp_servers,
                 system_prompt=system_prompt,
                 role="customer",
-                tenant_id=None,
-                enable_kb_tool=False,
+                tenant_id=warmup_tid,
+                enable_kb_tool=(warmup_tid is not None),
             ),
             instance_prefix="cc",
             logger=log,
@@ -647,6 +662,48 @@ class CCPool(AsyncPool[CCClient]):
         #: sticky release (matches the old demo's `_sdk_ensure` policy,
         #: avoids model thrashing mid-conversation). Cleared on release.
         self._upgraded_sticky: set[str] = set()
+
+    async def _create_instance(self):  # type: ignore[override]
+        """Wrap the base create, then stamp ``_pool_tenant_id`` so
+        ``_recycle_instance_for_tenant`` treats warmup / on-demand
+        instances as already tenant-pinned when ``warmup_tenant_id`` is
+        set. Without this stamp the recycle helper sees ``_UNSET`` and
+        throws away the just-created subprocess on first use.
+        """
+        instance = await super()._create_instance()
+        warmup_tid = self._config.warmup_tenant_id  # type: ignore[attr-defined]
+        if warmup_tid is not None:
+            instance._pool_tenant_id = warmup_tid  # type: ignore[attr-defined]
+        return instance
+
+    async def start(self) -> None:  # type: ignore[override]
+        """Start the pool, then (when ``warmup_tenant_id`` is set) pre-open
+        the ``(triage, warmup_tenant_id)`` sub-pool with one warm instance
+        so the first dispatch doesn't cold-spawn inside the 2 s
+        ``_TRIAGE_AGENT_TIMEOUT``. Pre-warm failures are logged and
+        swallowed — the main pool still serves traffic, the triage hop
+        just pays the legacy cold-start on its first call.
+        """
+        await super().start()
+        warmup_tid = self._config.warmup_tenant_id  # type: ignore[attr-defined]
+        if warmup_tid is None:
+            return
+        try:
+            async with self._role_pool_lock:
+                key = ("triage", warmup_tid)
+                if key not in self._role_pools:
+                    sub_pool = await self._create_role_pool("triage", warmup_tid)
+                    self._role_pools[key] = sub_pool
+                    self._role_pool_last_used[key] = time.monotonic()
+                    if self._reaper_task is None or self._reaper_task.done():
+                        self._reaper_task = asyncio.create_task(
+                            self._reaper_loop(), name="cc-pool-role-reaper",
+                        )
+        except Exception:
+            log.exception(
+                "pre-warm triage sub-pool failed for tenant=%s — first "
+                "triage call will cold-spawn", warmup_tid,
+            )
 
     async def acquire_sticky(
         self, key: str, *, tenant_id: str | None = None,
@@ -950,8 +1007,17 @@ class CCPool(AsyncPool[CCClient]):
         # tier knobs supplied programmatically). It carries the unmutated
         # ``model`` field; tier resolution picks the right one for *role*.
         base = self._config
+        # warmup_count=1 so the first acquire against a freshly-opened
+        # sub-pool doesn't cold-spawn the subprocess inline — critical for
+        # triage, whose call site has a 2 s ``_TRIAGE_AGENT_TIMEOUT`` that
+        # was silently timing out on every first-use. Lead/translate get
+        # the same treatment for consistency (small pool, max_size==size
+        # caps the cost at one extra subprocess per role-tenant pair). The
+        # lazy-open path still exists (CCPool.start only pre-opens the
+        # known ``warmup_tenant_id`` triage sub-pool); this change just
+        # makes that lazy open useful instead of just reserving a slot.
         sub_cfg = replace(
-            base, min_size=0, max_size=size, warmup_count=0,
+            base, min_size=0, max_size=size, warmup_count=1,
             model=_resolve_model_for_role(base, role),
         )
 

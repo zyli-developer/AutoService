@@ -56,6 +56,15 @@ cc_pool:
   # slow_model: claude-sonnet-4-6
   # dream_model: claude-opus-4-7
 
+  # ─── 预热 tenant 绑定（单热租户部署的首问提速） ────────
+  # 设置后：
+  #   1) 主池 warmup_count 个实例都以此 tenant 的 soul + KB tool 预创建，
+  #      首条客户消息无需走 destroy+rebuild（~3s/新会话）。
+  #   2) CCPool.start() 同步预开 (triage, warmup_tenant_id) 子池并预热 1
+  #      个实例，首次 triage 分流不撞 2s 超时（~2s/租户首问）。
+  # 多租户部署留空（None）→ 沿用惰性创建 + 首用重建的旧行为。
+  # warmup_tenant_id: cinnox
+
 # ─── Takeover（接管/释放）配置 ─────────────────────────
 # Operator /hijack 后如何自动释放回 AI
 takeover:
