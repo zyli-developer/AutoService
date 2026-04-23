@@ -78,6 +78,31 @@ describe('VoiceCallController state machine', () => {
     expect(c.state).toBe('listening');
   });
 
+  it('speech_started while speaking: auto barge-in → listening', () => {
+    const c = makeController();
+    c._testForceState('speaking');
+    c._testOnAsrFrame({ type: 'speech_started' });
+    expect(c.state).toBe('listening');
+  });
+
+  it('speech_started while thinking: auto barge-in → listening, drops pending reply', () => {
+    const c = makeController();
+    c._testForceState('thinking');
+    (c as any).comfortPlaying = true;
+    (c as any).pendingCcReply = 'queued reply';
+    c._testOnAsrFrame({ type: 'speech_started' });
+    expect(c.state).toBe('listening');
+    expect((c as any).pendingCcReply).toBeNull();
+    expect((c as any).comfortPlaying).toBe(false);
+  });
+
+  it('speech_started while listening: no state change (already listening)', () => {
+    const c = makeController();
+    c._testForceState('listening');
+    c._testOnAsrFrame({ type: 'speech_started' });
+    expect(c.state).toBe('listening');
+  });
+
   it('hangup from any active state moves to ending then idle', () => {
     const c = makeController();
     c._testForceState('listening');

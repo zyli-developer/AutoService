@@ -231,6 +231,18 @@ export class VoiceCallController {
   _testOnAsrFrame(f: AsrFrame): void { this._onAsrFrame(f); }
 
   private _onAsrFrame(f: AsrFrame): void {
+    // Auto barge-in: if user starts talking while AI is speaking (or the
+    // comfort/reply pipeline is thinking), stop TTS immediately so they can
+    // interrupt without hunting for the skip button.
+    if (f.type === 'speech_started' && (this.state === 'speaking' || this.state === 'thinking')) {
+      this.tts?.abort();
+      playback.clearPlayback();
+      this.comfortPlaying = false;
+      this.pendingCcReply = null;
+      this.setState('listening', 'user_bargein');
+      return;
+    }
+
     if (f.type === 'final' && this.state === 'listening') {
       this.opts.onUserMessage(f.text);
       this.opts.onSendTextToChat(f.text);
