@@ -1553,10 +1553,11 @@ async def _generate_agent_reply(
                 )
             prompt = "\n".join(prompt_parts)
 
-        # Collect response. Placeholder-then-stream (strategy 1 + 3, design
-        # 2026-04-22): eligible roles get a "正在查询..." bubble if the model
-        # hasn't emitted a token within PLACEHOLDER_DELAY_S; fast-tier roles
-        # (translate) skip the timer entirely.
+        # Collect response. Placeholder-then-stream (designs 2026-04-22 + 2026-04-23):
+        # eligible roles get a soothe bubble if the model hasn't emitted a token
+        # within `_effective_placeholder_delay_s()` — 0s when SOOTHE_ENABLED,
+        # else PLACEHOLDER_DELAY_S (1.5s) as rollback baseline. Fast-tier roles
+        # (translate/direct) skip the timer entirely.
         reply_text = ""
         placeholder_msg: Any = None
         placeholder_eligible = target_role in PLACEHOLDER_ELIGIBLE_ROLES

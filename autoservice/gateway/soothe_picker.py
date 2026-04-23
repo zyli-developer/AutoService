@@ -138,17 +138,48 @@ def _load_known_intents() -> set[str]:
         return set()
 
 
+class _FallbackPicker:
+    """Returned when YAML load fails; always returns the pre-soothe
+    static placeholder. Cached as the singleton so the failure is
+    reported once (at startup) instead of once per request — honors
+    the "permanent static fallback" mitigation in spec §14.
+    """
+
+    #: Mirror the baseline constants from message_router. Duplicated
+    #: intentionally — importing them would create a cycle.
+    _STATIC_ZH = "正在为您查询，请稍候..."
+    _STATIC_EN = "Just a moment while I look into this..."
+
+    def pick(self, *, intent: str | None, lang: str | None) -> SoothePick:  # noqa: ARG002
+        if lang and lang.lower().startswith("en"):
+            return SoothePick(template_id="static_fallback", text=self._STATIC_EN)
+        return SoothePick(template_id="static_fallback", text=self._STATIC_ZH)
+
+
 def get_picker() -> SoothePicker:
     """Return the process-level singleton picker.
 
-    First call loads ``soothe_templates.yaml``; subsequent calls reuse
-    the same instance. Use ``monkeypatch.setattr(..., _singleton, None)``
-    in tests to force a fresh load.
+    First call loads ``soothe_templates.yaml``. On success, subsequent
+    calls reuse the loaded instance. On failure (missing file, malformed
+    YAML, validation error), caches a :class:`_FallbackPicker` instead —
+    spec §14 requires permanent static fallback rather than per-call
+    retry.
+
+    Use ``monkeypatch.setattr(..., _singleton, None)`` in tests to force
+    a fresh load.
     """
     global _singleton
     if _singleton is None:
-        _singleton = SoothePicker.from_yaml(
-            _DEFAULT_TEMPLATES_PATH,
-            known_intents=_load_known_intents(),
-        )
+        try:
+            _singleton = SoothePicker.from_yaml(
+                _DEFAULT_TEMPLATES_PATH,
+                known_intents=_load_known_intents(),
+            )
+        except Exception:
+            log.exception(
+                "soothe_templates.yaml failed to load at %s — "
+                "soothe disabled for this process (using static fallback)",
+                _DEFAULT_TEMPLATES_PATH,
+            )
+            _singleton = _FallbackPicker()  # type: ignore[assignment]
     return _singleton

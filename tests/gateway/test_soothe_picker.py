@@ -207,3 +207,38 @@ def test_get_picker_loads_default_yaml(monkeypatch, tmp_path):
     picker = sp.get_picker()
     pick = picker.pick(intent="complaint", lang="zh")
     assert pick.template_id == "complaint_zh"
+
+
+def test_get_picker_caches_fallback_on_missing_yaml(monkeypatch, tmp_path, caplog):
+    """When soothe_templates.yaml is missing, get_picker() caches a
+    _FallbackPicker so subsequent calls don't keep re-trying the load."""
+    import logging
+    from autoservice.gateway import soothe_picker as sp
+
+    missing = tmp_path / "does_not_exist.yaml"
+    monkeypatch.setattr(sp, "_DEFAULT_TEMPLATES_PATH", missing)
+    monkeypatch.setattr(sp, "_singleton", None)
+
+    with caplog.at_level(logging.ERROR, logger="autoservice.gateway.soothe"):
+        a = sp.get_picker()
+        b = sp.get_picker()
+    # Same fallback instance returned each call — not re-loaded.
+    assert a is b
+    assert isinstance(a, sp._FallbackPicker)
+    # Exactly one error log, not two.
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(error_records) == 1
+
+
+def test_fallback_picker_returns_static_text():
+    """_FallbackPicker returns the 2026-04-22 baseline static text
+    regardless of intent."""
+    from autoservice.gateway import soothe_picker as sp
+
+    fb = sp._FallbackPicker()
+    zh = fb.pick(intent="complaint", lang="zh")
+    en = fb.pick(intent="complaint", lang="en")
+    assert zh.template_id == "static_fallback"
+    assert zh.text == "正在为您查询，请稍候..."
+    assert en.template_id == "static_fallback"
+    assert en.text == "Just a moment while I look into this..."
