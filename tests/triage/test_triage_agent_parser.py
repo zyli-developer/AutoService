@@ -48,7 +48,10 @@ class _FakeTenantConfig:
 
 @pytest.mark.asyncio
 async def test_low_confidence_triggers_triage_agent_call(monkeypatch):
-    """When FastClassifier confidence < medium, triage agent is invoked."""
+    """When FastClassifier confidence < medium AND the agent flag is on,
+    triage agent is invoked. Default (flag off as of 2026-04-23) skips
+    the agent — see test_fastclassifier_coverage.py for that path."""
+    monkeypatch.setenv("TRIAGE_AGENT_ENABLED", "1")
     engine = LocalEngine()
     conv = await engine.create_conversation(channel="web", external_id="c-tri")
 
@@ -75,6 +78,7 @@ async def test_low_confidence_triggers_triage_agent_call(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_triage_agent_timeout_falls_back(monkeypatch):
+    monkeypatch.setenv("TRIAGE_AGENT_ENABLED", "1")
     engine = LocalEngine()
     conv = await engine.create_conversation(channel="web", external_id="c-tri2")
 

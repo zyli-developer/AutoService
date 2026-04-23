@@ -9,6 +9,7 @@ based on intent classification and confidence scoring.
 
 import asyncio
 import logging
+import os
 import re
 import yaml
 from pathlib import Path
@@ -17,6 +18,34 @@ from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 log = logging.getLogger("triage.router")
+
+
+def _triage_agent_enabled() -> bool:
+    """Gate the haiku-backed triage agent fallback.
+
+    When ``TRIAGE_AGENT_ENABLED`` is ``"0"`` / ``"false"`` / ``"no"`` (case-
+    insensitive), ``ModelRouter.route_message`` skips the ``await
+    _invoke_triage_agent`` branch entirely and uses the FastClassifier
+    result directly even when confidence is below the medium threshold.
+
+    Rationale (2026-04-23): with the current config the triage agent call
+    reliably hit the 2 s ``_TRIAGE_AGENT_TIMEOUT`` before haiku could
+    finish, so every low-confidence message paid 2 s of latency to end up
+    on the same fallback path FastClassifier already provided. Disabling
+    the call removes the 2 s waste; the cost is losing semantic
+    classification on messages whose keywords don't hit any intent
+    (they now always route to ``general_question`` → customer, which is
+    the same thing the agent soul prescribes for uncertain cases anyway).
+
+    Read each time so tests can ``monkeypatch.setenv`` without reloading
+    the module. The env var is evaluated per call — hot toggle is fine.
+
+    Default: **disabled** (``False``). Set ``TRIAGE_AGENT_ENABLED=1`` to
+    restore the legacy behavior (pay the 2 s budget, use agent when fast
+    classifier is uncertain).
+    """
+    raw = os.getenv("TRIAGE_AGENT_ENABLED", "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 _TRIAGE_OUTPUT_RE = re.compile(
@@ -441,6 +470,20 @@ class ModelRouter:
                 previous_role=previous_role,
                 direct_reply=fast.direct_reply,
                 tier=fast.model_tier.value,
+            )
+
+        # Fast classifier is uncertain. Either call the haiku triage agent
+        # for a semantic second opinion (legacy), or skip it and trust the
+        # fast result (default as of 2026-04-23 — see ``_triage_agent_enabled``
+        # docstring for the 2 s timeout rationale). When skipped, we reuse
+        # the same ``_triage_fallback`` shape the timeout/exception branches
+        # of ``_invoke_triage_agent`` would produce, so downstream
+        # (triage_dispatch SIDE message, conv metadata, tests) keeps the
+        # same envelope.
+        if not _triage_agent_enabled():
+            return self._triage_fallback(
+                message, fast, lang if lang != "unknown" else None,
+                previous_role,
             )
 
         return await self._invoke_triage_agent(

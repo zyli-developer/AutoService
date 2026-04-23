@@ -196,6 +196,26 @@ surface, so the production risk is strictly "wrong output" rather than
 "unauthenticated access". Still leave it unset in production — seed
 proposals would pollute real `proposals` tables.
 
+## Triage Agent Kill-Switch
+
+`TRIAGE_AGENT_ENABLED=1` re-enables the haiku-backed triage agent fallback
+that runs when FastClassifier confidence is below the medium threshold
+(`classify_intent.yaml::confidence.medium`, default 0.6). Default is
+**off** as of 2026-04-23 — with the current prompt + model config the
+call reliably hit `_TRIAGE_AGENT_TIMEOUT` (2 s) before haiku could
+finish, so every low-confidence message paid 2 s of latency to end up on
+the same fallback path FastClassifier already provided.
+
+When off, low-confidence messages route via `_triage_fallback` (same
+shape as the timeout branch produced before): intent, confidence, and
+routing taken directly from the FastClassifier output. Downstream SIDE
+`[分流]` messages carry `source: "fallback"`.
+
+Flip on if you extend the triage agent prompt (e.g. richer soul, tool
+use) AND bump `ModelRouter._TRIAGE_AGENT_TIMEOUT` to give haiku time to
+finish, so the call produces a real classification instead of always
+timing out. Gate: `autoservice/model_router.py::_triage_agent_enabled`.
+
 ## Credentials
 
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)
