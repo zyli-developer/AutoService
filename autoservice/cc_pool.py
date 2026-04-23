@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -298,10 +298,19 @@ class PoolConfig(_BasePoolConfig):
     #: instances (with that tenant's soul + KB tool) and stamps them so the
     #: first customer message doesn't trigger destroy+rebuild in
     #: ``_recycle_instance_for_tenant``. Also triggers eager creation of the
-    #: triage sub-pool for this tenant at ``start()``, so the first triage
-    #: hop doesn't cold-spawn inside the 2s ``_TRIAGE_AGENT_TIMEOUT``. Leave
-    #: ``None`` for multi-tenant deploys where no single tenant dominates.
+    #: sub-pools listed in ``warmup_roles`` for this tenant at ``start()``,
+    #: so the first dispatch to those roles doesn't pay the cold-spawn tax.
+    #: Leave ``None`` for multi-tenant deploys where no single tenant
+    #: dominates.
     warmup_tenant_id: str | None = None
+    #: Role sub-pools to eager-open at ``start()`` time when
+    #: ``warmup_tenant_id`` is set. Default ``["triage"]`` preserves the
+    #: prior behavior (only triage warmed). Add ``"lead"`` in
+    #: ``config.local.yaml`` to eliminate the ~3 s cold-start on the
+    #: first lead-routed customer message (observable in gateway.log
+    #: as ``Starting pool (min=0, max=2) ... Warmed instance
+    #: cc-lead-001`` showing up on first purchase-intent-routed turn).
+    warmup_roles: list[str] = field(default_factory=lambda: ["triage"])
 
 
 def load_pool_config(cwd: str | None = None) -> PoolConfig:
@@ -678,32 +687,38 @@ class CCPool(AsyncPool[CCClient]):
 
     async def start(self) -> None:  # type: ignore[override]
         """Start the pool, then (when ``warmup_tenant_id`` is set) pre-open
-        the ``(triage, warmup_tenant_id)`` sub-pool with one warm instance
-        so the first dispatch doesn't cold-spawn inside the 2 s
-        ``_TRIAGE_AGENT_TIMEOUT``. Pre-warm failures are logged and
-        swallowed — the main pool still serves traffic, the triage hop
-        just pays the legacy cold-start on its first call.
+        each sub-pool listed in ``warmup_roles`` with one warm instance
+        so the first dispatch to that role doesn't pay the ~3 s cold-spawn
+        cost. Default ``warmup_roles=["triage"]`` preserves prior behavior;
+        add ``"lead"`` in ``config.local.yaml`` when lead-routed messages
+        are on the hot path.
+
+        Pre-warm failures are logged per-role and swallowed — the main
+        pool still serves traffic; individual role hops just pay the
+        legacy cold-start on their first call.
         """
         await super().start()
         warmup_tid = self._config.warmup_tenant_id  # type: ignore[attr-defined]
         if warmup_tid is None:
             return
-        try:
-            async with self._role_pool_lock:
-                key = ("triage", warmup_tid)
-                if key not in self._role_pools:
-                    sub_pool = await self._create_role_pool("triage", warmup_tid)
-                    self._role_pools[key] = sub_pool
-                    self._role_pool_last_used[key] = time.monotonic()
-                    if self._reaper_task is None or self._reaper_task.done():
-                        self._reaper_task = asyncio.create_task(
-                            self._reaper_loop(), name="cc-pool-role-reaper",
-                        )
-        except Exception:
-            log.exception(
-                "pre-warm triage sub-pool failed for tenant=%s — first "
-                "triage call will cold-spawn", warmup_tid,
-            )
+        roles = self._config.warmup_roles  # type: ignore[attr-defined]
+        for role in roles:
+            try:
+                async with self._role_pool_lock:
+                    key = (role, warmup_tid)
+                    if key not in self._role_pools:
+                        sub_pool = await self._create_role_pool(role, warmup_tid)
+                        self._role_pools[key] = sub_pool
+                        self._role_pool_last_used[key] = time.monotonic()
+                        if self._reaper_task is None or self._reaper_task.done():
+                            self._reaper_task = asyncio.create_task(
+                                self._reaper_loop(), name="cc-pool-role-reaper",
+                            )
+            except Exception:
+                log.exception(
+                    "pre-warm %s sub-pool failed for tenant=%s — first "
+                    "%s call will cold-spawn", role, warmup_tid, role,
+                )
 
     async def acquire_sticky(
         self, key: str, *, tenant_id: str | None = None,
@@ -1410,11 +1425,18 @@ async def _make_tenant_instance(
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.
+        #
+        # KB tool eligibility: customer + lead both need ``kb_search``
+        # since lead qualifies against product / price / package details
+        # that live in tenant KB. triage / translate / direct remain
+        # tool-free (they don't touch tenant-specific content).
         client = await create_cc_client(
             cfg,
             role=role,
             tenant_id=tenant_id,
-            enable_kb_tool=(role == "customer" and tenant_id is not None),
+            enable_kb_tool=(
+                role in ("customer", "lead") and tenant_id is not None
+            ),
         )
     pool._instance_counter += 1  # noqa: SLF001
     instance_id = (
