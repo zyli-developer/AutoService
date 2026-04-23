@@ -548,6 +548,25 @@ async def create_cc_client(
         kb_server = build_kb_mcp_server(tenant_id)
         mcp_servers = {**(mcp_servers or {}), "autoservice_kb": kb_server}
 
+    # Dream-role clients get the dream tools (emit_proposal / kb_search /
+    # list_souls) as REAL MCP tools. Without this the CLI subprocess only
+    # sees the tool names as text in the prompt preamble and the model
+    # truthfully reports "tool not available" — no proposals ever land.
+    # Callers (tests, diag scripts) can override by passing a server under
+    # the same ``autoservice_dream_tools`` key in ``mcp_servers`` — we
+    # respect that and skip auto-wire.
+    if (
+        role == "dream"
+        and tenant_id
+        and (mcp_servers is None or "autoservice_dream_tools" not in mcp_servers)
+    ):
+        from autoservice.dream_tools_mcp import build_dream_tools_mcp_server
+        dream_server = build_dream_tools_mcp_server(tenant_id)
+        mcp_servers = {
+            **(mcp_servers or {}),
+            "autoservice_dream_tools": dream_server,
+        }
+
     options = ClaudeAgentOptions(
         cwd=cwd,
         setting_sources=None,
@@ -1415,12 +1434,23 @@ async def _make_tenant_instance(
     """
     cfg = pool._config  # noqa: SLF001
     if role == "dream":
+        # Pass ``role`` + ``tenant_id`` even though we also supply an
+        # explicit ``system_prompt``: create_cc_client uses the prompt
+        # verbatim (role-based soul lookup is short-circuited at line
+        # ``if system_prompt is None and role is not None``), but needs
+        # the role/tenant to wire the ``autoservice_dream_tools`` MCP
+        # server. Without this, emit_proposal / kb_search / list_souls
+        # are prompt-text-only and the model reports "tool not available".
         client = await create_cc_client(
-            cfg, system_prompt=_load_dream_soul(tenant_id),
+            cfg,
+            role="dream",
+            tenant_id=tenant_id,
+            system_prompt=_load_dream_soul(tenant_id),
         )
-        # T5S.14: the legacy dream-pool factory bypasses the ``role=``
-        # kwarg on create_cc_client (it supplies the system_prompt
-        # directly), so the dream-role flag must be stamped here too.
+        # Defensive: create_cc_client already stamps ``_dream_role`` when
+        # role=="dream", but we keep the explicit assignment as a belt-
+        # and-suspenders guard for any future refactor that drops the
+        # stamp.
         client._dream_role = True  # type: ignore[attr-defined]
     else:
         # customer + any future role: let create_cc_client resolve soul

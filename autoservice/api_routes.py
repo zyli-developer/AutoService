@@ -872,6 +872,13 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
              real cross-tenant LLM tool-loop (T4S.4b).
           3. per-tenant → ``dream_agent.run_dream`` with ``llm_send=None``
              → CC pool's ``call_with_tools`` surface (T5S.14 / T3B.5).
+
+        Row-count contract: exactly ONE ``dream_runs`` row per trigger.
+        We open ``run_id`` above; the agent entry (master or per-tenant)
+        reuses it via the ``run_id=`` kwarg instead of opening a second
+        one.  The dev-stub deliberately opens its own row (it's a
+        fixture, not a real run) so its behaviour matches DREAM_DEV_STUB
+        users' expectations.
         """
         agent_status = "completed"
         agent_error: str | None = None
@@ -891,6 +898,7 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
                     proposals_conn,
                     runs_conn,
                     max_tool_turns=10,
+                    run_id=run_id,
                 )
             else:
                 # Per-tenant default: run_dream acquires a dream-role CC
@@ -904,6 +912,7 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
                     proposals_conn,
                     runs_conn,
                     max_tool_turns=10,
+                    run_id=run_id,
                 )
         except Exception as exc:  # noqa: BLE001
             agent_status = "failed"
