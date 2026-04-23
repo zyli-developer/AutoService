@@ -123,11 +123,15 @@ class TestConstants:
 
 
 class TestPlaceholderText:
-    def test_chinese_default(self):
+    def test_chinese_default(self, monkeypatch):
+        import autoservice.gateway.message_router as mr
+        monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)
         assert "正在" in _placeholder_text(None)
         assert "正在" in _placeholder_text("zh")
 
-    def test_english_when_lang_starts_with_en(self):
+    def test_english_when_lang_starts_with_en(self, monkeypatch):
+        import autoservice.gateway.message_router as mr
+        monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)
         text = _placeholder_text("en")
         assert "正在" not in text
         # Loose assertion — exact wording may evolve, just ensure it's English.
@@ -435,3 +439,76 @@ async def test_throttle_suppresses_sub_threshold_deltas(
         if call.args[0].get("type") == "message_edited"
     ]
     assert edit_frames == []  # only the placeholder `message` frame fired
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — _placeholder_text with SoothePicker integration
+# ---------------------------------------------------------------------------
+
+def test_placeholder_text_with_known_intent_uses_picker(monkeypatch):
+    """When intent is known, _placeholder_text returns a soothe line,
+    not the static _PLACEHOLDER_TEXT_ZH."""
+    from autoservice.gateway import message_router as mr
+    from autoservice.gateway import soothe_picker as sp
+
+    # Stub picker to return a deterministic line
+    class _StubPicker:
+        def pick(self, *, intent, lang):
+            return sp.SoothePick(template_id="test_id", text="stubbed soothe")
+
+    monkeypatch.setattr(sp, "_singleton", _StubPicker())
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+
+    text = mr._placeholder_text(detected_language="zh", intent="complaint")
+    assert text == "stubbed soothe"
+
+
+def test_placeholder_text_picker_failure_falls_back_to_static(monkeypatch, caplog):
+    """If picker raises, _placeholder_text falls back to the static
+    Chinese/English constants — main flow never breaks on soothe errors."""
+    import logging
+    from autoservice.gateway import message_router as mr
+    from autoservice.gateway import soothe_picker as sp
+
+    class _BrokenPicker:
+        def pick(self, *, intent, lang):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(sp, "_singleton", _BrokenPicker())
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+
+    with caplog.at_level(logging.ERROR, logger="autoservice.gateway"):
+        text_zh = mr._placeholder_text(detected_language="zh", intent="complaint")
+        text_en = mr._placeholder_text(detected_language="en", intent="complaint")
+    assert text_zh == mr._PLACEHOLDER_TEXT_ZH
+    assert text_en == mr._PLACEHOLDER_TEXT_EN
+    assert any("soothe picker failed" in rec.message.lower() for rec in caplog.records)
+
+
+def test_placeholder_text_flag_off_uses_static(monkeypatch):
+    """With SOOTHE_ENABLED=False, static text is returned regardless of intent."""
+    from autoservice.gateway import message_router as mr
+
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)
+    assert mr._placeholder_text(detected_language="zh", intent="complaint") == mr._PLACEHOLDER_TEXT_ZH
+    assert mr._placeholder_text(detected_language="en", intent="complaint") == mr._PLACEHOLDER_TEXT_EN
+
+
+def test_placeholder_text_no_intent_still_works(monkeypatch):
+    """Legacy callers that don't pass intent still get a valid placeholder
+    (picker's fallback chain handles intent=None)."""
+    from autoservice.gateway import message_router as mr
+    from autoservice.gateway import soothe_picker as sp
+
+    class _StubPicker:
+        def pick(self, *, intent, lang):
+            return sp.SoothePick(
+                template_id=f"fallback_{lang}",
+                text="fallback stub",
+            )
+
+    monkeypatch.setattr(sp, "_singleton", _StubPicker())
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", True)
+
+    text = mr._placeholder_text(detected_language="zh")  # no intent kwarg
+    assert text == "fallback stub"

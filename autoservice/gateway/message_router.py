@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from typing import Any, TYPE_CHECKING
 
@@ -31,6 +32,7 @@ from .subscription_registry import (
     SubscriptionRegistry,
     generate_subscription_id,
 )
+from . import soothe_picker
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -814,17 +816,46 @@ STREAM_EDIT_MIN_DELTA_CHARS: int = 12
 _PLACEHOLDER_TEXT_ZH = "正在为您查询，请稍候..."
 _PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."
 
+#: Module-level kill-switch for the soothe placeholder feature. Read once
+#: at import (not per-request) for consistency. Setting
+#: SOOTHE_PLACEHOLDER_ENABLED=0 restores the 2026-04-22 baseline behavior:
+#: static text + 1.5s delay. See spec §10.
+SOOTHE_ENABLED: bool = os.getenv("SOOTHE_PLACEHOLDER_ENABLED", "1") != "0"
 
-def _placeholder_text(detected_language: str | None) -> str:
+
+def _placeholder_text(
+    detected_language: str | None,
+    intent: str | None = None,
+) -> str:
     """Localize the placeholder bubble.
 
-    Falls back to Chinese when language is unknown — most production
-    tenants serve Chinese by default, and a mismatched fallback is
-    cosmetically preferable to mixing languages mid-conversation.
+    When ``SOOTHE_ENABLED`` is true, delegates to
+    :func:`soothe_picker.get_picker` to return a context-aware line keyed
+    by ``(intent, lang)``. On any picker exception (or when the feature
+    flag is off), falls back to the static ``_PLACEHOLDER_TEXT_*``
+    constants — main reply pipeline must never break because of a soothe
+    lookup.
     """
-    if detected_language and detected_language.lower().startswith("en"):
-        return _PLACEHOLDER_TEXT_EN
-    return _PLACEHOLDER_TEXT_ZH
+    def _static() -> str:
+        if detected_language and detected_language.lower().startswith("en"):
+            return _PLACEHOLDER_TEXT_EN
+        return _PLACEHOLDER_TEXT_ZH
+
+    if not SOOTHE_ENABLED:
+        return _static()
+
+    try:
+        pick = soothe_picker.get_picker().pick(
+            intent=intent, lang=detected_language,
+        )
+        logger.info(
+            "soothe picked intent=%s lang=%s template_id=%s",
+            intent, detected_language, pick.template_id,
+        )
+        return pick.text
+    except Exception:
+        logger.exception("soothe picker failed — falling back to static text")
+        return _static()
 
 
 async def _drain_with_placeholder(
