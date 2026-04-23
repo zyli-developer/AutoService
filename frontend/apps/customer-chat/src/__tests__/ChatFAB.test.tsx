@@ -4,43 +4,32 @@ import userEvent from '@testing-library/user-event';
 import { ChatFAB } from '../components/ChatFAB';
 
 describe('ChatFAB', () => {
-  it('TC-022-001: clicking the voice FAB fires onCallClick and not onClick', async () => {
-    const user = userEvent.setup();
-    const onClick = vi.fn();
-    const onCallClick = vi.fn();
-    render(<ChatFAB onClick={onClick} onCallClick={onCallClick} />);
-
-    const voiceBtn = screen.getByTestId('voice-fab');
-    await user.click(voiceBtn);
-
-    expect(onCallClick).toHaveBeenCalledOnce();
-    expect(onClick).not.toHaveBeenCalled();
-  });
-
-  it('renders a real <button> (not a <div>) for the voice FAB', () => {
-    render(<ChatFAB onClick={vi.fn()} onCallClick={vi.fn()} />);
-    const voiceBtn = screen.getByTestId('voice-fab');
-    expect(voiceBtn.tagName).toBe('BUTTON');
-    expect(voiceBtn).toHaveAttribute('type', 'button');
-    expect(voiceBtn).toHaveAttribute('aria-label');
-  });
-
-  it('disables the voice FAB when onCallClick is not provided', () => {
+  it('renders a button with the customer.chat.open aria-label', () => {
     render(<ChatFAB onClick={vi.fn()} />);
-    const voiceBtn = screen.getByTestId('voice-fab');
-    expect(voiceBtn).toBeDisabled();
+    const btn = screen.getByRole('button', { name: /open chat|打开聊天/i });
+    expect(btn).toBeInTheDocument();
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn).toHaveAttribute('type', 'button');
+    expect(btn).toHaveAttribute('aria-label');
   });
 
-  it('chat FAB still fires onClick independently', async () => {
+  it('fires onClick when clicked', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
-    const onCallClick = vi.fn();
-    render(<ChatFAB onClick={onClick} onCallClick={onCallClick} />);
-
-    const chatBtn = screen.getByRole('button', { name: /open chat|打开聊天/i });
-    await user.click(chatBtn);
-
+    render(<ChatFAB onClick={onClick} />);
+    await user.click(screen.getByRole('button', { name: /open chat|打开聊天/i }));
     expect(onClick).toHaveBeenCalledOnce();
-    expect(onCallClick).not.toHaveBeenCalled();
+  });
+
+  it('adds the highlight class when highlight=true', () => {
+    render(<ChatFAB onClick={vi.fn()} highlight={true} />);
+    const btn = screen.getByRole('button', { name: /open chat|打开聊天/i });
+    expect(btn.className).toContain('highlight');
+  });
+
+  it('does not have the highlight class when highlight=false', () => {
+    render(<ChatFAB onClick={vi.fn()} highlight={false} />);
+    const btn = screen.getByRole('button', { name: /open chat|打开聊天/i });
+    expect(btn.className).not.toContain('highlight');
   });
 });
