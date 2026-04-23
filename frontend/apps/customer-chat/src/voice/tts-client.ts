@@ -24,7 +24,7 @@ export interface TtsClientEvents {
 export class TtsClient {
   private ws: WebSocket | null = null;
 
-  async connect(url: string): Promise<void> {
+  async connect(url: string, events: TtsClientEvents): Promise<void> {
     this.ws = new WebSocket(url);
     this.ws.binaryType = 'arraybuffer';
     await new Promise<void>((resolve, reject) => {
@@ -32,10 +32,8 @@ export class TtsClient {
       this.ws.onopen = () => resolve();
       this.ws.onerror = () => reject(new Error('tts ws connect failed'));
     });
-  }
-
-  listen(events: TtsClientEvents): void {
-    if (!this.ws) throw new Error('not connected');
+    // Install handlers immediately post-open so gateway's upstream-auth
+    // error frames aren't dropped by a racing absence of onmessage.
     this.ws.onmessage = (ev) => {
       if (typeof ev.data === 'string') {
         const frame = parseTtsFrame(ev.data);

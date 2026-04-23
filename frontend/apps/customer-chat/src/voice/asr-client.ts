@@ -35,18 +35,16 @@ export interface AsrClientEvents {
 export class AsrClient {
   private ws: WebSocket | null = null;
 
-  async connect(url: string): Promise<void> {
+  async connect(url: string, events: AsrClientEvents): Promise<void> {
     this.ws = new WebSocket(url);
     await new Promise<void>((resolve, reject) => {
       if (!this.ws) return reject(new Error('no ws'));
       this.ws.onopen = () => resolve();
       this.ws.onerror = () => reject(new Error('asr ws connect failed'));
     });
-    this.ws.send(JSON.stringify({ type: 'start' }));
-  }
-
-  listen(events: AsrClientEvents): void {
-    if (!this.ws) throw new Error('not connected');
+    // Install handlers BEFORE sending the start frame so the gateway's
+    // immediate response (e.g. error on upstream 401) isn't dropped by the
+    // racing absence of onmessage.
     this.ws.onmessage = (ev) => {
       if (typeof ev.data !== 'string') return;
       const frame = parseAsrFrame(ev.data);
@@ -54,6 +52,7 @@ export class AsrClient {
     };
     this.ws.onclose = () => events.onClose('closed');
     this.ws.onerror = () => events.onError('ws error');
+    this.ws.send(JSON.stringify({ type: 'start' }));
   }
 
   sendAudio(pcm: ArrayBuffer): void {

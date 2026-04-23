@@ -55,11 +55,22 @@ export class VoiceCallController {
       }
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
 
-      // 3. ASR + TTS connect
+      // 3. ASR + TTS connect (handlers passed into connect() so gateway's
+      //    immediate response frames can't race against an absent onmessage).
       this.asr = new AsrClient();
       this.tts = new TtsClient();
       try {
-        await this.asr.connect(this.opts.asrUrl);
+        await this.asr.connect(this.opts.asrUrl, {
+          onFrame: f => this._onAsrFrame(f),
+          onClose: () => {
+            if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
+              this._setError('asr_dropped');
+            }
+          },
+          onError: () => {
+            if (this.state !== 'error') this._setError('asr_dropped');
+          },
+        });
       } catch {
         await this._cleanup();
         this._setError('asr_unreachable');
@@ -67,38 +78,24 @@ export class VoiceCallController {
       }
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
       try {
-        await this.tts.connect(this.opts.ttsUrl);
+        await this.tts.connect(this.opts.ttsUrl, {
+          onAudio: pcm => playback.enqueue(pcm),
+          onDone: () => this._onTtsDone(),
+          onError: () => {
+            if (this.state !== 'error') this._setError('tts_dropped');
+          },
+          onClose: () => {
+            if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
+              this._setError('tts_dropped');
+            }
+          },
+        });
       } catch {
         await this._cleanup();
         this._setError('tts_unreachable');
         return;
       }
       if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
-
-      // Wire listeners only after successful connects
-      this.asr.listen({
-        onFrame: f => this._onAsrFrame(f),
-        onClose: () => {
-          if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
-            this._setError('asr_dropped');
-          }
-        },
-        onError: () => {
-          if (this.state !== 'error') this._setError('asr_dropped');
-        },
-      });
-      this.tts.listen({
-        onAudio: pcm => playback.enqueue(pcm),
-        onDone: () => this._onTtsDone(),
-        onError: () => {
-          if (this.state !== 'error') this._setError('tts_dropped');
-        },
-        onClose: () => {
-          if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
-            this._setError('tts_dropped');
-          }
-        },
-      });
 
       // 4. AudioWorklet
       await this.audioCtx.audioWorklet.addModule('/pcm-processor.js');
