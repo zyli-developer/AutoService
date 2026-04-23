@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { MarkdownText } from '@autoservice/ui-components';
 import { useOperatorStore, type CopilotMessage } from '../store/operatorStore';
 import type { Envelope } from '@autoservice/ws-client';
 import { TakeoverWarning } from './TakeoverWarning';
@@ -131,7 +133,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
             <span className="op-msg-tag">cust</span>
             <span className="op-msg-time">{msg.ts}</span>
           </div>
-          <div className="op-msg-text">{msg.text}</div>
+          <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
         </div>
       </div>
     );
@@ -152,7 +154,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
               <span className="op-msg-tag op">driver</span>
               <span className="op-msg-time">{msg.ts}</span>
             </div>
-            <div className="op-msg-text">{msg.text}</div>
+            <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
           </div>
         </div>
       );
@@ -166,7 +168,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
             <span className="op-msg-tag side">{t('operator.chat.tag.suggestion')}</span>
             <span className="op-msg-time">{msg.ts}</span>
           </div>
-          <div className="op-msg-text">{msg.text}</div>
+          <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
         </div>
       </div>
     );
@@ -181,7 +183,7 @@ function StreamMessage({ msg }: { msg: CopilotMessage }) {
           <span className="op-msg-tag">{isSide ? 'side' : 'auto'}</span>
           <span className="op-msg-time">{msg.ts}</span>
         </div>
-        <div className="op-msg-text">{msg.text}</div>
+        <MarkdownText className="op-msg-text">{msg.text}</MarkdownText>
       </div>
     </div>
   );
@@ -272,9 +274,32 @@ export function CopilotView({
   const conversations = useOperatorStore((s) => s.conversations);
   const closeCopilot = useOperatorStore((s) => s.closeCopilot);
 
+  // Sort by ts so SIDE / live / history-fetched frames interleave correctly.
+  // Receive order isn't enough: history snapshots arrive after live frames
+  // even when their timestamps are earlier, which causes [分流] SIDE summaries
+  // to render below the placeholder reply they should precede.
+  // Computed before the early-return so the hooks below run unconditionally
+  // (rules of hooks — order must be stable across renders).
+  const allMessages: CopilotMessage[] = activeCopilotConvId
+    ? [...(copilotMessages[activeCopilotConvId] ?? [])]
+        .sort((a, b) => (a.ts ?? '').localeCompare(b.ts ?? ''))
+    : [];
+
+  // Auto-scroll the stream container to the bottom whenever a new message
+  // arrives OR the last message grows (progressive streaming edits). Re-runs
+  // on length change and last-message text length so token-level fill-in
+  // keeps the latest content visible without manual scrolling.
+  const streamRef = useRef<HTMLDivElement>(null);
+  const lastMessageLen = allMessages.length > 0
+    ? (allMessages[allMessages.length - 1]?.text?.length ?? 0)
+    : 0;
+  useEffect(() => {
+    const el = streamRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [allMessages.length, lastMessageLen, activeCopilotConvId]);
+
   if (!activeCopilotConvId) return null;
 
-  const allMessages: CopilotMessage[] = copilotMessages[activeCopilotConvId] ?? [];
   const conv = conversations[activeCopilotConvId];
   const isTakeover = conv?.mode === 'takeover';
 
@@ -298,7 +323,7 @@ export function CopilotView({
             <span>{t('operator.stream.lbl')}</span>
             <b>{t('operator.stream.msg_count', { count: allMessages.length })}</b>
           </div>
-          <div className="op-stream">
+          <div className="op-stream" ref={streamRef}>
             {allMessages.length === 0 && (
               <div className="im-empty" style={{ padding: '40px 0' }}>
                 {t('operator.stream.waiting')}

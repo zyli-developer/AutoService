@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../store/adminStore';
 import { fetchJSON, postJSON } from '../api';
+import { CanaryPanel } from './dream/canary-panel';
 
 interface DreamStatus {
   tenant_id: string;
@@ -47,25 +48,25 @@ interface TenantEntry {
 }
 
 const REASON_CODE_STYLE: Record<string, { label: string; bg: string; color: string }> = {
-  idle: { label: 'idle', bg: '#e6f4ea', color: '#137333' },
-  scheduled_hit: { label: 'scheduled_hit', bg: '#e6f4ea', color: '#137333' },
-  already_running: { label: 'running', bg: '#fef7e0', color: '#b06000' },
-  cool_down_active: { label: 'cool_down', bg: '#fef7e0', color: '#b06000' },
-  not_idle: { label: 'not_idle', bg: '#fef7e0', color: '#b06000' },
-  scheduled_miss: { label: 'scheduled_miss', bg: '#fef7e0', color: '#b06000' },
-  never_active: { label: 'never_active', bg: '#f1f3f4', color: '#5f6368' },
-  manual_only: { label: 'manual_only', bg: '#f1f3f4', color: '#5f6368' },
-  coverage_disabled: { label: 'disabled', bg: '#f1f3f4', color: '#5f6368' },
-  insufficient_signal: { label: 'insufficient_signal', bg: '#f1f3f4', color: '#5f6368' },
-  unknown_trigger: { label: 'unknown', bg: '#fce8e6', color: '#c5221f' },
+  idle: { label: 'idle', bg: 'var(--color-accent-subtle)', color: 'var(--color-accent-text)' },
+  scheduled_hit: { label: 'scheduled_hit', bg: 'var(--color-accent-subtle)', color: 'var(--color-accent-text)' },
+  already_running: { label: 'running', bg: 'var(--color-premium-subtle)', color: 'var(--color-premium-text)' },
+  cool_down_active: { label: 'cool_down', bg: 'var(--color-premium-subtle)', color: 'var(--color-premium-text)' },
+  not_idle: { label: 'not_idle', bg: 'var(--color-premium-subtle)', color: 'var(--color-premium-text)' },
+  scheduled_miss: { label: 'scheduled_miss', bg: 'var(--color-premium-subtle)', color: 'var(--color-premium-text)' },
+  never_active: { label: 'never_active', bg: 'var(--color-bg-surface-tinted)', color: 'var(--color-text-muted)' },
+  manual_only: { label: 'manual_only', bg: 'var(--color-bg-surface-tinted)', color: 'var(--color-text-muted)' },
+  coverage_disabled: { label: 'disabled', bg: 'var(--color-bg-surface-tinted)', color: 'var(--color-text-muted)' },
+  insufficient_signal: { label: 'insufficient_signal', bg: 'var(--color-bg-surface-tinted)', color: 'var(--color-text-muted)' },
+  unknown_trigger: { label: 'unknown', bg: 'var(--color-danger-subtle)', color: 'var(--color-danger-text)' },
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: '#5f6368',
-  accepted: '#1a73e8',
-  applied: '#137333',
-  rejected: '#c5221f',
-  blocked: '#b06000',
+  draft: 'var(--color-text-muted)',
+  accepted: 'var(--color-primary)',
+  applied: 'var(--color-accent-text)',
+  rejected: 'var(--color-danger)',
+  blocked: 'var(--color-premium-text)',
 };
 
 function formatTs(ts: string | null | undefined): string {
@@ -93,7 +94,7 @@ export function DreamTab() {
   const [runs, setRuns] = useState<DreamRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState(false);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Load the tenant list once on mount.  Prefer the store's tenant if it
@@ -165,49 +166,29 @@ export function DreamTab() {
     }
   };
 
-  const handleApply = async (proposalId: string) => {
-    setApplyingId(proposalId);
-    setErrorMsg(null);
-    try {
-      await postJSON<unknown>(`/api/admin/proposals/${proposalId}/apply`);
-      load();
-    } catch (e) {
-      setErrorMsg(t('admin.dream.error.apply_failed', { id: proposalId }));
-    } finally {
-      setApplyingId(null);
-    }
-  };
-
   const reasonBadge = status
     ? REASON_CODE_STYLE[status.reason_code] || {
         label: status.reason_code,
-        bg: '#f1f3f4',
-        color: '#5f6368',
+        bg: 'var(--color-bg-surface-tinted)',
+        color: 'var(--color-text-muted)',
       }
     : null;
 
   const pending = proposals.filter((p) => p.status === 'draft' || p.status === 'accepted');
   const recentApplied = proposals.filter((p) => p.status === 'applied').slice(0, 5);
+  const selectedProposal =
+    pending.find((p) => p.id === selectedProposalId) ?? null;
 
   return (
-    <div data-testid="tab-dream" style={{ padding: '0 4px' }}>
+    <div data-testid="tab-dream">
       {/* ── Status Card ───────────────────────────────────────────── */}
-      <section
-        data-testid="dream-status-card"
-        style={{
-          border: '1px solid var(--l500)',
-          borderRadius: 8,
-          padding: 16,
-          marginBottom: 20,
-          background: 'var(--m50)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+      <section className="cs-card" data-testid="dream-status-card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 12 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+            <div className="cs-ct" style={{ marginBottom: 6 }}>
               {t('admin.dream.status.title')}
-            </h3>
-            <div style={{ fontSize: 12, color: 'var(--m600)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <label htmlFor="dream-tenant-select">{t('admin.dream.status.tenant_label')}:</label>
               <select
                 id="dream-tenant-select"
@@ -216,11 +197,12 @@ export function DreamTab() {
                 onChange={(e) => setSelectedTenant(e.target.value)}
                 style={{
                   padding: '3px 8px',
-                  borderRadius: 4,
-                  border: '1px solid var(--l500)',
-                  background: '#fff',
+                  borderRadius: 'var(--radius-sm, 4px)',
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-bg-surface)',
+                  color: 'var(--color-text)',
                   fontSize: 12,
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   minWidth: 180,
                 }}
               >
@@ -254,7 +236,7 @@ export function DreamTab() {
         {status && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--m600)', textTransform: 'uppercase', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 4, letterSpacing: '0.05em' }}>
                 {t('admin.dream.status.running_label')}
               </div>
               <div style={{ fontSize: 14, fontWeight: 500 }} data-testid="dream-status-running">
@@ -262,7 +244,7 @@ export function DreamTab() {
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--m600)', textTransform: 'uppercase', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 4, letterSpacing: '0.05em' }}>
                 {t('admin.dream.status.reason_label')}
               </div>
               {reasonBadge && (
@@ -271,7 +253,7 @@ export function DreamTab() {
                   style={{
                     display: 'inline-block',
                     padding: '2px 8px',
-                    borderRadius: 4,
+                    borderRadius: 'var(--radius-sm, 4px)',
                     background: reasonBadge.bg,
                     color: reasonBadge.color,
                     fontSize: 13,
@@ -283,24 +265,24 @@ export function DreamTab() {
               )}
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--m600)', textTransform: 'uppercase', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 4, letterSpacing: '0.05em' }}>
                 {t('admin.dream.status.last_run_label')}
               </div>
               <div style={{ fontSize: 13 }} data-testid="dream-last-run">
                 {status.last_run_summary ? (
                   <>
                     <div style={{ fontWeight: 500 }}>{status.last_run_summary.status}</div>
-                    <div style={{ color: 'var(--m600)', fontSize: 11 }}>
+                    <div style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>
                       {formatTs(status.last_run_summary.started_at)}
                     </div>
                   </>
                 ) : (
-                  <span style={{ color: 'var(--m500)' }}>—</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>—</span>
                 )}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--m600)', textTransform: 'uppercase', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 4, letterSpacing: '0.05em' }}>
                 {t('admin.dream.status.next_eligible_label')}
               </div>
               <div style={{ fontSize: 13 }}>{formatTs(status.next_eligible_at)}</div>
@@ -313,27 +295,27 @@ export function DreamTab() {
         <div
           role="alert"
           data-testid="dream-error"
-          style={{
-            padding: 10,
-            marginBottom: 16,
-            background: '#fce8e6',
-            color: '#c5221f',
-            borderRadius: 6,
-            fontSize: 13,
-          }}
+          className="adm-chat-widget-alert"
+          style={{ marginBottom: 16 }}
         >
-          {errorMsg}
+          ⚠ {errorMsg}
         </div>
       )}
 
       {/* ── Pending Proposals ─────────────────────────────────────── */}
+      {/* CanaryPanel mounts inline as an accordion row directly under the
+          clicked proposal row — keeps the visual tie between selection
+          and panel, no scroll-away on rows at the bottom of the table.
+          When an action transitions the proposal out of pending
+          (applied/rejected), `pending.find(...)` returns undefined on
+          the next render and the expanded row unmounts naturally. */}
       <section data-testid="dream-proposals-section" style={{ marginBottom: 24 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 12px 0' }}>
+        <div className="cs-ct" style={{ marginBottom: 12 }}>
           {t('admin.dream.proposals.title')}
-          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--m600)' }}>
+          <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
             ({pending.length})
           </span>
-        </h3>
+        </div>
         {pending.length === 0 ? (
           <div className="im-empty">{t('admin.dream.proposals.empty')}</div>
         ) : (
@@ -343,65 +325,92 @@ export function DreamTab() {
               width: '100%',
               borderCollapse: 'collapse',
               fontSize: 13,
-              border: '1px solid var(--l500)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md, 6px)',
+              overflow: 'hidden',
             }}
           >
             <thead>
-              <tr style={{ background: 'var(--m50)', borderBottom: '1px solid var(--l500)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 10px' }}>{t('admin.dream.col.created')}</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px' }}>{t('admin.dream.col.category')}</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px' }}>{t('admin.dream.col.title')}</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px' }}>{t('admin.dream.col.status')}</th>
-                <th style={{ textAlign: 'right', padding: '8px 10px' }}>{t('admin.dream.col.actions')}</th>
+              <tr style={{ background: 'var(--color-bg-surface-tinted)', borderBottom: '1px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.created')}</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.category')}</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.title')}</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.status')}</th>
               </tr>
             </thead>
             <tbody>
-              {pending.map((p) => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--l500)' }}>
-                  <td style={{ padding: '8px 10px', color: 'var(--m600)', whiteSpace: 'nowrap' }}>
-                    {formatTs(p.created_at)}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <code style={{ fontSize: 11 }}>{p.category}</code>
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <div style={{ fontWeight: 500 }}>{p.title}</div>
-                    {p.suggestion && (
-                      <div style={{ fontSize: 11, color: 'var(--m600)', marginTop: 2 }}>
-                        {p.suggestion.slice(0, 120)}
-                        {p.suggestion.length > 120 ? '…' : ''}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span
+              {pending.map((p) => {
+                const isSelected = p.id === selectedProposalId;
+                const rowBg = isSelected
+                  ? 'var(--color-accent-subtle, var(--color-bg-surface-tinted))'
+                  : undefined;
+                return (
+                  <Fragment key={p.id}>
+                    <tr
+                      data-testid={`dream-proposal-row-${p.id}`}
+                      onClick={() =>
+                        setSelectedProposalId(isSelected ? null : p.id)
+                      }
                       style={{
-                        color: STATUS_COLOR[p.status] || 'var(--m600)',
-                        fontWeight: 500,
+                        borderBottom: isSelected
+                          ? 'none'
+                          : '1px solid var(--color-border-subtle, var(--color-border))',
+                        cursor: 'pointer',
+                        background: rowBg,
                       }}
                     >
-                      {p.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="cs-btn ok"
-                      onClick={() => handleApply(p.id)}
-                      disabled={applyingId === p.id || p.status === 'draft'}
-                      data-testid={`dream-apply-${p.id}`}
-                      title={
-                        p.status === 'draft'
-                          ? t('admin.dream.apply.requires_accepted')
-                          : t('admin.dream.apply.cta')
-                      }
-                      style={{ opacity: applyingId === p.id || p.status === 'draft' ? 0.5 : 1 }}
-                    >
-                      {applyingId === p.id ? '…' : t('admin.dream.apply.cta')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                        {formatTs(p.created_at)}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <code style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{p.category}</code>
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ fontWeight: 500 }}>{p.title}</div>
+                        {p.suggestion && (
+                          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                            {p.suggestion.slice(0, 120)}
+                            {p.suggestion.length > 120 ? '…' : ''}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span
+                          style={{
+                            color: STATUS_COLOR[p.status] || 'var(--color-text-secondary)',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                    {isSelected && selectedProposal && (
+                      <tr
+                        data-testid={`dream-proposal-expansion-${p.id}`}
+                        style={{
+                          background: rowBg,
+                          borderBottom: '1px solid var(--color-border-subtle, var(--color-border))',
+                        }}
+                      >
+                        <td colSpan={4} style={{ padding: '0 10px 10px' }}>
+                          <CanaryPanel
+                            key={selectedProposal.id}
+                            proposal={{
+                              id: selectedProposal.id,
+                              title: selectedProposal.title,
+                              category: selectedProposal.category,
+                              status: selectedProposal.status,
+                              suggestion: selectedProposal.suggestion,
+                            }}
+                            onReload={load}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -410,24 +419,15 @@ export function DreamTab() {
       {/* ── Recently Applied ──────────────────────────────────────── */}
       {recentApplied.length > 0 && (
         <section data-testid="dream-applied-section" style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 12px 0' }}>
+          <div className="cs-ct" style={{ marginBottom: 12 }}>
             {t('admin.dream.applied.title')}
-          </h3>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {recentApplied.map((p) => (
-              <li
-                key={p.id}
-                style={{
-                  padding: '8px 10px',
-                  borderLeft: '3px solid #137333',
-                  background: 'var(--m50)',
-                  marginBottom: 6,
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ fontWeight: 500 }}>{p.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--m600)' }}>
-                  <code>{p.category}</code> · {formatTs(p.created_at)}
+              <li key={p.id} className="im-block highlight" style={{ marginTop: 0 }}>
+                <div className="im-block-title">{p.title}</div>
+                <div className="im-block-meta">
+                  <code style={{ fontFamily: 'var(--font-mono)' }}>{p.category}</code> · {formatTs(p.created_at)}
                 </div>
               </li>
             ))}
@@ -437,9 +437,9 @@ export function DreamTab() {
 
       {/* ── Recent Runs ───────────────────────────────────────────── */}
       <section data-testid="dream-runs-section">
-        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 12px 0' }}>
+        <div className="cs-ct" style={{ marginBottom: 12 }}>
           {t('admin.dream.runs.title')}
-        </h3>
+        </div>
         {runs.length === 0 ? (
           <div className="im-empty">{t('admin.dream.runs.empty')}</div>
         ) : (
@@ -448,31 +448,33 @@ export function DreamTab() {
               width: '100%',
               borderCollapse: 'collapse',
               fontSize: 12,
-              border: '1px solid var(--l500)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md, 6px)',
+              overflow: 'hidden',
             }}
           >
             <thead>
-              <tr style={{ background: 'var(--m50)', borderBottom: '1px solid var(--l500)' }}>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('admin.dream.col.started')}</th>
-                <th style={{ textAlign: 'left', padding: '6px 10px' }}>{t('admin.dream.col.status')}</th>
-                <th style={{ textAlign: 'right', padding: '6px 10px' }}>{t('admin.dream.col.tokens')}</th>
+              <tr style={{ background: 'var(--color-bg-surface-tinted)', borderBottom: '1px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.started')}</th>
+                <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.status')}</th>
+                <th style={{ textAlign: 'right', padding: '6px 10px', fontWeight: 500, color: 'var(--color-text-secondary)' }}>{t('admin.dream.col.tokens')}</th>
               </tr>
             </thead>
             <tbody>
               {runs.map((r) => (
-                <tr key={r.id} style={{ borderBottom: '1px solid var(--l500)' }}>
-                  <td style={{ padding: '6px 10px', color: 'var(--m600)', whiteSpace: 'nowrap' }}>
+                <tr key={r.id} style={{ borderBottom: '1px solid var(--color-border-subtle, var(--color-border))' }}>
+                  <td style={{ padding: '6px 10px', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                     {formatTs(r.started_at)}
                   </td>
                   <td style={{ padding: '6px 10px' }}>
-                    <span style={{ color: STATUS_COLOR[r.status] || 'var(--m600)', fontWeight: 500 }}>
+                    <span style={{ color: STATUS_COLOR[r.status] || 'var(--color-text-secondary)', fontWeight: 500 }}>
                       {r.status}
                     </span>
                     {r.error && (
-                      <div style={{ fontSize: 10, color: '#c5221f' }}>{r.error.slice(0, 80)}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-danger)' }}>{r.error.slice(0, 80)}</div>
                     )}
                   </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--m600)' }}>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>
                     {r.tokens_in ?? 0} / {r.tokens_out ?? 0}
                   </td>
                 </tr>

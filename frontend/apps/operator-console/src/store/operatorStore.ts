@@ -161,9 +161,8 @@ export const useOperatorStore = create<OperatorState>((set) => ({
       unreadCounts: { ...state.unreadCounts, [squadId]: 0 },
     })),
 
-  openCopilot: (convId) => set((state) => ({
+  openCopilot: (convId) => set(() => ({
     activeCopilotConvId: convId,
-    copilotMessages: { ...state.copilotMessages, [convId]: [] },
   })),
 
   closeCopilot: () => set({ activeCopilotConvId: null }),

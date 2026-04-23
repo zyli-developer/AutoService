@@ -39,6 +39,12 @@ interface ChatState {
   lastSeenCursor: LastSeenCursor;
   csatRequest: CsatRequest | null;
   csatSubmitted: boolean;
+  /**
+   * Tenant-scoped brand name from the server_hello handshake.  Null when
+   * the tenant has no brand configured; consumers fall back to i18n
+   * defaults ("客服" / "Support") in that case.
+   */
+  brandName: string | null;
   // Actions
   addMessage: (msg: ChatMessage) => void;
   addMessageDedup: (msg: ChatMessage) => void;
@@ -54,6 +60,7 @@ interface ChatState {
   updateCursor: (cursor: LastSeenCursor) => void;
   setCsatRequest: (req: CsatRequest) => void;
   setCsatSubmitted: () => void;
+  setBrandName: (v: string | null) => void;
 }
 
 export const initialState: Omit<
@@ -72,6 +79,7 @@ export const initialState: Omit<
   | 'updateCursor'
   | 'setCsatRequest'
   | 'setCsatSubmitted'
+  | 'setBrandName'
 > = {
   connectionStatus: 'idle',
   sessionId: null,
@@ -83,6 +91,7 @@ export const initialState: Omit<
   lastSeenCursor: {},
   csatRequest: null,
   csatSubmitted: false,
+  brandName: null,
 };
 
 export const useChatStore = create<ChatState>()((set) => ({
@@ -151,4 +160,6 @@ export const useChatStore = create<ChatState>()((set) => ({
   setCsatRequest: (req) => set({ csatRequest: req, csatSubmitted: false }),
 
   setCsatSubmitted: () => set({ csatRequest: null, csatSubmitted: true }),
+
+  setBrandName: (v) => set({ brandName: v && v.trim().length > 0 ? v : null }),
 }));

@@ -179,9 +179,12 @@ def test_tc017_customer_message_auto_creates_conversation(local_engine_client):
     """TC-017: customer_message with unknown conv auto-creates conversation → ack + message."""
     with local_engine_client.websocket_connect("/ws/customer") as ws:
         handshake(ws, viewer_role_expected="customer")
+        # Content avoids greeting/thanks/bye keywords — those trigger a
+        # triage direct-reply `message` frame that would race the
+        # message_confirm assertion below.
         frame = make_frame(
             "customer_message",
-            {"conversation_id": "nonexistent-conv", "content": "hi"},
+            {"conversation_id": "nonexistent-conv", "content": "一个问题"},
         )
         ws.send_json(frame)
         ack = ws.receive_json()

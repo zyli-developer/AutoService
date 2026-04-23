@@ -1,0 +1,212 @@
+meta:
+  project: "AutoService"
+  milestone: "M3.5"
+  milestone_name: "Dream engine first (LLM real-wire + canary UI), Playwright/UI deferred"
+  generated_at: "2026-04-22"
+  revised_at: "2026-04-22"
+  revision_note: |
+    User pivot 2026-04-22: focus M3.5 on Dream engine only. Playwright suites
+    (T5S.1-T5S.5) and non-Dream UI (T5S.6/7/8/10/11) dropped from active scope
+    and moved to "Deferred — Phase 2" below. M3.5 gate redefined as Dream-only
+    acceptance; Playwright gate split to a later mini-sprint.
+  plans_dir: "docs/plans/m3.5"
+  target_tag: "v1.2.1-dream"   # was v1.2.1-ui — retargeted to Dream-first cut
+  source_tasks: "docs/plans/m3.5/2026-04-22-tasks.yaml"
+  parallel_capacity: 2
+  working_dir_baseline: "dev-a branch (no worktree)"
+  prompt_templates: "docs/plans/cc-prompt-templates.md"
+  playbook: "docs/plans/collaboration-playbook.md"
+
+# ─────────────────────────────────────────────────────────────
+# Active scope (Dream only)
+# ─────────────────────────────────────────────────────────────
+active_scope:
+  tasks:
+    - T5S.14   # D5 — Dream LLM real-wire (backend)
+    - T5S.12   # D2/U4 — Canary panel + Apply button (Dream UI)
+    # T5S.13 (D3) stays scope-tagged Dream but is blocked_by T3S.7-hotfix
+    # and enumerated in the "still blocked" list.
+  tasks_still_blocked:
+    - T5S.13   # D3 im-block renderer — waits on external T3S.7-hotfix
+  rationale: |
+    D5 is the actual Dream capability — without it, the engine never speaks to
+    an LLM in production. D2 wraps the only user-visible output of D5 (the
+    approved-then-canary proposal flow). Doing these two in sequence gives the
+    smallest vertical slice that lets the Dream loop close end-to-end.
+
+# ─────────────────────────────────────────────────────────────
+# Deferred (Phase 2 — next mini-sprint, keep artifacts for later)
+# ─────────────────────────────────────────────────────────────
+deferred_phase_2:
+  reason: "User pivot 2026-04-22 — Dream engine takes priority; revisit after v1.2.1-dream ships."
+  tasks:
+    - T5S.1   # Playwright scaffold
+    - T5S.2   # Epic1 Onboarding
+    - T5S.3   # Epic2 Realtime-chat
+    - T5S.4   # Epic3 Dashboards
+    - T5S.5   # Epic4 Dream-learning (will re-activate when T5S.12 ships;
+              # can remain in deferred batch if Playwright is postponed further)
+    - T5S.6   # U1 operator login
+    - T5S.7   # U2 admin team
+    - T5S.8   # U3 keyword editor
+    - T5S.10  # U5 SLA alert
+    - T5S.11  # U6 invite landing
+  action: "Files kept under docs/plans/m3.5/ for future re-activation. Do NOT delete."
+
+# ─────────────────────────────────────────────────────────────
+# Critical path (active scope)
+# ─────────────────────────────────────────────────────────────
+critical_path:
+  primary: [T5S.14, T5S.12]
+  primary_hours: "8-12h (D5 backend + reviewer) → 4h (D2 canary UI + reviewer) = ~12-16h"
+  notes: |
+    D2 does not strictly depend on D5 runtime — the canary UI pulls from
+    /api/canary/* + /api/admin/proposals/{id}/apply which are already M3-shipped.
+    But: after D5 lands, real proposals flow through the system instead of
+    DREAM_DEV_STUB seeds, so the D2 canary panel has real data to exercise.
+    Sequencing D5 → D2 is recommended but not forced. They CAN be parallelized
+    if you want to collapse the calendar.
+
+# ─────────────────────────────────────────────────────────────
+# Batches (Dream-only)
+# ─────────────────────────────────────────────────────────────
+batches:
+  - id: batch-0
+    name: "D5 Dream LLM real-wire — isolated yellow backend"
+    milestone: M3.5
+    schedule:
+      start: "Day 1 (2026-04-22)"
+      duration: "8-12h human / ~2-3h AI"
+    rationale: |
+      Large YELLOW task with CON-04 red-line exposure. Isolated because:
+      (a) cc_pool surface expansion has blast-radius beyond Dream role
+      (b) requires code-reviewer subagent APPROVED before merge
+      (c) first live cinnox run may surface soul-prompt issues (1-2h budget)
+    tasks:
+      - id: T5S.14
+        owner: Dev1
+        mode: solo-opus
+        est: "8-12h + review"
+        reviewer: "code-reviewer subagent"
+    pre_check: "M3 gate passed (v1.2.0-mvp shipped 2026-04-22); ANTHROPIC_API_KEY present for live opt-in"
+    gate: |
+      - cinnox trigger w/o DREAM_DEV_STUB → status=completed, tokens_in>0,
+        tokens_out>0, proposal.title NOT '[dev stub]'
+      - _master run_platform_dream → LLM-backed (non-zero tokens, non-templated)
+      - pytest tests/dream_agent tests/dream_runs tests/dream tests/api/test_dream_api.py
+        tests/cc_pool fully green (mock + VCR; live opt-in)
+      - code-reviewer APPROVED — CON-04 5-layer defence intact
+
+  - id: batch-1
+    name: "D2 Canary panel w/ 3-button Apply (Dream UI)"
+    milestone: M3.5
+    schedule:
+      start: "Day 2 (2026-04-23)"
+      duration: "4h human / ~1h AI + review"
+    rationale: |
+      YELLOW UI — consolidates M3's minimal DreamTab Apply button (commit
+      2e50ac1) into a full canary panel with progress bar + metric compare +
+      rollback. Integrates 4 backend endpoints already shipped in M3:
+      /api/canary/status + /advance + /rollback + /api/admin/proposals/{id}/apply.
+    tasks:
+      - id: T5S.12
+        owner: Dev1
+        mode: solo-yellow
+        est: "4h + review"
+        reviewer: "code-reviewer subagent"
+    pre_check: "batch-0 gate passed (D5 real-wire merged); DreamTab.tsx baseline understood"
+    gate: |
+      - vitest canary-panel + metric-compare green
+      - Manual walkthrough: 5%→25%→100% advance + rollback at each stage +
+        Apply button only enabled when proposal.status='accepted' + Apply POST
+        hits /api/admin/proposals/{id}/apply exclusively
+      - code-reviewer APPROVED — Apply button does NOT bypass /apply endpoint;
+        old minimal DreamTab Apply button removed (not shipped in parallel)
+
+  - id: batch-2
+    name: "M3.5 Dream-first gate + tag"
+    milestone: M3.5
+    schedule:
+      start: "Day 3 (2026-04-24)"
+      duration: "1-2h human / ~30min AI"
+    rationale: |
+      Smoke + regression + tag. Gate is Dream-scope only — Playwright gate is
+      explicitly deferred to Phase 2 mini-sprint.
+    tasks:
+      - id: GATE-M3.5-dream
+        owner: Dev1
+        mode: solo
+        est: "1-2h"
+        description: |
+          1. Run /prd2impl:skill-10-smoke-test M3.5 (Dream-scope checks only)
+          2. Full M2 + M3 regression + new tests/dream_agent/tests/cc_pool green
+          3. Tag v1.2.1-dream on dev-a
+          4. Open PR dev-a → dev (body links to smoke report + this plan +
+             deferred-phase-2 manifest)
+    deferred_across_scope:
+      - id: T5S.13
+        reason: "Blocked on external T3S.7-hotfix (also deferred after A2 revert)"
+      - id: "T5S.1-T5S.5, T5S.6-T5S.8, T5S.10, T5S.11"
+        reason: "Phase-2 mini-sprint — user pivot 2026-04-22"
+    pre_check: "batch-0 + batch-1 gates passed"
+    gate: |
+      - /prd2impl:skill-10-smoke-test M3.5 (Dream scope) → GO
+      - Regression green (M2 + M3 base + Dream suites)
+      - Tag v1.2.1-dream pushed
+      - PR dev-a → dev opened; body enumerates deferred tasks
+
+# ─────────────────────────────────────────────────────────────
+# Milestones
+# ─────────────────────────────────────────────────────────────
+milestones:
+  - id: M3.5
+    name: "Dream engine first (LLM real-wire + canary UI)"
+    phase: P5
+    batches: [batch-0, batch-1, batch-2]
+    schedule:
+      target: "2026-04-24 EOD (Day 3)"
+      buffer: "+20% → 2026-04-25 EOD (worst case)"
+    gate_checks:
+      - "D5: cinnox + _master triggers produce real (non-stub) LLM-backed proposals"
+      - "D5: all dream_agent/dream_runs/dream/cc_pool tests green (mock + VCR); live opt-in successful once"
+      - "D5: code-reviewer APPROVED — CON-04 5-layer defence intact"
+      - "D2: canary panel advances 5%→25%→100% + rollback + Apply button surface complete"
+      - "D2: old DreamTab minimal Apply button removed (single source of truth)"
+      - "D2: code-reviewer APPROVED — Apply button does not bypass /api/admin/proposals/{id}/apply"
+      - "Regression: M2 + M3 baseline + new Dream tests green"
+      - "Tag v1.2.1-dream created on dev-a"
+      - "Deferred phase-2 tasks enumerated in PR body"
+    smoke_test:
+      - scenario: "/prd2impl:skill-10-smoke-test M3.5 (Dream scope)"
+        command: "pytest + manual Dream UI walkthrough; NO Playwright runs"
+        expected: "GO verdict; evidence in .artifacts/milestones/m3.5/"
+
+# ─────────────────────────────────────────────────────────────
+# Schedule summary
+# ─────────────────────────────────────────────────────────────
+schedule_summary:
+  total_human_hours_nominal: "~13-18h"
+  total_human_hours_buffered: "~16-22h (+20%)"
+  total_ai_hours: "~3-4h"
+  calendar_days_solo_full_time: "3 days (2026-04-22 → 2026-04-24)"
+  calendar_days_solo_part_time: "4-5 days"
+  critical_path_hours: "~12-16h"
+
+# ─────────────────────────────────────────────────────────────
+# Dispatch modes
+# ─────────────────────────────────────────────────────────────
+dispatch_modes:
+  solo: "Dev1 drives Claude (sonnet/opus). No subagent dispatch."
+  solo-opus: "Dev1 drives opus explicitly (M3 T2S.* escalation for large yellow)."
+  solo-yellow: "Solo dispatch + code-reviewer subagent before Closing."
+  parallel: "Dispatched via superpowers:dispatching-parallel-agents."
+
+# ─────────────────────────────────────────────────────────────
+# Warnings
+# ─────────────────────────────────────────────────────────────
+warnings:
+  - "W1: T5S.14 (D5) requires code-reviewer APPROVED (CON-04 red-line)."
+  - "W2: T5S.12 (D2) reviewer must verify Apply button does not bypass /api/admin/proposals/{id}/apply."
+  - "W3: T5S.13 (D3) stays blocked throughout this Dream cut. Not a gate blocker."
+  - "W4: Phase-2 (Playwright + non-Dream UI) artifacts stay in docs/plans/m3.5/ — do NOT delete. Re-activation will restore the 5-batch plan."
+  - "W5: No /ingest-docs run preceded task-gen — tasks carry traceability=sprint-doc-direct. Retro/contract-check skip story cross-checks."

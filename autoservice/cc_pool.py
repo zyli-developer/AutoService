@@ -32,6 +32,24 @@ from typing import Any, AsyncIterator
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from claude_agent_sdk.types import Message
 
+# SDK content-block types — imported at module level so tests can
+# ``monkeypatch.setattr(cc_pool, "AssistantMessage", ...)`` and the
+# T5S.14 call_with_tools wrapper picks up the patched class via
+# isinstance checks. Fallbacks keep module import working if a future
+# SDK release removes any of these; real code paths will log and raise.
+try:
+    from claude_agent_sdk.types import (
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
+except ImportError:  # pragma: no cover — defensive
+    AssistantMessage = object  # type: ignore[assignment,misc]
+    ResultMessage = object  # type: ignore[assignment,misc]
+    TextBlock = object  # type: ignore[assignment,misc]
+    ToolUseBlock = object  # type: ignore[assignment,misc]
+
 from socialware.pool import (
     PoolConfig as _BasePoolConfig,
     PooledInstance,
@@ -72,6 +90,20 @@ def _setup_file_logging() -> None:
 _setup_file_logging()
 
 
+def _coerce_usage(u: Any) -> dict:
+    """Normalise a ``Usage`` object or dict to a plain ``{input_tokens,
+    output_tokens}`` dict for the Dream tool-use wrapper. T5S.14."""
+    if isinstance(u, dict):
+        return {
+            "input_tokens": int(u.get("input_tokens") or 0),
+            "output_tokens": int(u.get("output_tokens") or 0),
+        }
+    return {
+        "input_tokens": int(getattr(u, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
+    }
+
+
 # ---------------------------------------------------------------------------
 # CC-specific client wrapper (implements PoolableClient protocol)
 # ---------------------------------------------------------------------------
@@ -106,6 +138,133 @@ class CCClient:
     async def receive_response(self) -> AsyncIterator[Message]:
         async for msg in self._sdk.receive_response():
             yield msg
+
+    async def set_model(self, model: str | None) -> None:
+        """Swap the active model mid-conversation.
+
+        Delegates to ``ClaudeSDKClient.set_model``, which is a control
+        message to the CLI — **no subprocess restart**, full conversation
+        state preserved. Used by :meth:`CCPool.session_query` to upgrade
+        a fast-tier sticky instance to slow_model when the router flags
+        the turn as slow.
+        """
+        await self._sdk.set_model(model)
+
+    async def call_with_tools(
+        self,
+        *,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+    ) -> dict:
+        """Dream-role tool-use wrapper over the local claude_agent_sdk.
+
+        T5S.14 (T3B.5 core) — adds a JSON-in / JSON-out tool-use surface
+        to Dream role clients. The CLI-backed SDK does not accept
+        Anthropic-shape tool JSON natively, so tool schemas are
+        serialised into the prompt preamble; the model's ``tool_use``
+        emissions are translated back into Anthropic-shape dicts so
+        :func:`dream_agent._extract_tool_uses` consumes them unchanged.
+
+        **Scope gate**: only Dream-role clients expose this surface.
+        Customer / operator / triage / lead / translate clients raise
+        ``RuntimeError`` — prevents accidental blast-radius into the
+        conversation-path pools.  The ``_dream_role`` flag is set by
+        :func:`create_cc_client` when ``role="dream"`` and by the
+        legacy dream-pool factory (:func:`_make_tenant_instance`).
+
+        Args:
+            system: System prompt for this turn (caller-owned; not
+                cached across calls — the closure style means each
+                turn re-sends).
+            messages: Anthropic-shape message history. Tool results
+                on the user side are ``{"type": "tool_result",
+                "tool_use_id", "content"}`` blocks.
+            tools: Caller's tool schemas (e.g. ``emit_proposal``,
+                ``kb_search``, ``list_souls``). Passed through
+                verbatim — never mutated.
+
+        Returns:
+            Anthropic-shape response dict:
+            ``{"content": [...blocks...], "stop_reason": str,
+            "usage": {"input_tokens": int, "output_tokens": int}}``.
+            Each block is a dict with a ``type`` discriminator:
+            ``tool_use`` (has ``id`` / ``name`` / ``input``) or
+            ``text`` (has ``text``).
+
+        Raises:
+            RuntimeError: the client is not a Dream-role client
+                (``_dream_role`` flag unset / False).
+        """
+        if not getattr(self, "_dream_role", False):
+            raise RuntimeError(
+                "call_with_tools is reserved for dream-role clients. "
+                "Customer / operator / triage / lead / translate clients "
+                "must not invoke it — use query()/receive_response() "
+                "instead."
+            )
+
+        # Serialise tools + messages into the prompt so the CLI model
+        # sees them. The message shape mirrors Anthropic's so the model
+        # can emit tool_use blocks that downstream code already parses.
+        prompt_parts: list[str] = []
+        if system:
+            prompt_parts.append("[SYSTEM]")
+            prompt_parts.append(system)
+            prompt_parts.append("")
+        prompt_parts.append("[TOOLS]")
+        prompt_parts.append(json.dumps(list(tools), ensure_ascii=False))
+        prompt_parts.append("")
+        prompt_parts.append("[MESSAGES]")
+        prompt_parts.append(json.dumps(list(messages), ensure_ascii=False))
+        prompt = "\n".join(prompt_parts)
+
+        await self._sdk.query(prompt)
+
+        content_blocks: list[dict] = []
+        stop_reason: str | None = None
+        usage: dict | None = None
+
+        # Re-read module-level SDK type handles each call — tests
+        # monkeypatch them on cc_pool, and isinstance against the
+        # re-imported handles would bypass the patch.
+        import autoservice.cc_pool as _mod  # self-reference for patch visibility
+
+        async for msg in self._sdk.receive_response():
+            if isinstance(msg, _mod.AssistantMessage):
+                for block in (msg.content or []):
+                    if isinstance(block, _mod.ToolUseBlock):
+                        content_blocks.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        })
+                    elif isinstance(block, _mod.TextBlock):
+                        content_blocks.append({
+                            "type": "text",
+                            "text": block.text,
+                        })
+                # AssistantMessage-level stop_reason/usage (if present)
+                sr = getattr(msg, "stop_reason", None)
+                if sr is not None:
+                    stop_reason = sr
+                u = getattr(msg, "usage", None)
+                if u is not None:
+                    usage = _coerce_usage(u)
+            elif isinstance(msg, _mod.ResultMessage):
+                sr = getattr(msg, "stop_reason", None)
+                if sr is not None and stop_reason is None:
+                    stop_reason = sr
+                u = getattr(msg, "usage", None)
+                if u is not None and usage is None:
+                    usage = _coerce_usage(u)
+
+        return {
+            "content": content_blocks,
+            "stop_reason": stop_reason,
+            "usage": usage or {},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +362,15 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
 #:
 #: Kept in sync with ``classify_intent.yaml::model_tiers`` — if you add a
 #: role, pick its tier here too.
+#:
+#: ``customer`` defaults to ``fast`` — the customer sticky pool warms on
+#: haiku. Turns that need sonnet (complaint, product inquiry with KB,
+#: purchase intent) are escalated in-place via
+#: :meth:`CCPool._maybe_upgrade_tier` → ``ClaudeSDKClient.set_model``, so
+#: the subprocess and its conversation context survive the model swap.
+#: The upgrade is one-way per sticky session (see ``_upgraded_sticky``).
 _ROLE_TIER: dict[str, str] = {
-    "customer": "slow",
+    "customer": "fast",
     "lead": "slow",
     "translate": "fast",
     "triage": "fast",
@@ -383,6 +549,11 @@ async def create_cc_client(
 
     sdk_client = ClaudeSDKClient(options)
     client = CCClient(sdk_client)
+    # T5S.14: flag dream-role clients so ``CCClient.call_with_tools``
+    # recognises them. Customer/operator/triage/lead/translate clients
+    # stay unflagged and reject call_with_tools.
+    if role == "dream":
+        client._dream_role = True  # type: ignore[attr-defined]
     await client.connect()
     return client
 
@@ -470,6 +641,12 @@ class CCPool(AsyncPool[CCClient]):
         self._role_pool_lock = asyncio.Lock()
         self._reaper_task: asyncio.Task | None = None
         self._closed = False
+        #: Sticky keys that have already been upgraded from fast_model to
+        #: slow_model via ``set_model``. Upgrade is one-way per session —
+        #: once a conversation escalates to sonnet it stays there until
+        #: sticky release (matches the old demo's `_sdk_ensure` policy,
+        #: avoids model thrashing mid-conversation). Cleared on release.
+        self._upgraded_sticky: set[str] = set()
 
     async def acquire_sticky(
         self, key: str, *, tenant_id: str | None = None,
@@ -556,6 +733,7 @@ class CCPool(AsyncPool[CCClient]):
     async def session_query(
         self, chat_id: str, prompt: str,
         *, tenant_id: str | None = None,
+        tier: str | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[Message]:
         """Stateful multi-turn query: chat_id is sticky-bound to a CC instance.
@@ -568,8 +746,27 @@ class CCPool(AsyncPool[CCClient]):
         tenant's soul + KB tool on first acquire. Subsequent calls for the
         same chat_id MUST pass the same tenant_id or StickyTenantMismatch
         is raised.
+
+        *tier* controls in-session model escalation:
+
+        * ``None`` (legacy callers) — no model change; instance runs on
+          whatever model it was constructed with.
+        * ``"fast"`` — leave model as-is (customer pool defaults to
+          fast_model via ``_ROLE_TIER['customer']='fast'``, so this is a
+          no-op on a fresh sticky binding).
+        * ``"slow"`` — if ``config.slow_model`` is set and this sticky
+          key hasn't been upgraded yet, call
+          ``ClaudeSDKClient.set_model(slow_model)`` once. Subsequent
+          turns on the same key skip the call (upgrade-once semantics).
+
+        Downgrade is intentionally impossible here — a conversation that
+        reached sonnet stays there for its lifetime. Matches the old
+        demo's ``_sdk_ensure`` policy. ``end_session`` / sticky auto-
+        release clear the upgrade stamp so a fresh session on the same
+        key can start on fast_model again.
         """
         instance = await self.acquire_sticky(chat_id, tenant_id=tenant_id)
+        await self._maybe_upgrade_tier(chat_id, instance, tier)
         instance.query_count += 1
         session_id = kwargs.pop("session_id", chat_id)
         await instance.client.query(prompt, session_id=session_id)
@@ -577,9 +774,51 @@ class CCPool(AsyncPool[CCClient]):
             yield msg
         # Instance stays sticky-bound — NOT returned to pool
 
+    async def _maybe_upgrade_tier(
+        self,
+        chat_id: str,
+        instance: PooledInstance[CCClient],
+        tier: str | None,
+    ) -> None:
+        """Escalate *instance* to slow_model iff ``tier == 'slow'`` and we
+        haven't already upgraded this sticky session.
+
+        Logs + swallows ``set_model`` failures: the customer still gets a
+        reply on the pre-upgrade model, which is worse quality but not
+        broken. ``slow_model=None`` deployments (single-model config) are
+        no-op, preserving the back-compat contract of B-plan.
+        """
+        if tier != "slow":
+            return
+        if chat_id in self._upgraded_sticky:
+            return
+        slow_model = self._config.slow_model  # type: ignore[attr-defined]
+        if not slow_model:
+            return
+        try:
+            await instance.client.set_model(slow_model)
+        except Exception:
+            log.exception(
+                "sticky tier upgrade failed for conv=%s — staying on current model",
+                chat_id,
+            )
+            return
+        self._upgraded_sticky.add(chat_id)
+        log.info("sticky tier upgraded to slow: conv=%s model=%s",
+                 chat_id, slow_model)
+
     async def end_session(self, chat_id: str) -> None:
         """End a stateful session, release the instance back to pool."""
+        self._upgraded_sticky.discard(chat_id)
         await self.release_sticky(chat_id)
+
+    async def release_sticky(self, key: str) -> None:
+        """Override parent ``release_sticky`` to clear the tier upgrade
+        stamp — whether released explicitly via :meth:`end_session` or
+        reaped by the sticky-idle timer, a subsequent bind on the same
+        key must start fresh on fast_model."""
+        self._upgraded_sticky.discard(key)
+        await super().release_sticky(key)
 
     # ------------------------------------------------------------------
     # Role-aware acquire (T3B.5 — spec §2.5 + CON-06)
@@ -1098,6 +1337,10 @@ async def _make_tenant_instance(
         client = await create_cc_client(
             cfg, system_prompt=_load_dream_soul(tenant_id),
         )
+        # T5S.14: the legacy dream-pool factory bypasses the ``role=``
+        # kwarg on create_cc_client (it supplies the system_prompt
+        # directly), so the dream-role flag must be stamped here too.
+        client._dream_role = True  # type: ignore[attr-defined]
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.

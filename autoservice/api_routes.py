@@ -216,28 +216,74 @@ def _handle_reject_command(text: str) -> dict[str, Any]:
 _PLATFORM_BRAND_NAME = "AutoService"
 
 
+def _read_brand_from_config(cfg_path: Path) -> str | None:
+    """Read ``brand_name`` from a config.json; ``None`` if absent/invalid.
+
+    I/O and parse errors are logged and swallowed — brand resolution must
+    never 500.
+    """
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("brand_name lookup failed for %s: %s", cfg_path, exc)
+        return None
+    brand = cfg.get("brand_name")
+    if isinstance(brand, str) and brand.strip():
+        return brand.strip()
+    return None
+
+
+def _try_resolve_brand_name(tenant_id: str | None) -> str | None:
+    """Return the tenant-configured brand_name, or ``None`` if unset.
+
+    Never falls back to the platform default — callers who want that
+    must wrap the result themselves.  The customer-chat WS handshake
+    relies on the ``None`` signal so it can defer to the widget's i18n
+    fallback (avoids rendering ``"AutoService 客服"`` as a fake brand).
+
+    Lookup order:
+      1. ``plugins/<tid>/config.json["brand_name"]`` — L3 deploy snapshot.
+      2. ``.autoservice/sandbox/<tid>/config.json["brand_name"]`` —
+         wizard-authored sandbox state (not yet published).
+
+    Both paths are CWD-relative so they stay aligned under tests that
+    ``chdir`` into a tmp dir.  At runtime the server is started from the
+    project root, matching :data:`autoservice.onboarding.SANDBOX_ROOT`.
+    """
+    if not tenant_id:
+        return None
+    brand = _read_brand_from_config(Path("plugins") / tenant_id / "config.json")
+    if brand:
+        return brand
+    return _read_brand_from_config(
+        Path(".autoservice") / "sandbox" / tenant_id / "config.json"
+    )
+
+
+def _resolve_brand_name_for_tenant(tenant_id: str | None) -> str:
+    """Tenant-scoped brand_name with platform-default fallback.
+
+    Used by the admin top-bar (``/api/session/mode``) where a non-empty
+    string is always required.  See :func:`_try_resolve_brand_name` for
+    the nullable variant used by the customer WS handshake.
+    """
+    return _try_resolve_brand_name(tenant_id) or _PLATFORM_BRAND_NAME
+
+
 def _resolve_brand_name(mode: str, self_tid: str | None) -> str:
     """Resolve the brand_name shown in the top bar (spec §4.5).
 
     Lookup order:
-      1. Tenant-mode fork: ``plugins/<self_tid>/config.json["brand_name"]``
-         when present; otherwise fall back to the platform default.
+      1. Tenant-mode fork: delegate to :func:`_resolve_brand_name_for_tenant`
+         (plugins → sandbox → platform default).
       2. Master mode: always the platform default ("AutoService").  Tenant
          admins visiting the master host will see their brand surfaced by
          the session-level tenant lookup in a later milestone (M3 scope).
     """
     if mode == "tenant" and self_tid:
-        cfg_path = Path("plugins") / self_tid / "config.json"
-        if cfg_path.exists():
-            try:
-                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-                brand = cfg.get("brand_name")
-                if isinstance(brand, str) and brand.strip():
-                    return brand.strip()
-            except (OSError, json.JSONDecodeError) as exc:
-                logger.warning(
-                    "brand_name lookup failed for tenant %s: %s", self_tid, exc,
-                )
+        return _resolve_brand_name_for_tenant(self_tid)
     return _PLATFORM_BRAND_NAME
 
 
@@ -541,6 +587,21 @@ async def run_proposal_pipeline() -> list[dict[str, Any]]:
 #
 # Spec: docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md §2.6
 
+# Offline-dev / CI fallback for /api/dream/trigger.  Post-T5S.14 the
+# default production path always goes through the real LLM tool-loop
+# (``dream_agent.run_dream`` for per-tenant, ``master_dream_agent.
+# run_platform_dream`` for master).  Setting ``DREAM_DEV_STUB=1``
+# short-circuits BOTH paths to :func:`_run_dev_stub_dream` — three
+# seed proposals after a short sleep, no LLM traffic, no API key
+# required.  Useful for:
+#   * CI suites that have no ``ANTHROPIC_API_KEY`` / no local Claude CLI
+#   * Offline demos / video capture where deterministic output matters
+#   * Smoke-testing the Dream Engine UI without spending tokens
+#
+# MUST stay unset in production.  Read once at import; restart to flip.
+DREAM_DEV_STUB_ENABLED = os.environ.get("DREAM_DEV_STUB") == "1"
+DREAM_DEV_STUB_DELAY_SEC = 3.0
+
 _dream_runs_db_conn = None
 
 
@@ -673,6 +734,96 @@ async def dream_trigger(payload: dict[str, Any] = Body(...)) -> Any:
     )
 
 
+# Seed proposals for the dev stub path.  Three distinct categories /
+# risk levels so the admin-portal review UI renders visibly different
+# rows (useful for screen recording + reviewer-flow smoke tests).  These
+# go through the normal ``dream_agent.emit_proposal`` — they land as
+# ``status='draft'`` under CON-04, same as LLM-emitted proposals.
+_DREAM_DEV_STUB_SEEDS = [
+    {
+        "category": "response_quality",
+        "title": "[dev stub] Agent 回复中 '您好' 使用频率偏高",
+        "description": "最近 20 轮对话里 Agent 开场白 65% 使用 '您好'，缺乏场景区分度。",
+        "suggestion": "在 customer soul 中加入多样化招呼语池，按时段/客户类型选择。",
+        "evidence": "greet_ratio=0.65; window=20; sample=conv_20260421_a3f2",
+        "risk_level": "low",
+        "target_role": "customer",
+    },
+    {
+        "category": "knowledge_gap",
+        "title": "[dev stub] 近期 3 轮对话命中空 KB",
+        "description": "客户询问退款政策细则时 kb_search 返回空，Agent 回复不确定。",
+        "suggestion": "向 KB 补充退款政策 FAQ (refund_policy_v2) 并重建索引。",
+        "evidence": "missed=['退款多久到账','部分退款可以吗','跨境退款流程']; kb_hits=0",
+        "risk_level": "medium",
+        "target_role": "customer",
+    },
+    {
+        "category": "escalation_signal",
+        "title": "[dev stub] 同一客户 5 分钟内 3 次请求转人工",
+        "description": "客户 end_u_8811 在 5 分钟内连续请求 '要人工'，Agent 未主动降级。",
+        "suggestion": "在 rules.yaml 增加 escalation 触发器：同意图 >= 2 次即转 operator。",
+        "evidence": "end_user=end_u_8811; escalation_count=3; window_seconds=300",
+        "risk_level": "high",
+        "target_role": "customer",
+    },
+]
+
+
+async def _run_dev_stub_dream(
+    tenant_id: str,
+    proposals_conn: Any,
+    runs_conn: Any,
+) -> None:
+    """Dev-only stub that mimics a successful ``run_dream`` without the LLM.
+
+    Opens its own ``dream_runs`` row (mirrors the 2-row pattern the real
+    ``run_dream`` produces alongside the trigger-row), sleeps a few seconds
+    so the admin-portal UI shows a visible ``running`` state, then emits
+    three seed proposals via :func:`dream_agent.emit_proposal` and closes
+    the row as ``completed``.  Token counts are fabricated — enough to
+    render non-zero values in the UI without implying real LLM work.
+
+    Only reachable when ``DREAM_DEV_STUB_ENABLED`` is true.  Production
+    boots with the env var unset and this function is never called.
+    """
+    stub_run_id = dream_runs.start_run(runs_conn, tenant_id)
+    try:
+        await asyncio.sleep(DREAM_DEV_STUB_DELAY_SEC)
+        emitted = 0
+        for seed in _DREAM_DEV_STUB_SEEDS:
+            dream_agent.emit_proposal(
+                proposals_conn,
+                tenant_id=tenant_id,
+                category=seed["category"],
+                title=seed["title"],
+                description=seed["description"],
+                suggestion=seed["suggestion"],
+                evidence=seed["evidence"],
+                risk_level=seed["risk_level"],
+                target_role=seed["target_role"],
+            )
+            emitted += 1
+        dream_runs.update_run(
+            runs_conn, stub_run_id,
+            tool_calls=emitted, proposals_emitted=emitted,
+            tokens_in=123, tokens_out=456,
+        )
+        dream_runs.end_run(
+            runs_conn, stub_run_id,
+            status="completed", tokens_in=123, tokens_out=456,
+        )
+    except Exception as exc:  # noqa: BLE001 — always finalise the stub row
+        try:
+            dream_runs.end_run(
+                runs_conn, stub_run_id,
+                status="failed", error=f"{type(exc).__name__}: {exc}",
+            )
+        except Exception:
+            logger.exception("dev stub end_run cleanup failed for %s", stub_run_id)
+        raise
+
+
 async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     """Schedule the right dream entry for an already-opened ``dream_runs`` row.
 
@@ -712,11 +863,26 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
     is_master = tenant_id == _bootstrap.MASTER_TENANT_ID
 
     async def _run_and_mark():
-        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised."""
+        """Wrap the chosen dream entry so the pre-opened trigger-row is finalised.
+
+        Routing (post-T5S.14):
+          1. ``DREAM_DEV_STUB=1`` → :func:`_run_dev_stub_dream` for ALL
+             tenants (master + per-tenant).  Offline-dev fallback only.
+          2. master tenant (``_master``) → ``run_platform_dream`` —
+             real cross-tenant LLM tool-loop (T4S.4b).
+          3. per-tenant → ``dream_agent.run_dream`` with ``llm_send=None``
+             → CC pool's ``call_with_tools`` surface (T5S.14 / T3B.5).
+        """
         agent_status = "completed"
         agent_error: str | None = None
         try:
-            if is_master:
+            if DREAM_DEV_STUB_ENABLED:
+                # Offline-dev fallback — no LLM traffic, deterministic output.
+                # Gates both master and per-tenant paths so CI without an
+                # Anthropic key can still exercise the trigger endpoint +
+                # Dream UI.  See DREAM_DEV_STUB_ENABLED docstring above.
+                await _run_dev_stub_dream(tenant_id, proposals_conn, runs_conn)
+            elif is_master:
                 from autoservice import master_dream_agent as _master_dream
                 await _master_dream.run_platform_dream(
                     tenant_id,
@@ -727,6 +893,10 @@ async def _spawn_dream_run_with_run_id(tenant_id: str, run_id: str) -> None:
                     max_tool_turns=10,
                 )
             else:
+                # Per-tenant default: run_dream acquires a dream-role CC
+                # pool client and calls its call_with_tools surface
+                # (T5S.14).  llm_send defaulted to None — previously raised
+                # RuntimeError; now drives a real tool-loop.
                 await dream_agent.run_dream(
                     tenant_id,
                     pool,

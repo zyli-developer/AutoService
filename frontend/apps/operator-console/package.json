@@ -17,6 +17,7 @@
     "@autoservice/design-system": "workspace:*",
     "@autoservice/i18n": "workspace:*",
     "@autoservice/shared": "workspace:*",
+    "@autoservice/ui-components": "workspace:*",
     "@autoservice/ws-client": "workspace:*",
     "antd": "^6.3.5",
     "react": "^18.2.0",

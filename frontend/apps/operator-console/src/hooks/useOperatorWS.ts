@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { WSClient, type Envelope, type ServerHelloPayload } from '@autoservice/ws-client';
-import { useOperatorStore, type Conversation } from '../store/operatorStore';
+import { useOperatorStore, type Conversation, type CopilotMessage } from '../store/operatorStore';
 
 // 允许测试时注入 fake client
 type WSClientConstructor = new (opts: ConstructorParameters<typeof WSClient>[0]) => WSClient;
@@ -23,6 +23,7 @@ export function handleEventFrame(
   frame: Envelope,
   addConversation: (conv: Conversation) => void,
   updateConversation: (id: string, patch: Partial<Conversation>) => void,
+  addCopilotMessage?: (convId: string, msg: CopilotMessage) => void,
 ) {
   const { event } = frame.payload as EventPayload;
   if (!event?.conversation_id) return;
@@ -76,6 +77,22 @@ export function handleEventFrame(
         lastActivityTs: ts,
         state: 'active',
       });
+      // SIDE messages (e.g. [分流] from triage) are persisted via
+      // engine.send_message but never wrapped in a `message` frame for squad
+      // broadcast — they reach operators only via this event path. Add to
+      // copilot here so they appear in the chat stream. Non-SIDE messages
+      // also flow as `message` frames; addCopilotMessage dedups by id, so
+      // this is a no-op for them.
+      const messageId = event.data.message_id as string | undefined;
+      if (addCopilotMessage && messageId && text) {
+        addCopilotMessage(convId, {
+          id: messageId,
+          text,
+          sender,
+          ts,
+          visibility: event.data.visibility as 'public' | 'side' | 'system' | undefined,
+        });
+      }
       break;
     }
   }
@@ -224,26 +241,40 @@ export function useOperatorWS(url: string): {
                 unreadCount: 1,
               });
             } else {
-              updateConversation(convId, {
+              const existing = state.conversations[convId];
+              const patch: Partial<typeof existing> = {
                 lastMessage: content,
                 lastActivityTs: ts,
-                unreadCount: (state.conversations[convId].unreadCount ?? 0) + 1,
-              });
+                unreadCount: (existing.unreadCount ?? 0) + 1,
+              };
+              // Backfill customerId on the first real customer message. A conv
+              // can be created with a placeholder customerId by three paths:
+              //   - conversation.created event with empty data.customer_id ('')
+              //   - active-conversations bulk fetch on WS open (literal 'customer')
+              //   - addConversation in this same handler when the first frame
+              //     was agent-sourced (literal 'customer')
+              // All three resolve once a customer-sourced frame arrives — its
+              // srcDisplay.id is the authoritative customer id.
+              const isPlaceholderCustomerId = !existing.customerId || existing.customerId === 'customer';
+              if (role === 'customer' && isPlaceholderCustomerId && srcDisplay?.id) {
+                patch.customerId = srcDisplay.id as string;
+              }
+              updateConversation(convId, patch);
             }
 
-            // Add to copilot if this conversation is open
-            if (state.activeCopilotConvId === convId) {
-              const sender = role === 'customer' ? 'customer' as const
-                : role === 'operator' ? 'operator' as const
-                : 'agent' as const;
-              addCopilotMessage(convId, {
-                id: (msg?.id as string) ?? crypto.randomUUID(),
-                text: content,
-                sender,
-                ts,
-                visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
-              });
-            }
+            // Add to copilot store unconditionally — render layer filters by
+            // activeCopilotConvId. Gating here lost SIDE/placeholder/streaming
+            // frames that arrived before the operator clicked the card.
+            const sender = role === 'customer' ? 'customer' as const
+              : role === 'operator' ? 'operator' as const
+              : 'agent' as const;
+            addCopilotMessage(convId, {
+              id: (msg?.id as string) ?? crypto.randomUUID(),
+              text: content,
+              sender,
+              ts,
+              visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
+            });
           }
         }
 
@@ -253,8 +284,15 @@ export function useOperatorWS(url: string): {
           const msg = p.message as Record<string, unknown> | undefined;
           const messageId = (msg?.id as string) ?? (p.message_id as string);
           const newContent = (msg?.content as string) ?? (p.new_content as string);
+          const ts = (msg?.timestamp as string) ?? new Date().toISOString();
           if (convId && messageId && newContent !== undefined) {
             updateCopilotMessage(convId, messageId, { text: newContent });
+            if (useOperatorStore.getState().conversations[convId]) {
+              updateConversation(convId, {
+                lastMessage: newContent,
+                lastActivityTs: ts,
+              });
+            }
           }
         }
 
@@ -293,9 +331,10 @@ export function useOperatorWS(url: string): {
         }
 
         if (frame.type === 'event') {
-          // event frames update conversation metadata only (mode, state, etc.)
-          // copilot messages are handled exclusively via broadcast `message` frames
-          handleEventFrame(frame, addConversation, updateConversation);
+          // event frames carry conversation metadata + message.sent fan-out.
+          // SIDE messages (triage/system) only reach operators via this path,
+          // so handleEventFrame must thread addCopilotMessage to insert them.
+          handleEventFrame(frame, addConversation, updateConversation, addCopilotMessage);
         }
       },
     });

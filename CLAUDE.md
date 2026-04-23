@@ -11,8 +11,12 @@ AutoService is a three-layer fork-based framework for building AI-powered social
 - **L3 `plugins/<tenant>/`** — Tenant instance: customer-specific plugins and data
 
 **Two channels:**
-- **Feishu IM** (primary) — MCP-based, runs as `channels/feishu/channel.py`
-- **Web chat** (secondary) — FastAPI app at `channels/web/app:app`
+- **Web chat** — FastAPI app at `channels/web/app:app`. **Canonical
+  customer message path** for M2/M3+ (triage, multi-role, tenant sandbox,
+  KB pre-fetch all live here).
+- **Feishu IM** — MCP-based, runs as `channels/feishu/channel.py`. M1
+  legacy entry; **not kept in sync** with M2/M3 features. See "Channel
+  feature parity" below before touching it.
 
 ## Glossary
 
@@ -91,6 +95,28 @@ from autoservice import generate_id, load_config  # re-exported from socialware
 > adapters, the generic parts (~40% of code: WebSocket routing, pub/sub bridge, message dispatch)
 > should be extracted to `socialware/` as an L1 channel framework. See analysis below.
 
+### Channel feature parity (as of M3)
+
+The web channel is the canonical customer message path. Feishu was the M1
+primary channel and has not been kept in sync with M2/M3 features. New
+customer-flow work should land in `channels/web` (or `autoservice/gateway/`
+which it delegates to). Touching Feishu only makes sense if it returns to
+the active product roadmap.
+
+| Feature                                          | Web (`channels/web` + `autoservice/gateway/`) | Feishu (`channels/feishu`) |
+|--------------------------------------------------|-----------------------------------------------|----------------------------|
+| `ModelRouter` / `triage_and_route` dispatch       | ✅ `gateway/message_router.py`                 | ❌ direct `session_query` |
+| Multi-role sub-pools (lead / translate / triage) | ✅ via `cc_pool.acquire(role=…)`                | ❌ customer sticky only   |
+| Per-tenant sticky binding (`tenant_id`)           | ✅ via `session_query(tenant_id=…)`            | ❌ no tenant injection     |
+| KB pre-fetch (`_build_customer_prompt`)           | ✅                                             | ❌                          |
+| Cross-role history reseed                         | ✅ `_build_reseeded_prompt`                    | ❌                          |
+| Per-role model tier (fast/slow/dream)             | ✅ flows through cc_pool                       | ⚠️ only customer pool's `slow_model` is reachable |
+
+The Feishu channel still works for single-tenant customer chat with M1
+semantics. If/when Feishu re-enters scope, the alignment work is roughly
+"port the call site at `channels/feishu/channel_server.py:432` and `:1361`
+to the same triage + tenant flow as `gateway/message_router.py`".
+
 ### channels/ L1 extraction roadmap (deferred)
 
 The following generic components are candidates for future L1 extraction:
@@ -148,6 +174,27 @@ admin portal into a no-password console for anyone who can reach it.
 - `make run-web` sets it automatically for local dev.
 - Production Docker/compose/k8s configs must leave it unset.
 - Spec: `docs/superpowers/specs/2026-04-21-dev-auto-login-design.md`.
+
+## Dream Dev Stub
+
+`DREAM_DEV_STUB=1` is an offline-dev / CI fallback for `/api/dream/trigger`.
+Post-T5S.14 (M3.5) the default path always drives a real LLM tool-loop —
+per-tenant via `dream_agent.run_dream` and master via `master_dream_agent.
+run_platform_dream`, both backed by the CC pool's `call_with_tools`
+surface (local `claude_agent_sdk`, not the Anthropic cloud SDK).
+
+Setting `DREAM_DEV_STUB=1` short-circuits BOTH paths (master and per-tenant)
+to `_run_dev_stub_dream`: three seed proposals emitted after a 3-second
+sleep, no LLM traffic, no key required. Useful for:
+
+- CI without an `ANTHROPIC_API_KEY` / without a local Claude CLI installed.
+- Offline demos / video capture where deterministic output matters.
+- Smoke-testing the Dream Engine UI flows without spending tokens.
+
+Unlike `AUTH_DEV_MODE`, `DREAM_DEV_STUB` does not expose an auth-bypass
+surface, so the production risk is strictly "wrong output" rather than
+"unauthenticated access". Still leave it unset in production — seed
+proposals would pollute real `proposals` tables.
 
 ## Credentials
 

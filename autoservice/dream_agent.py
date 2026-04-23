@@ -1164,42 +1164,52 @@ async def run_dream(
             tenant_id, mempool, proposals_db, sandbox_root=sandbox_root,
         )
 
-        # Acquire a Dream client — honoured by tests via the llm_send
-        # injection seam, so we only touch the pool in production paths.
-        # Keeping the acquire inside the try block means a pool failure
-        # is captured as status='failed' rather than propagating.
+        # Acquire a Dream client when no explicit llm_send is supplied —
+        # the pool client's ``call_with_tools`` surface (T5S.14) speaks
+        # the same JSON-in/JSON-out contract the loop expects. Tests
+        # continue to inject mocks via the ``llm_send`` seam, so both
+        # paths share the same loop implementation.
         if llm_send is None:
             cm = await _acquire_dream_client(
                 cc_pool, tenant_id, system_prompt,
             )
-            # Default client-side path: use the pool's CC client. The CC
-            # client surface does not yet natively speak Anthropic
-            # tool-use — calling it would bypass the tool loop. To avoid
-            # silently producing wrong behaviour, we require callers to
-            # supply ``llm_send`` when cc_pool-side tool-use is not
-            # implemented. T3B.5 will close this gap.
-            if hasattr(cm, "__aenter__"):
-                # Try to release cleanly even though we will not use it.
-                async with cm:
-                    pass
-            raise RuntimeError(
-                "run_dream requires an explicit llm_send callable until "
-                "cc_pool exposes a tool-use surface (T3B.5). See spec §2.5."
-            )
+            async with cm as pooled:
+                async def _pool_llm_send(*, system, messages, tools):
+                    # Closure over the acquired pool instance — session
+                    # state persists across tool-use rounds because the
+                    # CCClient (and its SDK subprocess) is held open
+                    # for the full ``async with`` block.
+                    return await pooled.client.call_with_tools(
+                        system=system, messages=messages, tools=tools,
+                    )
 
-        status, tool_calls, proposals_emitted, tokens_in, tokens_out = (
-            await _run_agent_loop(
-                llm_send=llm_send,
-                system_prompt=system_prompt,
-                initial_user_msg=initial_user_msg,
-                tenant_id=tenant_id,
-                proposals_db=proposals_db,
-                runs_db=runs_db,
-                run_id=run_id,
-                max_tool_turns=max_tool_turns,
-                sandbox_root=sandbox_root,
+                status, tool_calls, proposals_emitted, tokens_in, tokens_out = (
+                    await _run_agent_loop(
+                        llm_send=_pool_llm_send,
+                        system_prompt=system_prompt,
+                        initial_user_msg=initial_user_msg,
+                        tenant_id=tenant_id,
+                        proposals_db=proposals_db,
+                        runs_db=runs_db,
+                        run_id=run_id,
+                        max_tool_turns=max_tool_turns,
+                        sandbox_root=sandbox_root,
+                    )
+                )
+        else:
+            status, tool_calls, proposals_emitted, tokens_in, tokens_out = (
+                await _run_agent_loop(
+                    llm_send=llm_send,
+                    system_prompt=system_prompt,
+                    initial_user_msg=initial_user_msg,
+                    tenant_id=tenant_id,
+                    proposals_db=proposals_db,
+                    runs_db=runs_db,
+                    run_id=run_id,
+                    max_tool_turns=max_tool_turns,
+                    sandbox_root=sandbox_root,
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 — map to run row + keep going
         logger.exception("Dream run %s for tenant %s failed", run_id, tenant_id)
         status = "failed"

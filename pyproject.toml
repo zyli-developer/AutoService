@@ -35,10 +35,12 @@ test = [
 asyncio_mode = "auto"
 markers = [
     "e2e: manual-runnable acceptance tests (need ANTHROPIC_API_KEY + gh CLI + live uvicorn; excluded from default pytest — run via `pytest -m e2e`)",
+    "live: opt-in live-LLM tests that actually spawn a local claude_agent_sdk subprocess (T5S.14 Dream LLM real-wire); gated on AUTOSERVICE_LIVE_OK=1 or CC_POOL_CLI_PATH — run via `pytest -m live`",
 ]
-# Exclude e2e tests from default runs (they need live uvicorn + LLM).
-# Run them explicitly with `pytest -m e2e`.
-addopts = "-m 'not e2e'"
+# Exclude e2e + live tests from default runs (they need live uvicorn +
+# local SDK / LLM subprocess). Run them explicitly with `pytest -m e2e`
+# or `pytest -m live`.
+addopts = "-m 'not e2e and not live'"
 
 [dependency-groups]
 dev = [
