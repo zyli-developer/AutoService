@@ -31,6 +31,13 @@ export class VoiceCallController {
   private workletNode: AudioWorkletNode | null = null;
   private pendingCcReply: string | null = null;
   private comfortPlaying: boolean = false;
+  // Early-comfort optimization: on the first partial transcript of a user
+  // utterance we fire `tts.speak(comfort)` immediately (hiding Doubao's
+  // ~3.8s first-chunk latency behind the user's remaining speech). The
+  // audio that arrives while user is still talking is BUFFERED here and
+  // only flushed to playback once the ASR final arrives.
+  private preparingComfort: boolean = false;
+  private comfortAudioBuffer: Uint8Array[] = [];
 
   constructor(private opts: VoiceControllerOptions) {}
 
@@ -87,7 +94,7 @@ export class VoiceCallController {
       console.debug('[voice] start step 4: tts.connect');
       try {
         await this.tts.connect(this.opts.ttsUrl, {
-          onAudio: pcm => playback.enqueue(pcm),
+          onAudio: pcm => this._onTtsAudio(pcm),
           onDone: () => this._onTtsDone(),
           onError: () => {
             if (this.state !== 'error') this._setError('tts_dropped');
@@ -215,6 +222,8 @@ export class VoiceCallController {
     this.mediaStream = null; this.audioCtx = null; this.workletNode = null;
     this.pendingCcReply = null;
     this.comfortPlaying = false;
+    this.preparingComfort = false;
+    this.comfortAudioBuffer = [];
   }
 
   // ---- test-only hooks (exposed for unit tests; keep _setError/_onAsrFrame private) ----
@@ -231,19 +240,68 @@ export class VoiceCallController {
       playback.clearPlayback();
       this.comfortPlaying = false;
       this.pendingCcReply = null;
+      this.preparingComfort = false;
+      this.comfortAudioBuffer = [];
       this.setState('listening', 'user_bargein');
       return;
+    }
+
+    // Early-comfort: on the first interim transcript of a new utterance,
+    // fire the comfort TaskRequest in parallel with the user's remaining
+    // speech. Doubao takes ~3.8s to produce first audio — if we wait for
+    // ASR final the user stares at silence for those 3.8s. By firing on
+    // the first partial, the audio is (usually) ready by the time ASR
+    // finalizes. Audio arriving WHILE the user is still talking gets
+    // buffered in comfortAudioBuffer and flushed on ASR final.
+    if (
+      f.type === 'result' &&
+      this.state === 'listening' &&
+      !this.preparingComfort
+    ) {
+      this.preparingComfort = true;
+      this.comfortAudioBuffer = [];
+      const comfort = this.pickComfort();
+      this.comfortPlaying = true;
+      console.debug('[voice] prepare comfort early on first partial');
+      this.tts?.speak(comfort);
     }
 
     if (f.type === 'final' && this.state === 'listening') {
       this.opts.onUserMessage(f.text);
       this.opts.onSendTextToChat(f.text);
       this.setState('thinking', 'asr_final');
-      const comfort = this.pickComfort();
-      this.comfortPlaying = true;
-      this.tts?.speak(comfort);
+
+      if (this.preparingComfort) {
+        // Comfort already fired — flush whatever audio Doubao produced
+        // during the user's speaking window, and continue direct-play for
+        // any remaining chunks. No need to call tts.speak() again.
+        console.debug(
+          '[voice] flush %d buffered comfort chunks (early fire paid off)',
+          this.comfortAudioBuffer.length,
+        );
+        for (const chunk of this.comfortAudioBuffer) {
+          playback.enqueue(chunk);
+        }
+        this.comfortAudioBuffer = [];
+        this.preparingComfort = false;
+      } else {
+        // Fallback path (shouldn't happen in practice — partial always fires
+        // before final — but guard for it).
+        const comfort = this.pickComfort();
+        this.comfortPlaying = true;
+        this.tts?.speak(comfort);
+      }
     } else if (f.type === 'error') {
       this._setError('asr_dropped');
+    }
+  }
+
+  private _onTtsAudio(pcm: Uint8Array): void {
+    if (this.preparingComfort) {
+      // Early-fire phase: user is still talking. Buffer; flush on ASR final.
+      this.comfortAudioBuffer.push(pcm);
+    } else {
+      playback.enqueue(pcm);
     }
   }
 }
