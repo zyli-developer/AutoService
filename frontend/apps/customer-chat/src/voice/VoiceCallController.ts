@@ -41,7 +41,7 @@ export class VoiceCallController {
       // 1. AudioContext (in user gesture — browser unlock)
       this.audioCtx = new AudioContext({ sampleRate: 16000 });
       playback.createPlayer();
-      if (this.state !== 'preparing') return; // hangup raced
+      if ((this.state as VoiceState) !== 'preparing') return; // hangup raced
 
       // 2. getUserMedia
       try {
@@ -53,7 +53,7 @@ export class VoiceCallController {
         this._setError('mic_denied');
         return;
       }
-      if (this.state !== 'preparing') { await this._cleanup(); return; }
+      if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
 
       // 3. ASR + TTS connect
       this.asr = new AsrClient();
@@ -65,7 +65,7 @@ export class VoiceCallController {
         this._setError('asr_unreachable');
         return;
       }
-      if (this.state !== 'preparing') { await this._cleanup(); return; }
+      if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
       try {
         await this.tts.connect(this.opts.ttsUrl);
       } catch {
@@ -73,7 +73,7 @@ export class VoiceCallController {
         this._setError('tts_unreachable');
         return;
       }
-      if (this.state !== 'preparing') { await this._cleanup(); return; }
+      if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
 
       // Wire listeners only after successful connects
       this.asr.listen({
@@ -102,7 +102,7 @@ export class VoiceCallController {
 
       // 4. AudioWorklet
       await this.audioCtx.audioWorklet.addModule('/pcm-processor.js');
-      if (this.state !== 'preparing') { await this._cleanup(); return; }
+      if ((this.state as VoiceState) !== 'preparing') { await this._cleanup(); return; }
       const src = this.audioCtx.createMediaStreamSource(this.mediaStream);
       this.workletNode = new AudioWorkletNode(this.audioCtx, 'pcm-processor');
       this.workletNode.port.onmessage = (ev) => {
