@@ -460,5 +460,24 @@
   "operator.feed.time.minutes_ago": "{{count}} min ago",
   "operator.feed.time.hours_ago": "{{count}} h ago",
   "operator.feed.time.days_ago": "{{count}} d ago",
-  "customer.chat.image_attachment": "image attachment"
+  "customer.chat.image_attachment": "image attachment",
+
+  "voice.status.preparing": "Preparing...",
+  "voice.status.listening": "Listening...",
+  "voice.status.thinking": "Let me think...",
+  "voice.status.speaking": "Replying...",
+  "voice.status.ending": "Ending...",
+  "voice.status.mic_denied": "🎤 Microphone denied",
+  "voice.status.service_unreachable": "Voice service unavailable",
+  "voice.status.cc_timeout": "Response timed out, please retry",
+  "voice.status.unknown_error": "Voice error",
+  "voice.action.skip": "Skip",
+  "voice.action.hangup": "Hang up",
+  "voice.action.retry": "Retry",
+  "voice.button.mic": "Start voice call",
+  "voice.button.unsupported": "Voice not supported in this environment",
+  "voice.comfort.1": "Hmm, let me see...",
+  "voice.comfort.2": "One moment...",
+  "voice.comfort.3": "Let me think...",
+  "voice.comfort.4": "Alright..."
 }

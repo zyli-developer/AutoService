@@ -460,5 +460,24 @@
   "operator.feed.time.minutes_ago": "{{count}} 分钟前",
   "operator.feed.time.hours_ago": "{{count}} 小时前",
   "operator.feed.time.days_ago": "{{count}} 天前",
-  "customer.chat.image_attachment": "图片附件"
+  "customer.chat.image_attachment": "图片附件",
+
+  "voice.status.preparing": "正在准备...",
+  "voice.status.listening": "正在聆听...",
+  "voice.status.thinking": "让我想想...",
+  "voice.status.speaking": "正在回复...",
+  "voice.status.ending": "结束中...",
+  "voice.status.mic_denied": "🎤 麦克风被拒绝",
+  "voice.status.service_unreachable": "语音服务连接失败",
+  "voice.status.cc_timeout": "响应超时，请重试",
+  "voice.status.unknown_error": "语音异常",
+  "voice.action.skip": "跳过",
+  "voice.action.hangup": "挂断",
+  "voice.action.retry": "重试",
+  "voice.button.mic": "开始语音通话",
+  "voice.button.unsupported": "当前环境不支持语音",
+  "voice.comfort.1": "嗯，我看看...",
+  "voice.comfort.2": "让我想想...",
+  "voice.comfort.3": "稍等一下",
+  "voice.comfort.4": "好的好的"
 }
