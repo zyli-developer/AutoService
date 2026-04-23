@@ -46,7 +46,6 @@ export function useVoiceCall(opts: UseVoiceCallOpts) {
     errorReason,
     start: () => controllerRef.current?.start(),
     hangup: () => controllerRef.current?.hangup(),
-    skip: () => controllerRef.current?.skip(),
     retry: () => controllerRef.current?.retry(),
     onCcReply: (t: string) => controllerRef.current?.onCcReply(t),
   };

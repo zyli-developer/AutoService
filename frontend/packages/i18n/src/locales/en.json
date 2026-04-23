@@ -471,7 +471,6 @@
   "voice.status.service_unreachable": "Voice service unavailable",
   "voice.status.cc_timeout": "Response timed out, please retry",
   "voice.status.unknown_error": "Voice error",
-  "voice.action.skip": "Skip",
   "voice.action.hangup": "Hang up",
   "voice.action.retry": "Retry",
   "voice.button.mic": "Start voice call",

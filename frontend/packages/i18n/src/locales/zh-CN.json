@@ -471,7 +471,6 @@
   "voice.status.service_unreachable": "语音服务连接失败",
   "voice.status.cc_timeout": "响应超时，请重试",
   "voice.status.unknown_error": "语音异常",
-  "voice.action.skip": "跳过",
   "voice.action.hangup": "挂断",
   "voice.action.retry": "重试",
   "voice.button.mic": "开始语音通话",

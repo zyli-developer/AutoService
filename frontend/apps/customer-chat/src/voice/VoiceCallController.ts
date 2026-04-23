@@ -161,14 +161,6 @@ export class VoiceCallController {
     this.setState('error', reason);
   }
 
-  skip(): void {
-    if (this.state === 'speaking') {
-      this.tts?.abort();
-      playback.clearPlayback();
-      this.setState('listening', 'user_skip');
-    }
-  }
-
   hangup(): void {
     if (this.state === 'idle' || this.state === 'ending') return;
     this.setState('ending', 'user_hangup');

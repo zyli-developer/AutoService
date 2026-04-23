@@ -25,7 +25,6 @@ interface ChatModalProps {
   voiceState: VoiceState;
   voiceErrorReason: VoiceErrorReason | null;
   onVoiceStart: () => void;
-  onVoiceSkip: () => void;
   onVoiceHangup: () => void;
   onVoiceRetry: () => void;
 }
@@ -44,7 +43,6 @@ export function ChatModal({
   voiceState,
   voiceErrorReason,
   onVoiceStart,
-  onVoiceSkip,
   onVoiceHangup,
   onVoiceRetry,
 }: ChatModalProps) {
@@ -115,7 +113,6 @@ export function ChatModal({
       <VoiceStatusBar
         state={voiceState}
         errorReason={voiceErrorReason}
-        onSkip={onVoiceSkip}
         onHangup={onVoiceHangup}
         onRetry={onVoiceRetry}
       />

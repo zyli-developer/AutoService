@@ -71,13 +71,6 @@ describe('VoiceCallController state machine', () => {
     expect((c as any).comfortPlaying).toBe(false);
   });
 
-  it('from speaking, skip moves back to listening', () => {
-    const c = makeController();
-    c._testForceState('speaking');
-    c.skip();
-    expect(c.state).toBe('listening');
-  });
-
   it('speech_started while speaking: auto barge-in → listening', () => {
     const c = makeController();
     c._testForceState('speaking');

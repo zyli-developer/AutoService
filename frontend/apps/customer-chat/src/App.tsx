@@ -311,7 +311,6 @@ function ChatApp({ tenantId }: { tenantId: string }) {
           voiceState={voice.state}
           voiceErrorReason={voice.errorReason}
           onVoiceStart={voice.start}
-          onVoiceSkip={voice.skip}
           onVoiceHangup={voice.hangup}
           onVoiceRetry={voice.retry}
         />

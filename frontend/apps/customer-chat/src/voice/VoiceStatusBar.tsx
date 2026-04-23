@@ -4,12 +4,11 @@ import type { VoiceState, VoiceErrorReason } from './VoiceCallController';
 interface Props {
   state: VoiceState;
   errorReason: VoiceErrorReason | null;
-  onSkip: () => void;
   onHangup: () => void;
   onRetry: () => void;
 }
 
-export function VoiceStatusBar({ state, errorReason, onSkip, onHangup, onRetry }: Props) {
+export function VoiceStatusBar({ state, errorReason, onHangup, onRetry }: Props) {
   const { t } = useTranslation();
   if (state === 'idle') return null;
 
@@ -39,11 +38,6 @@ export function VoiceStatusBar({ state, errorReason, onSkip, onHangup, onRetry }
     >
       <span className="voice-status-text">{textMap[state]}</span>
       <div className="voice-status-actions">
-        {state === 'speaking' && (
-          <button type="button" onClick={onSkip} aria-label={t('voice.action.skip')}>
-            {t('voice.action.skip')}
-          </button>
-        )}
         {isError && (
           <button type="button" onClick={onRetry} aria-label={t('voice.action.retry')}>
             {t('voice.action.retry')}
