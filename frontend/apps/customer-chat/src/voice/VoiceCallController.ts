@@ -37,56 +37,72 @@ export class VoiceCallController {
     if (this.state !== 'idle' && this.state !== 'error') return;
     this.setState('preparing', 'user_start');
 
-    // 1. AudioContext (in user gesture — browser unlock)
     try {
+      // 1. AudioContext (in user gesture — browser unlock)
       this.audioCtx = new AudioContext({ sampleRate: 16000 });
       playback.createPlayer();
-    } catch {
-      this._testForceError('unknown');
-      return;
-    }
+      if (this.state !== 'preparing') return; // hangup raced
 
-    // 2. getUserMedia
-    try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      // 2. getUserMedia
+      try {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+      } catch {
+        await this._cleanup();
+        this._setError('mic_denied');
+        return;
+      }
+      if (this.state !== 'preparing') { await this._cleanup(); return; }
+
+      // 3. ASR + TTS connect
+      this.asr = new AsrClient();
+      this.tts = new TtsClient();
+      try {
+        await this.asr.connect(this.opts.asrUrl);
+      } catch {
+        await this._cleanup();
+        this._setError('asr_unreachable');
+        return;
+      }
+      if (this.state !== 'preparing') { await this._cleanup(); return; }
+      try {
+        await this.tts.connect(this.opts.ttsUrl);
+      } catch {
+        await this._cleanup();
+        this._setError('tts_unreachable');
+        return;
+      }
+      if (this.state !== 'preparing') { await this._cleanup(); return; }
+
+      // Wire listeners only after successful connects
+      this.asr.listen({
+        onFrame: f => this._onAsrFrame(f),
+        onClose: () => {
+          if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
+            this._setError('asr_dropped');
+          }
+        },
+        onError: () => {
+          if (this.state !== 'error') this._setError('asr_dropped');
+        },
       });
-    } catch {
-      this._testForceError('mic_denied');
-      return;
-    }
+      this.tts.listen({
+        onAudio: pcm => playback.enqueue(pcm),
+        onDone: () => this._onTtsDone(),
+        onError: () => {
+          if (this.state !== 'error') this._setError('tts_dropped');
+        },
+        onClose: () => {
+          if (this.state !== 'ending' && this.state !== 'idle' && this.state !== 'error') {
+            this._setError('tts_dropped');
+          }
+        },
+      });
 
-    // 3. ASR + TTS connect
-    this.asr = new AsrClient();
-    this.tts = new TtsClient();
-    try {
-      await this.asr.connect(this.opts.asrUrl);
-    } catch {
-      this._testForceError('asr_unreachable');
-      return;
-    }
-    try {
-      await this.tts.connect(this.opts.ttsUrl);
-    } catch {
-      this._testForceError('tts_unreachable');
-      return;
-    }
-
-    this.asr.listen({
-      onFrame: f => this._onAsrFrame(f),
-      onClose: () => { if (this.state !== 'ending' && this.state !== 'idle') this._testForceError('asr_dropped'); },
-      onError: () => this._testForceError('asr_dropped'),
-    });
-    this.tts.listen({
-      onAudio: pcm => playback.enqueue(pcm),
-      onDone: () => this._onTtsDone(),
-      onError: () => this._testForceError('tts_dropped'),
-      onClose: () => { if (this.state !== 'ending' && this.state !== 'idle') this._testForceError('tts_dropped'); },
-    });
-
-    // 4. Wire AudioWorklet
-    try {
+      // 4. AudioWorklet
       await this.audioCtx.audioWorklet.addModule('/pcm-processor.js');
+      if (this.state !== 'preparing') { await this._cleanup(); return; }
       const src = this.audioCtx.createMediaStreamSource(this.mediaStream);
       this.workletNode = new AudioWorkletNode(this.audioCtx, 'pcm-processor');
       this.workletNode.port.onmessage = (ev) => {
@@ -94,12 +110,12 @@ export class VoiceCallController {
         this.asr?.sendAudio(buf);
       };
       src.connect(this.workletNode);
-    } catch {
-      this._testForceError('unknown');
-      return;
-    }
 
-    this.setState('listening', 'ready');
+      this.setState('listening', 'ready');
+    } catch {
+      await this._cleanup();
+      this._setError('unknown');
+    }
   }
 
   private _onTtsDone(): void {
@@ -118,6 +134,11 @@ export class VoiceCallController {
     this.opts.onStateChange?.(s, reason);
     // eslint-disable-next-line no-console
     console.debug('[voice]', 'state →', s, reason ?? '');
+  }
+
+  private _setError(reason: VoiceErrorReason): void {
+    this.errorReason = reason;
+    this.setState('error', reason);
   }
 
   skip(): void {
@@ -169,13 +190,11 @@ export class VoiceCallController {
     try { playback.closePlayer(); } catch {}
     this.asr = null; this.tts = null;
     this.mediaStream = null; this.audioCtx = null; this.workletNode = null;
+    this.pendingCcReply = null;
   }
 
-  // ---- test-only hooks (prefixed with _test, do NOT use in production) ----
-  _testForceError(reason: VoiceErrorReason): void {
-    this.errorReason = reason;
-    this.setState('error', reason);
-  }
+  // ---- test-only hooks (exposed for unit tests; keep _setError/_onAsrFrame private) ----
+  _testForceError(reason: VoiceErrorReason): void { this._setError(reason); }
   _testForceState(s: VoiceState): void { this.setState(s); }
   _testOnAsrFrame(f: AsrFrame): void { this._onAsrFrame(f); }
 
@@ -187,7 +206,7 @@ export class VoiceCallController {
       const comfort = this.pickComfort();
       this.tts?.speak(comfort);
     } else if (f.type === 'error') {
-      this._testForceError('asr_dropped');
+      this._setError('asr_dropped');
     }
   }
 }
