@@ -32,7 +32,9 @@ VITE_VOICE_GATEWAY_URL=http://localhost:8089 make run-web
 Or directly:
 ```bash
 cd frontend/apps/customer-chat
-VITE_VOICE_GATEWAY_URL=http://localhost:8089 pnpm dev
+# Write env into .env.local (inline `VAR=value pnpm dev` is flaky on Windows bash)
+echo "VITE_VOICE_GATEWAY_URL=http://localhost:8089" > .env.local
+pnpm dev
 ```
 
 Expect: `http://localhost:5173` serves the customer-chat SPA.
