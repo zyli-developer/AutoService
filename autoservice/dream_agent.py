@@ -97,7 +97,18 @@ def _tokenize_fts_query(query: str) -> str:
     tools can be extracted into their own package later (spec §2.5 notes
     "dream tools may run in a separate process from soul_generator").
     """
-    clean = re.sub(r'["\(\)\*\:\^]', " ", query)
+    # FTS5 special characters that break unquoted queries:
+    #   " ( ) * : ^   — quoting / grouping / prefix / column / not
+    #   - +           — NOT / AND operators (2026-04-23 bug: hyphen in
+    #                   "Toll-free" was parsed as "Toll NOT free" and
+    #                   FTS raised "no such column: free", kb_search
+    #                   caught the error and silently returned [] —
+    #                   making every cinnox Toll-free query appear as
+    #                   a KB-miss even though the data was there).
+    # Replacing them with spaces lets the hyphenated term split into
+    # two OR candidates ("Toll", "free"), both of which FTS5 can
+    # tokenize and match.
+    clean = re.sub(r'["\(\)\*\:\^\-\+]', " ", query)
     tokens = [t for t in clean.split() if len(t) >= 2]
     if not tokens:
         return query
@@ -272,7 +283,26 @@ def kb_search(
     if kb_path is None:
         return []
 
-    fts_query = _tokenize_fts_query(query)
+    # Bilingual expansion: append English canonical forms for any
+    # matched CJK country names / Chinese business terms / telecom
+    # acronyms in the query. See ``autoservice.query_expansion`` for
+    # rationale and mapping tables. Single-entry hook here (rather
+    # than at every kb_search call site) so all three callers —
+    # ``_build_customer_prompt``, the ``kb_search`` MCP tool, and the
+    # Dream agent loop — automatically benefit.
+    #
+    # Lazy import to avoid a module-load cycle through
+    # autoservice.triage_dispatch (which imports dream_agent) and to
+    # keep the dream_agent import graph unchanged for consumers that
+    # don't touch query expansion (tests that stub kb_search, etc.).
+    try:
+        from autoservice.query_expansion import expand_query
+        expanded = expand_query(query)
+    except Exception:
+        log.exception("Query expansion failed, falling back to raw query")
+        expanded = query
+
+    fts_query = _tokenize_fts_query(expanded)
     if not fts_query.strip():
         return []
 
