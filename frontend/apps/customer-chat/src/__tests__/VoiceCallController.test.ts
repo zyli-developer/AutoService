@@ -44,15 +44,31 @@ describe('VoiceCallController state machine', () => {
     expect(onSend).toHaveBeenCalledWith('hello');
   });
 
-  it('from thinking, CC reply is queued until comfort finishes', () => {
+  it('from thinking WITH comfort still playing, CC reply is queued until comfort done', () => {
     const c = makeController();
     c._testForceState('thinking');
+    (c as any).comfortPlaying = true;
     c.onCcReply('reply from CC');
-    // Still thinking — reply queued, waiting for comfort TTS done
-    expect(c.state).toBe('thinking');
-    // Simulate tts done event → should promote to speaking
-    (c as any)._onTtsDone();
+    expect(c.state).toBe('thinking'); // queued
+    (c as any)._onTtsDone();           // comfort finishes
+    expect(c.state).toBe('speaking');  // promoted
+  });
+
+  it('from thinking WITH comfort already finished, CC reply is spoken immediately', () => {
+    const c = makeController();
+    c._testForceState('thinking');
+    (c as any).comfortPlaying = false;
+    c.onCcReply('late reply');
     expect(c.state).toBe('speaking');
+  });
+
+  it('comfort finishing with no queued CC reply stays in thinking', () => {
+    const c = makeController();
+    c._testForceState('thinking');
+    (c as any).comfortPlaying = true;
+    (c as any)._onTtsDone();
+    expect(c.state).toBe('thinking');  // waits for onCcReply
+    expect((c as any).comfortPlaying).toBe(false);
   });
 
   it('from speaking, skip moves back to listening', () => {

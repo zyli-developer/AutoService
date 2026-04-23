@@ -30,6 +30,7 @@ export class VoiceCallController {
   private audioCtx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private pendingCcReply: string | null = null;
+  private comfortPlaying: boolean = false;
 
   constructor(private opts: VoiceControllerOptions) {}
 
@@ -118,11 +119,16 @@ export class VoiceCallController {
   private _onTtsDone(): void {
     if (this.state === 'speaking') {
       this.setState('listening', 'tts_done');
-    } else if (this.state === 'thinking' && this.pendingCcReply) {
-      const text = this.pendingCcReply;
-      this.pendingCcReply = null;
-      this.setState('speaking', 'cc_reply_after_comfort');
-      this.tts?.speak(text);
+    } else if (this.state === 'thinking') {
+      // Comfort TTS finished. Either promote a queued CC reply now, or just
+      // clear the flag and wait — onCcReply will speak directly once it arrives.
+      this.comfortPlaying = false;
+      if (this.pendingCcReply) {
+        const text = this.pendingCcReply;
+        this.pendingCcReply = null;
+        this.setState('speaking', 'cc_reply_after_comfort');
+        this.tts?.speak(text);
+      }
     }
   }
 
@@ -161,8 +167,14 @@ export class VoiceCallController {
 
   onCcReply(text: string): void {
     if (this.state === 'thinking') {
-      // if comfort still playing, queue it — _onTtsDone will promote
-      this.pendingCcReply = text;
+      if (this.comfortPlaying) {
+        // Comfort still playing — queue. _onTtsDone will promote when comfort ends.
+        this.pendingCcReply = text;
+      } else {
+        // Comfort already finished before CC replied — speak CC immediately.
+        this.setState('speaking', 'cc_reply');
+        this.tts?.speak(text);
+      }
     } else if (this.state === 'listening' || this.state === 'speaking') {
       this.setState('speaking', 'cc_reply');
       this.tts?.speak(text);
@@ -188,6 +200,7 @@ export class VoiceCallController {
     this.asr = null; this.tts = null;
     this.mediaStream = null; this.audioCtx = null; this.workletNode = null;
     this.pendingCcReply = null;
+    this.comfortPlaying = false;
   }
 
   // ---- test-only hooks (exposed for unit tests; keep _setError/_onAsrFrame private) ----
@@ -201,6 +214,7 @@ export class VoiceCallController {
       this.opts.onSendTextToChat(f.text);
       this.setState('thinking', 'asr_final');
       const comfort = this.pickComfort();
+      this.comfortPlaying = true;
       this.tts?.speak(comfort);
     } else if (f.type === 'error') {
       this._setError('asr_dropped');
