@@ -109,6 +109,21 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_kb_domain ON kb_chunks(domain)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_kb_region ON kb_chunks(region)")
 
+    # trigram tokenizer (SQLite 3.34+) instead of the default unicode61 —
+    # critical for CJK content. unicode61 treats Chinese characters as
+    # non-word characters and skips them during indexing, so tenant KBs
+    # with Chinese content become un-searchable by Chinese queries even
+    # though the data is there (verified 2026-04-23 on cinnox KB: English
+    # queries "Professional"/"DID"/"France" match, but "价格"/"套餐"/
+    # "英国"/"法国" all return 0 hits against the same chunks).
+    #
+    # trigram builds a 3-character sliding-window index, which handles
+    # any script uniformly. Tradeoff: MATCH queries shorter than 3 chars
+    # return nothing (SQLite trigram spec), so ``_tokenize_fts_query``
+    # callers should prefer full phrases over isolated 2-char keywords.
+    # See ``dream_agent._tokenize_fts_query`` for the current query
+    # builder — it already filters tokens <2 chars, and we keep that as-is
+    # (bumping to 3 would regress English 2-letter codes like "US"/"UK").
     conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
             chunk_id UNINDEXED,
@@ -117,7 +132,7 @@ def init_db(db_path: Path) -> sqlite3.Connection:
             content,
             content=kb_chunks,
             content_rowid=rowid,
-            tokenize="unicode61 remove_diacritics 1"
+            tokenize="trigram"
         )
     """)
 
@@ -695,29 +710,34 @@ def load_sources() -> dict:
     return json.loads(SOURCES_FILE.read_text(encoding="utf-8"))
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Build knowledge base from web and file sources")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--all", action="store_true", help="Ingest all sources")
-    group.add_argument("--source", choices=["web", "files"], help="Ingest by type")
-    group.add_argument("--url", help="Ingest a single URL")
-    group.add_argument("--file", help="Ingest a single local file path")
-    args = parser.parse_args()
+def run_ingest(
+    db_path: Path,
+    *,
+    do_files: bool = False,
+    do_web: bool = False,
+    single_file: str | None = None,
+    single_url: str | None = None,
+) -> int:
+    """Ingest sources.json into `db_path`. Returns total chunks written.
 
-    db_path = KB_DIR / "kb.db"
+    Callable in-process so tenant-seed scripts can target the sandbox KB
+    (`.autoservice/sandbox/<tid>/kb/kb.db`) instead of the global KB
+    without going through subprocess. `sources_meta.json` is written
+    next to the target db, not to the global KB_DIR.
+    """
     conn = init_db(db_path)
     sources = load_sources()
     total = 0
 
     # ── File sources ──
-    if args.all or args.source == "files" or args.file:
+    if do_files or single_file:
         file_sources = sources.get("files", [])
-        if args.file:
-            matched = [s for s in file_sources if s["path"] == args.file]
+        if single_file:
+            matched = [s for s in file_sources if s["path"] == single_file]
             if not matched:
-                ext = Path(args.file).suffix.lower().lstrip(".")
-                matched = [{"id": "adhoc", "path": args.file,
-                            "name": Path(args.file).stem, "type": ext}]
+                ext = Path(single_file).suffix.lower().lstrip(".")
+                matched = [{"id": "adhoc", "path": single_file,
+                            "name": Path(single_file).stem, "type": ext}]
             file_sources = matched
 
         for src in file_sources:
@@ -734,13 +754,13 @@ def main():
             total += n
 
     # ── Web sources ──
-    if args.all or args.source == "web" or args.url:
+    if do_web or single_url:
         web_sources = sources.get("web", [])
-        if args.url:
-            matched = [s for s in web_sources if s["url"] == args.url]
+        if single_url:
+            matched = [s for s in web_sources if s["url"] == single_url]
             if not matched:
-                matched = [{"id": "adhoc_web", "url": args.url,
-                            "name": args.url, "max_pages": 10, "crawl_depth": 1}]
+                matched = [{"id": "adhoc_web", "url": single_url,
+                            "name": single_url, "max_pages": 10, "crawl_depth": 1}]
             web_sources = matched
 
         for src in web_sources:
@@ -749,7 +769,7 @@ def main():
             print(f"  → {n} chunks")
             total += n
 
-    # Update sources metadata (include domain/region)
+    # Update sources metadata (include domain/region) next to the target db.
     meta = {}
     for s in sources.get("files", []):
         meta[s["id"]] = {"name": s["name"], "type": s["type"],
@@ -761,13 +781,38 @@ def main():
                          "domain": s.get("domain", ""),
                          "region": s.get("region", ""),
                          "updated_at": datetime.now().isoformat()}
-    (KB_DIR / "sources_meta.json").write_text(
+    (db_path.parent / "sources_meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     conn.close()
     print(f"\n[KB Ingest] Done. Total chunks written: {total}")
     print(f"[KB Ingest] Database: {db_path}")
+    return total
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Build knowledge base from web and file sources")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all", action="store_true", help="Ingest all sources")
+    group.add_argument("--source", choices=["web", "files"], help="Ingest by type")
+    group.add_argument("--url", help="Ingest a single URL")
+    group.add_argument("--file", help="Ingest a single local file path")
+    parser.add_argument(
+        "--db-path", type=Path, default=None,
+        help="Target SQLite DB path. Defaults to .autoservice/database/knowledge_base/kb.db. "
+             "Use --db-path .autoservice/sandbox/<tid>/kb/kb.db to seed a tenant sandbox KB.",
+    )
+    args = parser.parse_args()
+
+    db_path = args.db_path or (KB_DIR / "kb.db")
+    run_ingest(
+        db_path,
+        do_files=bool(args.all or args.source == "files"),
+        do_web=bool(args.all or args.source == "web"),
+        single_file=args.file,
+        single_url=args.url,
+    )
 
 
 if __name__ == "__main__":
