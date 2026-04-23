@@ -29,8 +29,89 @@ export class VoiceCallController {
   private mediaStream: MediaStream | null = null;
   private audioCtx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
+  private pendingCcReply: string | null = null;
 
   constructor(private opts: VoiceControllerOptions) {}
+
+  async start(): Promise<void> {
+    if (this.state !== 'idle' && this.state !== 'error') return;
+    this.setState('preparing', 'user_start');
+
+    // 1. AudioContext (in user gesture — browser unlock)
+    try {
+      this.audioCtx = new AudioContext({ sampleRate: 16000 });
+      playback.createPlayer();
+    } catch {
+      this._testForceError('unknown');
+      return;
+    }
+
+    // 2. getUserMedia
+    try {
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+    } catch {
+      this._testForceError('mic_denied');
+      return;
+    }
+
+    // 3. ASR + TTS connect
+    this.asr = new AsrClient();
+    this.tts = new TtsClient();
+    try {
+      await this.asr.connect(this.opts.asrUrl);
+    } catch {
+      this._testForceError('asr_unreachable');
+      return;
+    }
+    try {
+      await this.tts.connect(this.opts.ttsUrl);
+    } catch {
+      this._testForceError('tts_unreachable');
+      return;
+    }
+
+    this.asr.listen({
+      onFrame: f => this._onAsrFrame(f),
+      onClose: () => { if (this.state !== 'ending' && this.state !== 'idle') this._testForceError('asr_dropped'); },
+      onError: () => this._testForceError('asr_dropped'),
+    });
+    this.tts.listen({
+      onAudio: pcm => playback.enqueue(pcm),
+      onDone: () => this._onTtsDone(),
+      onError: () => this._testForceError('tts_dropped'),
+      onClose: () => { if (this.state !== 'ending' && this.state !== 'idle') this._testForceError('tts_dropped'); },
+    });
+
+    // 4. Wire AudioWorklet
+    try {
+      await this.audioCtx.audioWorklet.addModule('/pcm-processor.js');
+      const src = this.audioCtx.createMediaStreamSource(this.mediaStream);
+      this.workletNode = new AudioWorkletNode(this.audioCtx, 'pcm-processor');
+      this.workletNode.port.onmessage = (ev) => {
+        const buf = ev.data as ArrayBuffer;
+        this.asr?.sendAudio(buf);
+      };
+      src.connect(this.workletNode);
+    } catch {
+      this._testForceError('unknown');
+      return;
+    }
+
+    this.setState('listening', 'ready');
+  }
+
+  private _onTtsDone(): void {
+    if (this.state === 'speaking') {
+      this.setState('listening', 'tts_done');
+    } else if (this.state === 'thinking' && this.pendingCcReply) {
+      const text = this.pendingCcReply;
+      this.pendingCcReply = null;
+      this.setState('speaking', 'cc_reply_after_comfort');
+      this.tts?.speak(text);
+    }
+  }
 
   private setState(s: VoiceState, reason?: string): void {
     this.state = s;
@@ -61,7 +142,10 @@ export class VoiceCallController {
   }
 
   onCcReply(text: string): void {
-    if (this.state === 'thinking' || this.state === 'listening') {
+    if (this.state === 'thinking') {
+      // if comfort still playing, queue it — _onTtsDone will promote
+      this.pendingCcReply = text;
+    } else if (this.state === 'listening' || this.state === 'speaking') {
       this.setState('speaking', 'cc_reply');
       this.tts?.speak(text);
     }
@@ -100,6 +184,8 @@ export class VoiceCallController {
       this.opts.onUserMessage(f.text);
       this.opts.onSendTextToChat(f.text);
       this.setState('thinking', 'asr_final');
+      const comfort = this.pickComfort();
+      this.tts?.speak(comfort);
     } else if (f.type === 'error') {
       this._testForceError('asr_dropped');
     }

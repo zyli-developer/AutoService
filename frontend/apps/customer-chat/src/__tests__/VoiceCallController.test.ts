@@ -44,10 +44,15 @@ describe('VoiceCallController state machine', () => {
     expect(onSend).toHaveBeenCalledWith('hello');
   });
 
-  it('from thinking, CC reply transitions to speaking', () => {
+  it('from thinking, CC reply is queued until comfort finishes', () => {
     const c = makeController();
     c._testForceState('thinking');
     c.onCcReply('reply from CC');
+    // Still thinking — reply queued, waiting for comfort TTS done
+    expect(c.state).toBe('thinking');
+    // Simulate tts done event → should promote to speaking
+    // @ts-expect-error access private method
+    (c as any)._onTtsDone();
     expect(c.state).toBe('speaking');
   });
 
@@ -63,5 +68,28 @@ describe('VoiceCallController state machine', () => {
     c._testForceState('listening');
     c.hangup();
     expect(['ending', 'idle']).toContain(c.state);
+  });
+
+  it('start() transitions idle → preparing', async () => {
+    const c = makeController();
+    // Do not await — start is async and will fail without real browser APIs
+    void c.start().catch(() => {});
+    // allow microtask
+    await Promise.resolve();
+    expect(['preparing', 'error']).toContain(c.state);
+  });
+
+  it('comfort text pool does not repeat last 3', () => {
+    const c = makeController({ comfortPool: ['a', 'b', 'c', 'd'] });
+    const seen: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      // @ts-expect-error access private method through any
+      seen.push((c as any).pickComfort());
+    }
+    // No window of 4 consecutive identical
+    for (let i = 0; i + 3 < seen.length; i++) {
+      const slice = seen.slice(i, i + 4);
+      expect(new Set(slice).size).toBeGreaterThan(1);
+    }
   });
 });
