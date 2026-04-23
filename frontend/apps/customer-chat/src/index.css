@@ -1033,3 +1033,40 @@ html, body, #root {
     display: none;
   }
 }
+
+/* VoiceStatusBar — top bar above message list */
+.voice-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--w-bg-subtle, #f6f8fa);
+  border-bottom: 1px solid var(--w-border, #e3e6ea);
+  font-size: 13px;
+}
+.voice-status-bar.is-error {
+  background: #fde8e8;
+  color: #a12a2a;
+  border-bottom-color: #f5c2c2;
+}
+.voice-status-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.voice-status-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.voice-status-actions button {
+  border: 1px solid currentColor;
+  background: transparent;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.voice-status-actions button:hover {
+  opacity: 0.8;
+}
