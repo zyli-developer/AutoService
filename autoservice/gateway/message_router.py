@@ -868,6 +868,7 @@ async def _drain_with_placeholder(
     detected_language: str | None = None,
     eligible: bool = True,
     delay_s: float = PLACEHOLDER_DELAY_S,
+    intent: str | None = None,
 ) -> tuple[str, Any | None]:
     """Drain the CC SDK stream and — if eligible and slow — emit a
     placeholder bubble that the caller can later replace via
@@ -971,11 +972,16 @@ async def _drain_with_placeholder(
         # timeout and this line (tight race on fast machines).
         if first_token_seen.is_set():
             return
+        text = _placeholder_text(detected_language, intent)
+        logger.info(
+            "soothe placeholder conv=%s intent=%s lang=%s",
+            conv_id, intent, detected_language,
+        )
         try:
             msg = await engine.send_message(
                 conv_id,
                 source="agent",
-                content=_placeholder_text(detected_language),
+                content=text,
                 metadata={"is_placeholder": True},
             )
         except Exception:
@@ -1457,6 +1463,7 @@ async def _generate_agent_reply(
         detected_language: str | None = None
         direct_reply_text: str | None = None
         tier_hint: str | None = None
+        decision: Any = None
         if triage_enabled:
             try:
                 decision = await triage_and_route(
@@ -1600,6 +1607,7 @@ async def _generate_agent_reply(
                 engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
                 detected_language=detected_language,
                 eligible=placeholder_eligible,
+                intent=getattr(decision, "intent", None) if decision else None,
             )
         except StickyTenantMismatch as exc:
             logger.warning("Sticky tenant mismatch conv=%s: %s", conv_id, exc)

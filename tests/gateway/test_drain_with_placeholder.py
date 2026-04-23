@@ -512,3 +512,45 @@ def test_placeholder_text_no_intent_still_works(monkeypatch):
 
     text = mr._placeholder_text(detected_language="zh")  # no intent kwarg
     assert text == "fallback stub"
+
+
+@pytest.mark.asyncio
+async def test_drain_passes_intent_to_placeholder_text(monkeypatch):
+    """_drain_with_placeholder forwards ``intent`` to _placeholder_text."""
+    from autoservice.gateway import message_router as mr
+
+    captured: dict = {}
+    real_fn = mr._placeholder_text
+
+    def _spy(detected_language=None, intent=None):
+        captured["lang"] = detected_language
+        captured["intent"] = intent
+        return real_fn(detected_language, intent)
+
+    monkeypatch.setattr(mr, "_placeholder_text", _spy)
+    monkeypatch.setattr(mr, "SOOTHE_ENABLED", False)  # use static path — deterministic
+
+    engine = MagicMock()
+    engine.send_message = AsyncMock(return_value=_msg("stub"))
+    engine.edit_message = AsyncMock()
+    ws = MagicMock()
+
+    async def _slow_stream():
+        # Never yields — forces placeholder branch
+        await asyncio.sleep(0.2)
+        if False:
+            yield None
+
+    await mr._drain_with_placeholder(
+        _slow_stream(),
+        engine=engine,
+        conv_id="conv-1",
+        target_role="customer",
+        ws=ws,
+        detected_language="zh",
+        eligible=True,
+        delay_s=0.05,
+        intent="complaint",
+    )
+    assert captured["intent"] == "complaint"
+    assert captured["lang"] == "zh"
