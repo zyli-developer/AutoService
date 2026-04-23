@@ -154,15 +154,17 @@ function ChatApp({ tenantId }: { tenantId: string }) {
     [t],
   );
 
+  // Shared id between the optimistic-bubble insert (onUserMessage) and the
+  // WS send (onSendTextToChat) so message_confirm can dedupe correctly.
+  const pendingAsrClientMsgIdRef = useRef<string | null>(null);
+
   const voice = useVoiceCall({
     asrUrl,
     ttsUrl,
     comfortPool,
     onUserMessage: (text: string) => {
-      // When ASR finalizes, insert a user bubble (mirrors typed-text path).
-      // The chat store's optimistic-then-confirm flow expects a clientMsgId;
-      // we use a generated one so the eventual /ws/chat echo can be de-duped.
       const clientMsgId = crypto.randomUUID();
+      pendingAsrClientMsgIdRef.current = clientMsgId;
       useChatStore.getState().addMessage({
         id: clientMsgId,
         clientMsgId,
@@ -176,13 +178,13 @@ function ChatApp({ tenantId }: { tenantId: string }) {
       });
     },
     onSendTextToChat: (text: string) => {
-      // Send via existing /ws/customer — same path as handleSend, minus the
-      // optimistic user-bubble insertion (already done in onUserMessage).
+      const clientMsgId = pendingAsrClientMsgIdRef.current ?? crypto.randomUUID();
+      pendingAsrClientMsgIdRef.current = null;
       const convId = useChatStore.getState().conversationId;
       void send('customer_message', {
         content: text,
         source: customerId,
-        client_msg_id: crypto.randomUUID(),
+        client_msg_id: clientMsgId,
         ...(convId ? { conversation_id: convId } : {}),
       });
     },
