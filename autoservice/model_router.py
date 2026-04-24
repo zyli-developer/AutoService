@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -18,6 +19,11 @@ from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 log = logging.getLogger("triage.router")
+# ``triage.router`` propagates to root (WARNING by default), so INFO calls
+# get dropped. Route the one-shot timing breakdown through the gateway
+# logger so it lands in gateway.log next to ``Agent reply timing`` for
+# correlation. See ``web_gateway.py::logger.setLevel(INFO)``.
+_timing_log = logging.getLogger("autoservice.gateway.triage")
 
 
 def _triage_agent_enabled() -> bool:
@@ -592,22 +598,49 @@ class ModelRouter:
     _POOL_ACQUIRE_TIMEOUT = 0.5
 
     async def _triage_agent_one_shot(self, message: str, tenant_id: str | None) -> str:
-        """One-shot triage agent call returning the raw [分流] line."""
+        """One-shot triage agent call returning the raw [分流] line.
+
+        Emits a ``triage one-shot`` INFO log with a per-stage timing
+        breakdown (acquire / send / ttft / drain / total) + instance id.
+        Lets ops tell apart "pool couldn't hand us an instance" from
+        "haiku's network round-trip blew the budget" from "drain kept
+        growing because this warm instance accumulated session history" —
+        all three surface identically as the outer ``asyncio.TimeoutError``
+        today.
+        """
         from autoservice.cc_pool import get_pool
         pool = await get_pool()
         prompt = self._render_triage_prompt(message)
+        t0 = time.perf_counter()
         async with pool.acquire(role="triage", tenant_id=tenant_id,
                                  timeout=self._POOL_ACQUIRE_TIMEOUT) as inst:
+            t_acq = time.perf_counter()
             await inst.client.query(prompt, session_id=f"triage-{id(inst)}")
+            t_send = time.perf_counter()
+            t_first: float | None = None
             parts: list[str] = []
             from claude_agent_sdk.types import AssistantMessage, ResultMessage
             async for msg in inst.client.receive_response():
+                if t_first is None:
+                    t_first = time.perf_counter()
                 if isinstance(msg, AssistantMessage) and msg.content:
                     for b in msg.content:
                         if hasattr(b, "text"):
                             parts.append(b.text)
                 elif isinstance(msg, ResultMessage) and msg.result:
                     parts.append(msg.result)
+            t_done = time.perf_counter()
+            # t_first may still be None if the stream produced zero
+            # messages (shouldn't happen in practice but guard it so the
+            # log line never crashes).
+            ttft = (t_first - t_send) if t_first is not None else (t_done - t_send)
+            drain = (t_done - t_first) if t_first is not None else 0.0
+            _timing_log.info(
+                "triage one-shot acquire=%.3fs send=%.3fs ttft=%.3fs "
+                "drain=%.3fs total=%.3fs inst=%s prompt_chars=%d reply_chars=%d",
+                t_acq - t0, t_send - t_acq, ttft, drain, t_done - t0,
+                id(inst), len(prompt), sum(len(p) for p in parts),
+            )
             return "".join(parts).strip()
 
     def _render_triage_prompt(self, message: str) -> str:
