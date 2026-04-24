@@ -1,0 +1,62 @@
+# Source of truth for the Cloudflare Access application on
+# autoservice.ezagent.chat. Applied via scripts/apply-cf-access.sh.
+#
+# protected_paths require the user to authenticate via CF Access
+# (email OTP by default) before the request reaches Caddy.
+# public_paths bypass Access entirely.
+#
+# After editing this file run `make access-apply`. Without a
+# CF_API_TOKEN the script prints the equivalent curl commands for
+# manual execution.
+
+application:
+  name: autoservice
+  domain: autoservice.ezagent.chat
+  session_duration: "720h"   # 30 days — dev ergonomics
+  type: self_hosted
+
+identity_providers:
+  - type: onetimepin         # email OTP; no extra provider required
+
+protected_paths:
+  - /admin
+  - /admin/*
+  - /console
+  - /console/*
+  - /ws/operator
+  - /ws/operator/*
+  - /ws/admin
+  - /ws/admin/*
+  - /api/master/*
+  - /api/admin/*
+  - /api/management/*
+  - /api/proposals*
+  - /api/dream/*
+  - /api/onboard/*
+  - /api/canary/*
+  - /api/compliance/*
+  - /api/rehearsal/*
+  - /api/billing/*
+  - /api/metrics/*
+  - /api/cc_pool/*
+  - /api/sla/*
+  - /api/conversations/active
+
+public_paths:
+  - /
+  - /site
+  - /site/*
+  - /robots.txt
+  - /_caddy_health
+  - /api/auth/*
+  - /api/tenants/*
+  - /api/healthz
+  - /ws/customer
+  - /ws/customer/*
+
+allowed_emails:
+  - lin.yilun@h2oslabs.com
+  - huang.jiajia@h2oslabs.com
+  - yao.shengyue@h2oslabs.com
+  - chen.ruihua@h2oslabs.com
+  - autoservice@h2oslabs.com

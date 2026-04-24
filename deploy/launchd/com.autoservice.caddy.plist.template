@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.autoservice.caddy</string>
+    <key>WorkingDirectory</key>
+    <string>{{AUTOSERVICE_ROOT}}</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/caddy</string>
+      <string>run</string>
+      <string>--adapter</string><string>caddyfile</string>
+      <string>--config</string>
+      <string>{{AUTOSERVICE_ROOT}}/deploy/caddy/Caddyfile.public</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>CADDY_PORT</key>
+      <string>18080</string>
+      <key>AUTOSERVICE_ROOT</key>
+      <string>{{AUTOSERVICE_ROOT}}</string>
+    </dict>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key>
+    <string>{{AUTOSERVICE_ROOT}}/.autoservice/logs/caddy-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{AUTOSERVICE_ROOT}}/.autoservice/logs/caddy-stdout.log</string>
+</dict>
+</plist>

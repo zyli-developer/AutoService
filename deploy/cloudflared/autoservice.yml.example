@@ -1,0 +1,22 @@
+# Template for the autoservice tunnel config.
+# Render to ~/.cloudflared/autoservice.yml (NOT the default config.yml — that
+# belongs to the pre-existing ezagent-voice tunnel). Replace the UUID, path
+# placeholders, and paths with your local values.
+tunnel: <autoservice-tunnel-uuid>
+credentials-file: /Users/<you>/.cloudflared/<autoservice-tunnel-uuid>.json
+
+# Explicit metrics port so it cannot collide with ezagent-voice tunnel's
+# auto-picked port. Scrape: curl http://127.0.0.1:20242/metrics
+metrics: 127.0.0.1:20242
+
+# Absolute path — launchd agents have CWD=/ so relative paths would break.
+logfile: /Users/<you>/Workspace/AutoService/.autoservice/logs/cloudflared.log
+loglevel: info
+
+ingress:
+  - hostname: autoservice.ezagent.chat
+    service: http://127.0.0.1:18080
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+  - service: http_status:404

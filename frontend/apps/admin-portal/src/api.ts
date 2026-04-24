@@ -1,7 +1,9 @@
 /**
  * API client for admin-portal — calls backend REST endpoints.
  */
-const API_BASE = `http://${window.location.hostname}:8000`;
+// Same-origin-relative by default. Override via VITE_API_BASE (e.g. to
+// a dedicated api.* subdomain in a future subdomain-routed deployment).
+const API_BASE: string = (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? '';
 
 export async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`${API_BASE}${path}`, {
