@@ -1,4 +1,4 @@
-.PHONY: setup run-channel run-web run-gateway run-server start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
+.PHONY: setup run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
 
 # --- Setup ---
 # Mode-aware setup delegated to scripts/setup.sh (T7S.4, spec §3.5):
@@ -18,9 +18,12 @@ run-web:
 	AUTH_DEV_MODE=1 PLACEHOLDER_ENABLED=0 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
 # Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
+# CONV_PERSIST=1 enables SQLite-backed conversation persistence
+# (.autoservice/database/conversations.db) — without it, restart wipes
+# operator-visible history. See autoservice/conversation_engine/sqlite_store.py.
 run-gateway:
 	@mkdir -p .autoservice/logs
-	PLACEHOLDER_ENABLED=0 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
+	PLACEHOLDER_ENABLED=0 CONV_PERSIST=1 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
 
 run-server:
 	uv run python3 channels/feishu/channel_server.py
@@ -47,6 +50,11 @@ start: stop
 	@echo ""
 	@echo "  logs: .autoservice/logs/{gateway,customer,operator,admin}.log"
 	@echo "  stop: make stop"
+
+# Same as `start` but with AUTH_DEV_MODE=1 so admin portal dev-login works
+# without SMTP. Do NOT use in production — see CLAUDE.md "Dev Auth Bypass".
+dev-start: export AUTH_DEV_MODE=1
+dev-start: start
 
 stop:
 	@if [ -d .autoservice/run ]; then \
