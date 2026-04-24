@@ -123,8 +123,9 @@ class TestInit:
             # After migration, kb_fts should use trigram.
             assert "trigram" in sql
             # And the row should still be findable via substring match.
+            # (Trigram needs ≥3 char windows; "提供什么" appears contiguously in seed.)
             rows = conn2.execute(
-                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("提供",),
+                "SELECT content FROM kb_fts WHERE kb_fts MATCH ?", ("提供什么",),
             ).fetchall()
             conn2.close()
             assert len(rows) == 1
@@ -202,7 +203,21 @@ class KBStore:
             )
             """
         )
+        # ALTER TABLE migrations for EVERY column that may be absent on legacy DBs.
+        # Two legacy variants to handle:
+        #   * onboarding._init_sandbox_kb (pre-refactor) created only
+        #     (id, content, source_name, section, domain, created_at) — missing 7 cols.
+        #   * kb_ingest.init_db originally had the 9 CREATE TABLE columns above but
+        #     lacked domain/region/language/page_number, which it added later via a
+        #     similar ALTER loop. Reproducing the full set here lets KBStore open
+        #     either legacy file and reach the unified 13-col shape.
+        # On fresh DBs, CREATE TABLE already added all 13, so every ALTER below
+        # raises "duplicate column name" and is silently skipped.
         for col_def in [
+            "source_id TEXT NOT NULL DEFAULT ''",
+            "source_type TEXT NOT NULL DEFAULT ''",
+            "source_url TEXT",
+            "file_path TEXT",
             "domain TEXT DEFAULT ''",
             "region TEXT DEFAULT ''",
             "language TEXT DEFAULT 'en'",
@@ -211,7 +226,7 @@ class KBStore:
             try:
                 c.execute(f"ALTER TABLE kb_chunks ADD COLUMN {col_def}")
             except sqlite3.OperationalError:
-                pass  # already present (old schema or already migrated)
+                pass  # already present (fresh DB from CREATE, or previously migrated)
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_source_id ON kb_chunks(source_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_domain ON kb_chunks(domain)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_kb_region ON kb_chunks(region)")
@@ -237,10 +252,15 @@ class KBStore:
             c.execute("DROP TRIGGER IF EXISTS kb_ad")
             c.execute("DROP TABLE kb_fts")
 
+        # NOTE: FTS has NO chunk_id column. External-content FTS (content=kb_chunks)
+        # requires every FTS column to exist in the content table; kb_chunks' PK is
+        # `id`, not `chunk_id`. Callers join search results by rowid instead. Dropping
+        # chunk_id also lets `INSERT INTO kb_fts(kb_fts) VALUES('rebuild')` succeed —
+        # with chunk_id present, rebuild errors with "SQL logic error" because it
+        # tries to read a kb_chunks.chunk_id column that doesn't exist.
         c.execute(
             """
             CREATE VIRTUAL TABLE kb_fts USING fts5(
-                chunk_id UNINDEXED,
                 source_name,
                 section,
                 content,
@@ -253,16 +273,16 @@ class KBStore:
         c.execute(
             """
             CREATE TRIGGER kb_ai AFTER INSERT ON kb_chunks BEGIN
-                INSERT INTO kb_fts(rowid, chunk_id, source_name, section, content)
-                VALUES (new.rowid, new.id, new.source_name, new.section, new.content);
+                INSERT INTO kb_fts(rowid, source_name, section, content)
+                VALUES (new.rowid, new.source_name, new.section, new.content);
             END
             """
         )
         c.execute(
             """
             CREATE TRIGGER kb_ad AFTER DELETE ON kb_chunks BEGIN
-                INSERT INTO kb_fts(kb_fts, rowid, chunk_id, source_name, section, content)
-                VALUES ('delete', old.rowid, old.id, old.source_name, old.section, old.content);
+                INSERT INTO kb_fts(kb_fts, rowid, source_name, section, content)
+                VALUES ('delete', old.rowid, old.source_name, old.section, old.content);
             END
             """
         )
@@ -1359,6 +1379,17 @@ git commit -m "feat(kb): KBStore.ingest_web with domain-bounded crawl"
 ---
 
 ## Phase 3 · CJK query fix
+
+> **SHIPPED AS HYBRID (not pure strict-phrase).** During implementation we discovered
+> that the plan's pure strict-phrase tokenizer regresses 3/9 legacy
+> `test_kb_search_tool.py` cases because those fixtures still use
+> `onboarding._init_sandbox_kb` (unicode61), which doesn't phrase-match queries
+> like `"refund policy"` against chunks containing `"Refund policy: 30 days..."`.
+> Rather than migrate the fixture early (that's Task 9), T7 shipped a hybrid
+> tokenizer that emits each fragment as a phrase AND as sliding trigram windows
+> for fragments > 4 chars. This serves both backends during the transition.
+> After Task 9 lands, the hybrid can collapse to the strict-phrase form — see
+> the `TODO(kb-unification/T11)` breadcrumb in `_tokenize_fts_query`.
 
 ### Task 7: Simplify _tokenize_fts_query for trigram + CJK regression test
 

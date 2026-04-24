@@ -12,7 +12,7 @@ setup:
 # Seed the cinnox tenant sandbox (config.json + souls + kb.db + chunks).
 # Idempotent — safe to re-run; wipes + reseeds its own source_ids only.
 # Run after `make setup` on a fresh deployment, before `make start`.
-# Pass FAST=1 to skip the ~1-2 min PDF ingest (glossary + demo chunks only).
+# Pass FAST=1 to skip the ~1-2 min OneSyn PDF/XLSX ingest (glossary + demo chunks only).
 seed-cinnox:
 	@uv run python scripts/seed_cinnox_tenant.py $(if $(FAST),--skip-file-ingest)
 

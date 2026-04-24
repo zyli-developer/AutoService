@@ -17,15 +17,13 @@ FTS5 index. Behavioural requirements under test:
 
 from __future__ import annotations
 
-import sqlite3
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from autoservice import dream_agent
-from autoservice.onboarding import _init_sandbox_kb
+from autoservice.kb_core import KBStore
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -35,20 +33,28 @@ def _seed_kb(
     db_path: Path,
     chunks: list[tuple[str, str, str, str]],
 ) -> None:
-    """Write *(content, source_name, section, domain)* tuples into a fresh KB."""
-    conn = _init_sandbox_kb(db_path)
+    """Seed a KB with *(content, source_name, section, domain)* tuples."""
+    store = KBStore(db_path)
     now = datetime.now(timezone.utc).isoformat()
     try:
-        for content, source_name, section, domain in chunks:
-            conn.execute(
-                "INSERT INTO kb_chunks (id, content, source_name, section, domain, "
-                "                       created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (uuid.uuid4().hex, content, source_name, section, domain, now),
-            )
-        conn.commit()
+        for i, (content, source_name, section, domain) in enumerate(chunks):
+            store.save_chunk({
+                "id": f"seed_{i:04d}",
+                "source_id": "seed",
+                "source_type": "text",
+                "source_name": source_name,
+                "source_url": None,
+                "file_path": None,
+                "section": section,
+                "content": content,
+                "created_at": now,
+                "domain": domain,
+                "region": "",
+                "language": "en",
+                "page_number": None,
+            })
     finally:
-        conn.close()
+        store.close()
 
 
 @pytest.fixture()
@@ -78,7 +84,7 @@ def test_kb_search_returns_empty_for_empty_kb(sandbox_root):
     before the admin has uploaded any KB content.
     """
     kb_path = sandbox_root / "tenant_a" / "kb" / "kb.db"
-    _init_sandbox_kb(kb_path).close()
+    KBStore(kb_path).close()
 
     result = dream_agent.kb_search(
         "tenant_a", "anything", sandbox_root=sandbox_root,
