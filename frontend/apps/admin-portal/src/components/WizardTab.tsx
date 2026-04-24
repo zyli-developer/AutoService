@@ -1,10 +1,18 @@
+import { useTranslation } from '@autoservice/i18n';
 import { useAdminStore } from '../store/adminStore';
 import { MaterialUploadStep } from './wizard/MaterialUploadStep';
 import { ChannelConfigStep } from './wizard/ChannelConfigStep';
 import { VirtualRehearsalStep } from './wizard/VirtualRehearsalStep';
 import { ComplianceCheckStep } from './wizard/ComplianceCheckStep';
+import { SandboxReady } from './wizard/SandboxReady';
 
-const STEPS = ['上传', '权限', '预演', '合规', '可用'] as const;
+const STEP_KEYS = [
+  'admin.wizard.step.1',
+  'admin.wizard.step.2',
+  'admin.wizard.step.3',
+  'admin.wizard.step.4',
+  'admin.wizard.step.5',
+] as const;
 
 /** Check whether the given wizard step is considered complete. */
 function useStepComplete(step: number): boolean {
@@ -32,27 +40,22 @@ function useStepComplete(step: number): boolean {
   }
 }
 
-function SandboxReady() {
-  const tenantId = useAdminStore((s) => s.tenantId);
-  return (
-    <div className="cs-card hl">
-      <div className="cs-ct">🎉 沙箱可用</div>
-      <div className="cs-row"><span>沙箱 URL</span><span style={{ color: 'var(--m600)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>{tenantId}.sandbox.onesync</span></div>
-      <div className="cs-row"><span>团队成员</span><span style={{ color: '#000' }}>已邀请 5 人</span></div>
-      <div className="cs-row"><span>对外开放</span><span style={{ color: 'var(--l700)', fontWeight: 700 }}>待商户决定</span></div>
-      <div className="cs-pg ok">✓ 准备好后一键对外</div>
-    </div>
-  );
-}
-
 export function WizardTab() {
-  const { tenantId, wizardStep, setWizardStep } = useAdminStore();
+  const { t } = useTranslation();
+  const { tenantId, wizardStep, setWizardStep, generationResult } = useAdminStore();
   const currentStepComplete = useStepComplete(wizardStep);
+
+  // IMPORTANT: prefer the tenant_id that /api/onboard/upload actually created
+  // (generationResult.tenantId, e.g. "tenant_8f3a12bd") over the login-time
+  // tenantId (adminStore.tenantId, e.g. "mystore"). The sandbox directory
+  // on disk is created under the generated id, so Steps 1-4 (activate /
+  // rehearsal / compliance / publish) must use it, not the login id.
+  const effectiveTenantId = generationResult?.tenantId || tenantId || 'default';
 
   return (
     <div data-testid="tab-wizard">
       <div className="cs-wiz" data-testid="wizard-stepper">
-        {STEPS.map((name, i) => (
+        {STEP_KEYS.map((key, i) => (
           <span key={i}>
             <span
               className={`cs-wiz-step ${i < wizardStep ? 'done' : i === wizardStep ? 'cur' : ''}`}
@@ -60,35 +63,35 @@ export function WizardTab() {
               onClick={() => i <= wizardStep && setWizardStep(i)}
               style={{ cursor: i <= wizardStep ? 'pointer' : 'default' }}
             >
-              {i + 1}.{name}
+              {t(key)}
             </span>
-            {i < STEPS.length - 1 && <span className="cs-arr">›</span>}
+            {i < STEP_KEYS.length - 1 && <span className="cs-arr">›</span>}
           </span>
         ))}
       </div>
 
       <div style={{ marginTop: 16 }}>
-        {wizardStep === 0 && <MaterialUploadStep tenantId={tenantId || 'default'} onGenerated={() => setWizardStep(1)} />}
-        {wizardStep === 1 && <ChannelConfigStep tenantId={tenantId || 'default'} />}
-        {wizardStep === 2 && <VirtualRehearsalStep tenantId={tenantId || 'default'} />}
+        {wizardStep === 0 && <MaterialUploadStep tenantId={effectiveTenantId} onGenerated={() => setWizardStep(1)} />}
+        {wizardStep === 1 && <ChannelConfigStep tenantId={effectiveTenantId} />}
+        {wizardStep === 2 && <VirtualRehearsalStep tenantId={effectiveTenantId} />}
         {wizardStep === 3 && <ComplianceCheckStep />}
         {wizardStep === 4 && <SandboxReady />}
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {wizardStep > 0 && (
-          <button className="cs-btn" onClick={() => setWizardStep(wizardStep - 1)}>上一步</button>
+          <button className="cs-btn" onClick={() => setWizardStep(wizardStep - 1)}>{t('common.previous')}</button>
         )}
-        {wizardStep < STEPS.length - 1 && (
+        {wizardStep < STEP_KEYS.length - 1 && (
           <button
             className="cs-btn ok"
             onClick={() => setWizardStep(wizardStep + 1)}
             disabled={!currentStepComplete}
             data-testid="wizard-next"
-            title={currentStepComplete ? undefined : '请先完成当前步骤'}
+            title={currentStepComplete ? undefined : t('admin.wizard.complete_current_first')}
             style={currentStepComplete ? undefined : { opacity: 0.5, cursor: 'not-allowed' }}
           >
-            下一步
+            {t('common.next')}
           </button>
         )}
       </div>

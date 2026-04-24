@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@autoservice/i18n';
 import { fetchJSON, postJSON } from '../api';
 
 interface CanaryData {
@@ -10,6 +11,7 @@ interface CanaryData {
 }
 
 export function CanaryProgress() {
+  const { t } = useTranslation();
   const [data, setData] = useState<CanaryData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,15 +24,15 @@ export function CanaryProgress() {
 
   useEffect(load, []);
 
-  if (loading) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty">加载灰度状态...</div></div>;
-  if (!data) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty" data-testid="canary-empty">暂无灰度数据</div></div>;
+  if (loading) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty">{t('admin.dashboard.canary.loading')}</div></div>;
+  if (!data) return <div className="cs-card" data-testid="canary-progress"><div className="im-empty" data-testid="canary-empty">{t('admin.dashboard.canary.empty')}</div></div>;
 
   const stages = [0, 5, 25, 100];
   const currentIdx = stages.findIndex(s => s >= data.percentage);
 
   return (
     <div className="cs-card" data-testid="canary-progress" style={{ marginTop: 14 }}>
-      <div className="cs-ct">📈 灰度发布进度</div>
+      <div className="cs-ct">{t('admin.dashboard.canary_progress')}</div>
 
       {/* Stage progress bar */}
       <div className="bar" data-testid="canary-steps" style={{ marginBottom: 12 }}>
@@ -46,7 +48,7 @@ export function CanaryProgress() {
       </div>
 
       <div className="cs-row" data-testid="canary-percentage">
-        <span>当前</span>
+        <span>{t('admin.dashboard.canary.current')}</span>
         <span style={{ color: 'var(--m600)', fontWeight: 700 }} data-testid="canary-status-tag">
           {data.percentage}% · {data.monitor.status}
         </span>
@@ -64,15 +66,15 @@ export function CanaryProgress() {
             </div>
           ))}
           <div className="cs-pg warn" data-testid="breach-count" style={{ marginTop: 8 }}>
-            ⚠ {data.monitor.breaches.length} 项指标超阈值
+            {t('admin.dashboard.canary.breach_count', { count: data.monitor.breaches.length })}
           </div>
         </div>
       )}
 
       {/* Controls */}
       <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <button className="cs-btn ok" onClick={() => postJSON('/api/canary/advance').then(load)}>Advance</button>
-        <button className="cs-btn" onClick={() => postJSON('/api/canary/rollback').then(load)} style={{ background: 'var(--p)', color: '#fff', border: 'none' }}>Rollback</button>
+        <button className="cs-btn ok" onClick={() => postJSON('/api/canary/advance').then(load)}>{t('admin.dashboard.canary.advance')}</button>
+        <button className="cs-btn" onClick={() => postJSON('/api/canary/rollback').then(load)} style={{ background: 'var(--p)', color: '#fff', border: 'none' }}>{t('admin.dashboard.canary.rollback')}</button>
       </div>
     </div>
   );

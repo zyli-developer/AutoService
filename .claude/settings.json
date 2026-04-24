@@ -25,7 +25,8 @@
   },
   "enableAllProjectMcpServers": true,
   "enabledPlugins": {
-    "dev-loop-skills@ezagent42": true
+    "dev-loop-skills@ezagent42": true,
+    "prd2impl@ezagent42": true
   },
   "extraKnownMarketplaces": {
     "ezagent42": {

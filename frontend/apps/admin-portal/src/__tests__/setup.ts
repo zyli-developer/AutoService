@@ -16,6 +16,9 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+// jsdom lacks scrollIntoView; ManagementChat calls it after every message.
+Element.prototype.scrollIntoView = vi.fn();
+
 afterEach(() => {
   useAdminStore.setState(initialState);
 });

@@ -49,6 +49,8 @@ def run_check(*args: str, script_dir: str | None = None) -> subprocess.Completed
         ["bash", str(SCRIPT), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
     )
 

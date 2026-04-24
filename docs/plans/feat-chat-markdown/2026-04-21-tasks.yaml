@@ -1,0 +1,264 @@
+metadata:
+  generated_at: "2026-04-21"
+  source:
+    prd_structure: "docs/plans/feat-chat-markdown/2026-04-21-prd-structure.yaml"
+    task_hints: "docs/plans/feat-chat-markdown/2026-04-21-task-hints.yaml"
+    spec: "docs/superpowers/specs/2026-04-21-chat-markdown-design.md"
+    plan: "docs/superpowers/plans/2026-04-21-chat-markdown.md"
+  source_type: "ingested"
+  plans_dir: "docs/plans/feat-chat-markdown"
+  note: |
+    No gap-analysis.yaml for this feature (design-spec-driven); gap_ref null throughout.
+    depends_on chain follows task-hints.implementation_steps (linear);
+    /plan-schedule may identify intra-phase parallelism (P2 T2F.1 ∥ T2F.2;
+    P3 T3F.1 ∥ T3F.2).
+  feature:
+    name: "Chat markdown rendering"
+    scope: "Render GFM + code highlight in assistant/agent messages across 4 chat surfaces (customer-chat, operator-console CopilotView, admin-portal ManagementChat, admin-portal ChatTab)"
+
+# ────────────────────────────────────────────────────────────────
+# Phase 1 — Shared MarkdownMessage component (MOD-01)
+# ────────────────────────────────────────────────────────────────
+tasks:
+  - id: T1S.1
+    name: "Shared MarkdownMessage component + CSS + 10 unit tests"
+    description: "Install 4 deps (react-markdown, remark-gfm, rehype-highlight, highlight.js) in frontend/packages/shared. Write MarkdownMessage.tsx with security overrides (<a target=_blank rel=noopener; <img> → null; raw HTML escaped via react-markdown default; javascript: URL filtered by default urlTransform). Write MarkdownMessage.css with md-chat and md-compact variants; import highlight.js/styles/github.css. Write MarkdownMessage.test.tsx with 10 tests covering CommonMark, GFM, code highlight, and security invariants."
+    line: shared
+    type: green
+    phase: P1
+    module: MOD-01
+    gap_ref: null
+    story_refs: []
+    depends_on: []
+    blocked_by: []
+    deliverables:
+      - path: "frontend/packages/shared/MarkdownMessage.tsx"
+        type: code
+      - path: "frontend/packages/shared/MarkdownMessage.css"
+        type: code
+      - path: "frontend/packages/shared/MarkdownMessage.test.tsx"
+        type: test
+    may_touch:
+      - "frontend/packages/shared/package.json"
+    verification: "cd frontend/packages/shared && npx vitest run MarkdownMessage.test.tsx — 10/10 green"
+    estimated_effort: medium
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "Green — deterministic wrapper; no LLM or strategy decision. Security invariants are mechanical (override <a> + strip <img>) and pinned by tests."
+
+# ────────────────────────────────────────────────────────────────
+# Phase 2 — customer-chat + operator-console (MOD-02 + MOD-03)
+# ────────────────────────────────────────────────────────────────
+  - id: T2F.1
+    name: "customer-chat MessageBubble integration"
+    description: "Add MarkdownMessage import to MessageBubble.tsx; wrap the text-render site (near L83 `<span>{message.content}</span>`) with `role === 'agent' ? <MarkdownMessage variant='chat'> : <span>`. Append 2 regression tests to MessageBubble.test.tsx — agent **bold** → <strong>; customer **bold** → literal text."
+    line: frontend
+    type: green
+    phase: P2
+    module: MOD-02
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1S.1]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/customer-chat/src/components/MessageBubble.tsx"
+        type: code
+      - path: "frontend/apps/customer-chat/src/__tests__/MessageBubble.test.tsx"
+        type: test
+    may_touch:
+      - "frontend/apps/customer-chat/package.json"   # if transitive pnpm resolution fails
+    verification: "cd frontend/apps/customer-chat && npx vitest run src/__tests__/MessageBubble.test.tsx — all green, 2 new pass"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T2F.2
+    name: "operator-console CopilotView integration (4 render sites)"
+    description: "Add MarkdownMessage import to CopilotView.tsx. Identify the CopilotMessage role discriminator (read store/operatorStore.ts — likely `from` or `role` field). Wrap 4 occurrences of `<div className='op-msg-text'>{msg.text}</div>` (lines ~72/93/107/122) with <MarkdownMessage variant='compact'> on agent-branch sites ONLY; operator/customer sites stay plain. Write 2 regression tests in CopilotView.test.tsx (create if absent). ConversationFeed is out of scope (renders 40-char truncate previews only)."
+    line: frontend
+    type: green
+    phase: P2
+    module: MOD-03
+    gap_ref: null
+    story_refs: []
+    depends_on: [T1S.1]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/operator-console/src/components/CopilotView.tsx"
+        type: code
+      - path: "frontend/apps/operator-console/src/__tests__/CopilotView.test.tsx"
+        type: test
+    may_touch:
+      - "frontend/apps/operator-console/package.json"
+    verification: "cd frontend/apps/operator-console && npx vitest run src/__tests__/CopilotView.test.tsx — all green"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+    notes: "ConversationFeed intentionally skipped — 40-char truncate preview, not full message. Document in commit body."
+
+# ────────────────────────────────────────────────────────────────
+# Phase 3 — admin-portal (MOD-04)
+# ────────────────────────────────────────────────────────────────
+  - id: T3F.1
+    name: "admin-portal ManagementChat integration"
+    description: "Add MarkdownMessage import to ManagementChat.tsx. Add optional `initialMessages` prop as a test-only seed seam (default unchanged — welcome message). Replace the dream_engine render (~L120 `<div className='im-msg-text' style={{whiteSpace:'pre-wrap'}}>{msg.content}</div>`) with `<div className='im-msg-text'><MarkdownMessage variant='chat' content={msg.content} /></div>` — drop the inline pre-wrap style (MarkdownMessage CSS handles whitespace). Write 2 regression tests in ManagementChat.test.tsx (create if absent): dream_engine markdown → <strong>; user role → literal."
+    line: frontend
+    type: green
+    phase: P3
+    module: MOD-04
+    gap_ref: null
+    story_refs: []
+    depends_on: [T2F.1, T2F.2]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/ManagementChat.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/__tests__/ManagementChat.test.tsx"
+        type: test
+    may_touch:
+      - "frontend/apps/admin-portal/package.json"
+    verification: "cd frontend/apps/admin-portal && npx vitest run src/__tests__/ManagementChat.test.tsx — all green"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+  - id: T3F.2
+    name: "admin-portal ChatTab integration"
+    description: "Add MarkdownMessage import to tenant/ChatTab.tsx. Replace entry.text render (~L148) with `entry.role === 'assistant' ? <MarkdownMessage variant='chat'> : entry.text`; user + error roles stay plain. Append 2 regression tests in ChatTab.test.tsx: mocked fetch returns `**bold**` → <strong>; user type `**literal**` → chat-msg-user bubble has literal text."
+    line: frontend
+    type: green
+    phase: P3
+    module: MOD-04
+    gap_ref: null
+    story_refs: []
+    depends_on: [T2F.1, T2F.2]
+    blocked_by: []
+    deliverables:
+      - path: "frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"
+        type: code
+      - path: "frontend/apps/admin-portal/src/__tests__/ChatTab.test.tsx"
+        type: test
+    may_touch: []
+    verification: "cd frontend/apps/admin-portal && npx vitest run src/__tests__/ChatTab.test.tsx — all green"
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Phase 4 — Close (cross-cutting artifacts)
+# ────────────────────────────────────────────────────────────────
+  - id: T4S.1
+    name: "Close — focused regression + 3 artifacts + PR"
+    description: "Run focused vitest subset across shared + 4 chat surfaces (do NOT run full admin-portal suite — pre-existing 24 i18n failures baseline noise). Produce eval-doc / test-diff / e2e-report per cc-prompt-templates §6.3. Register via scripts/artifact-register.sh. Link bidirectionally via scripts/artifact-link.sh. Push dev-a and open PR to dev."
+    line: shared
+    type: green
+    phase: P4
+    module: null
+    gap_ref: null
+    story_refs: []
+    depends_on: [T3F.1, T3F.2]
+    blocked_by: []
+    deliverables:
+      - path: ".artifacts/eval-docs/eval-chat-markdown-feat.md"
+        type: doc
+      - path: ".artifacts/test-diffs/test-diff-chat-markdown.md"
+        type: doc
+      - path: ".artifacts/e2e-reports/e2e-chat-markdown.md"
+        type: doc
+    may_touch:
+      - ".artifacts/registry.json"
+    verification: |
+      1. `cd frontend/packages/shared && npx vitest run` — shared tests all green
+      2. `cd frontend/apps/customer-chat && npx vitest run src/__tests__/MessageBubble.test.tsx` — green
+      3. `cd frontend/apps/operator-console && npx vitest run src/__tests__/CopilotView.test.tsx` — green
+      4. `cd frontend/apps/admin-portal && npx vitest run src/__tests__/ChatTab.test.tsx src/__tests__/ManagementChat.test.tsx` — green
+      5. All 3 artifacts registered + linked in registry.json
+      6. PR URL printed from `gh pr create`
+    estimated_effort: small
+    status: pending
+    owner: null
+    artifacts: []
+
+# ────────────────────────────────────────────────────────────────
+# Dependency graph (adjacency list — task → downstream tasks)
+# ────────────────────────────────────────────────────────────────
+dependency_graph:
+  T1S.1: [T2F.1, T2F.2]
+  T2F.1: [T3F.1, T3F.2]
+  T2F.2: [T3F.1, T3F.2]
+  T3F.1: [T4S.1]
+  T3F.2: [T4S.1]
+  T4S.1: []
+
+critical_path: [T1S.1, T2F.1, T3F.1, T4S.1]
+critical_path_length: 4
+
+# ────────────────────────────────────────────────────────────────
+# Phase groupings
+# ────────────────────────────────────────────────────────────────
+phases:
+  - id: P1
+    name: "Shared component"
+    milestone: feat-chat-markdown
+    tasks: [T1S.1]
+    gate: "MarkdownMessage 10/10 unit tests green; security invariants (raw-HTML-escaped, <a>-hardening, <img>-stripped, javascript:-filtered) pinned"
+
+  - id: P2
+    name: "customer-chat + operator-console integration"
+    milestone: feat-chat-markdown
+    tasks: [T2F.1, T2F.2]
+    gate: "Both agent-side chat surfaces render markdown; user-side stays plain; 2 regression cases per surface green; no pre-existing M1 tests regress"
+    parallel_safe: true
+
+  - id: P3
+    name: "admin-portal integration"
+    milestone: feat-chat-markdown
+    tasks: [T3F.1, T3F.2]
+    gate: "ManagementChat (dream_engine) + ChatTab (assistant) both render markdown; 2 regression cases each green"
+    parallel_safe: true
+
+  - id: P4
+    name: "Close + PR"
+    milestone: feat-chat-markdown
+    tasks: [T4S.1]
+    gate: "Focused regression 100% across shared + 4 surfaces; 3 artifacts registered + linked; PR open targeting dev"
+
+# ────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────
+summary:
+  total_tasks: 6
+  by_type:
+    green: 6
+    yellow: 0
+    red: 0
+  by_line:
+    shared: 2
+    frontend: 4
+  by_phase:
+    P1: 1
+    P2: 2
+    P3: 2
+    P4: 1
+  critical_path_length: 4
+  estimated_duration: "1 工作日 (~6-8h); parallel dispatch in P2+P3 saves ~1-2h"
+
+warnings:
+  - "No gap-analysis.yaml for this feature — all gap_ref are null"
+  - "task_hints.file_changes all have empty related_gap_refs — grouping by implementation_steps.touches_files instead (Behavior 1 fallback + Behavior 2 primary)"
+  - "Conservative dep chain from task-hints.implementation_steps: T3F.* depends on T2F.* even though admin-portal doesn't actually need customer-chat/operator-console work to land first (file-independent). /plan-schedule can choose to collapse by declaring P3 parallel-safe independently of P2."
+  - "P2 intra-phase parallel (T2F.1 ∥ T2F.2) and P3 (T3F.1 ∥ T3F.2) are safe — different apps, different files. Mark parallel_safe: true."
+  - "Non_goals applied: 6 spec-level non_goals checked against all deliverable paths; no deliverable matched any (dark-mode / copy-button / mermaid / user-input-markdown / live-preview / per-tenant-settings all absent from paths)"
+
+non_goals_applied:
+  - "Dark-mode theme swap for code blocks"
+  - "Copy-to-clipboard buttons on code blocks"
+  - "Mermaid / KaTeX / LaTeX rendering"
+  - "User input markdown rendering (user-side stays plain text)"
+  - "Live preview editor"
+  - "Per-tenant markdown settings (opt-in/out)"

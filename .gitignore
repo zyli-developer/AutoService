@@ -31,3 +31,37 @@ uv.lock
 
 # Local overrides sourced by autoservice.sh
 autoservice.local.sh
+
+# Superpowers-style isolated worktrees
+.worktrees/
+
+# Superpowers local session state (brainstorm notes, etc.)
+.superpowers/
+
+# Root-level npm tooling from local dev installs; frontend/ and recording/
+# have their own package.json which MUST stay tracked.
+/node_modules/
+/package.json
+/package-lock.json
+
+# Playwright outputs at repo root
+/test-results/
+
+# E2E evidence — binaries are transient; md reports stay tracked.
+e2e-evidence/**/*.png
+e2e-evidence/**/*.jpg
+e2e-evidence/**/*.jpeg
+e2e-evidence/**/*.mp4
+e2e-evidence/**/*.webm
+e2e-evidence/**/*.mov
+e2e-evidence/**/*.zip
+
+# Video demo binaries — SCRIPT.md / recording-plan.json etc. stay tracked.
+docs/videos/**/*.mp4
+docs/videos/**/*.webm
+docs/videos/**/*.mov
+
+# CINNOX KB source assets (large PDFs/XLSX). Mirrored from sibling autoservice
+# checkout via cp; excluded from git to keep repo lean. sources.json stays
+# tracked under skills/knowledge-base/references/.
+docs/resource/

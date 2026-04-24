@@ -1,20 +1,23 @@
+import { useTranslation } from '@autoservice/i18n';
+
 interface ChatFABProps {
   onClick: () => void;
   highlight?: boolean;
 }
 
 export function ChatFAB({ onClick, highlight = false }: ChatFABProps) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="web-fab-call">📞</div>
-      <div
+      <button
+        type="button"
         className={`web-fab ${highlight ? 'highlight' : ''}`}
         onClick={onClick}
-        role="button"
-        aria-label="Open chat"
+        aria-label={t('customer.chat.open')}
       >
         💬
-      </div>
+      </button>
     </>
   );
 }

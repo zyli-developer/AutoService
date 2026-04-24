@@ -1,0 +1,66 @@
+project:
+  name: "AutoService-dev-a · M2 Tenant Dream Sandbox"
+  branch: "dev-a"
+  main_branch: "dev"
+  generated_at: "2026-04-20"
+  plans_dir: docs/plans/m3.5   # switched from m3 to m3.5 on 2026-04-22 (M3 gate passed; tag v1.2.0-mvp + PR #74; per docs/plans/m3.5-mini-sprint.md)
+  parallel_capacity: 2
+  team:
+    - id: Dev1
+      line: main
+      branch: dev-a
+      skills: [fullstack, python, typescript, react]
+      notes: "Solo developer + Claude Code executor. Claude can dispatch parallel subagents (via superpowers:dispatching-parallel-agents) for non-conflicting work."
+
+  milestones:
+    M1:
+      name: "Master-side Sandbox Provisioning"
+      target: "约 3 工作日（18-25h 实际编码 + 测试）"
+      gate: "§10 验收 9 条全通过"
+      scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md"
+      status: "shipped"
+      plans_dir: docs/plans   # legacy — root-level artifacts kept for history
+    M2:
+      name: "Tenant-side Dream Sandbox"
+      scope_doc: "docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md"
+      plan_doc: "docs/superpowers/plans/2026-04-20-tenant-sandbox-m2.md"
+      plans_dir: docs/plans/m2
+      status: "shipped"
+      gate_passed_at: "2026-04-21"
+      gate_evidence: "§8 8-step acceptance — 7 passed / 1 skipped (step 8 M3 scope) / 0 failed; fork sim at e2e-evidence/fork-sim-m2/"
+    M3:
+      name: "Production-readiness + Identity/RBAC + Triage/Compliance/Dream/Ops"
+      scope_doc: "docs/prd/AutoService-M3-PRD.md"
+      plans_dir: docs/plans/m3
+      status: "shipped"       # M3 gate passed 2026-04-22; tag v1.2.0-mvp; PR #74 dev-a → dev
+      gate_passed_at: "2026-04-22"
+      gate_evidence: "13/14 smoke PASS (E6.2 DEFER M3.5); 1670/1670 regression; .artifacts/milestones/m3/m3-smoke-report.md"
+      tag: "v1.2.0-mvp"
+      merge_pr: "https://github.com/ezagent42/AutoService/pull/74"
+      epic_design_specs:
+        - "docs/superpowers/specs/2026-04-21-m3-e1-identity-rbac-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e3-triage-enhancement-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e4-compliance-country-filter-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e5-dream-extension-design.md"
+        - "docs/superpowers/specs/2026-04-21-m3-e6-ops-gc-playwright-design.md"
+      scope_notes:
+        - "Epic E2 (Subtenant/Whitelabel/Referral) DEFERRED_M4 per PRD §8.1 Errata (v1.1 §8 whitelabel OoS)"
+        - "16 in-scope stories (original 22 minus 6 E2.x)"
+        - "Kickoff 2026-04-21; gate 2026-04-22 (inside a single AI autorun)"
+        - "Dream Engine UI D1+D4 carved forward post-smoke (commit 2e50ac1 et al)"
+
+    M3.5:
+      name: "Mini-sprint — Playwright + Frontend UI surfaces (deferred from M3)"
+      scope_doc: "docs/plans/m3.5-mini-sprint.md"
+      plans_dir: docs/plans/m3.5
+      status: "ready"         # M3 gate passed 2026-04-22; M3.5 unblocked
+      scope_notes:
+        - "D1 Dream status band + D4 Runs history ALREADY shipped in M3 gate window"
+        - "Remaining dream-UI: D2 canary panel (Apply consolidation) + D3 im-block renderer (blocked on T3S.7-hotfix A2 revert)"
+        - "6 UI surfaces U1-U6 + Playwright T5S.1-5 (17 stories)"
+        - "Estimated ~5h AI for remaining dream-UI + ~10-14h AI for Playwright + U-surfaces"
+
+  conventions:
+    commit_style: "conventional commits (feat/fix/chore/test/refactor)"
+    branch_strategy: "single-branch dev-a with frequent commits"
+    pr_policy: "merge to dev only when M1 gate passes"

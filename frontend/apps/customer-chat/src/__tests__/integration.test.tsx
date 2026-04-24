@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { FakeWSClient } from './fakeWSClient';
 import type { WSClientOptions } from '@autoservice/ws-client';
 import { useChatStore, initialState } from '../store/chatStore';
@@ -30,6 +31,25 @@ vi.mock('@autoservice/ws-client', async (importActual) => {
 
 const { App } = await import('../App');
 
+/**
+ * Renders <App/> inside a MemoryRouter scoped to `/tenant/test-tenant/chat` so the
+ * tenant-aware routing introduced in T1F.3 resolves to the active chat UI.
+ * Individual tests can still pass options (e.g. MemoryRouter initialEntries)
+ * by calling renderApp({ path: '/chat' }).
+ */
+function renderApp(opts: { path?: string } = {}) {
+  const path = opts.path ?? '/tenant/test-tenant/chat';
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/tenant/:tenantId/chat" element={<App />} />
+        <Route path="/chat" element={<App />} />
+        <Route path="*" element={<App />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('Integration', () => {
   beforeEach(() => {
     fakeInstance = null;
@@ -41,7 +61,7 @@ describe('Integration', () => {
   it('TC-021: full render — FAB visible; after open modal shows; after connect input enabled; after send message appears', async () => {
     const user = userEvent.setup();
 
-    render(<App />);
+    renderApp();
 
     // FAB should be present
     expect(screen.getByTestId('chat-fab')).toBeInTheDocument();
@@ -82,7 +102,7 @@ describe('Integration', () => {
 
   it('TC-023: typing indicator appears after send, disappears on agent reply', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     // Open modal
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
@@ -113,7 +133,7 @@ describe('Integration', () => {
 
   it('TC-022: receiving a message frame adds it to the UI', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
 
     // Open modal to see messages
     await user.click(screen.getByTestId('chat-fab'));
@@ -171,7 +191,7 @@ describe('TC-034~038: placeholder -> streaming flow', () => {
 
   const openModal = async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
   };
@@ -260,7 +280,7 @@ describe('TC-057~062: reconnect flow', () => {
 
   it('TC-057: pushClose non-1000 shows reconnecting banner', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
     await waitFor(() => expect(screen.getByTestId('chat-input')).not.toBeDisabled());
@@ -273,7 +293,7 @@ describe('TC-057~062: reconnect flow', () => {
 
   it('TC-058: wasReconnect flag causes setReplaying on next open', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
     await waitFor(() => expect(useChatStore.getState().connectionStatus).toBe('open'));
@@ -296,7 +316,7 @@ describe('TC-057~062: reconnect flow', () => {
 
   it('TC-059: replay_complete removes banner', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
     act(() => {
@@ -312,7 +332,7 @@ describe('TC-057~062: reconnect flow', () => {
 
   it('TC-060: replayed message does not duplicate existing bubble', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
     const msgFrame = { v: 1, type: 'message' as const, id: 'f1', ts: new Date().toISOString(),
@@ -327,7 +347,7 @@ describe('TC-057~062: reconnect flow', () => {
 
   it('TC-061: 4041_REPLAY_GAP sends history_request; snapshot renders messages', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     await user.click(screen.getByTestId('chat-fab'));
     act(() => { fakeInstance?.triggerOpen(); });
     act(() => { fakeInstance?.pushFrame({ v: 1, type: 'error', id: 'err1', ts: new Date().toISOString(),
@@ -340,7 +360,7 @@ describe('TC-057~062: reconnect flow', () => {
   });
 
   it('TC-062: normal close (1000) does not set wasReconnect flag', async () => {
-    render(<App />);
+    renderApp();
     act(() => { fakeInstance?.triggerOpen(); });
     await waitFor(() => expect(useChatStore.getState().connectionStatus).toBe('open'));
     act(() => { fakeInstance?.pushClose(1000, 'normal'); });

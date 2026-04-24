@@ -33,6 +33,7 @@ ENGINE_DOC = (
 GATE_MATRIX: dict[tuple[ConversationMode, ParticipantRole], MessageVisibility] = {
     (ConversationMode.AUTO, ParticipantRole.AGENT): MessageVisibility.PUBLIC,
     (ConversationMode.AUTO, ParticipantRole.CUSTOMER): MessageVisibility.PUBLIC,
+    (ConversationMode.AUTO, ParticipantRole.OPERATOR): MessageVisibility.SIDE,
     (ConversationMode.COPILOT, ParticipantRole.AGENT): MessageVisibility.PUBLIC,
     (ConversationMode.COPILOT, ParticipantRole.OPERATOR): MessageVisibility.SIDE,
     (ConversationMode.TAKEOVER, ParticipantRole.AGENT): MessageVisibility.SIDE,

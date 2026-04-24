@@ -26,6 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Protocol, Optional, Callable, Awaitable
 
+from autoservice.conversation_engine.types import ConversationMode
 from autoservice.model_router import ModelRouter, RoutingDecision, ModelTier
 from autoservice.sentiment import parse_sentiment, update_sentiment, Sentiment
 
@@ -80,6 +81,15 @@ class EngineInterface(Protocol):
     async def edit_message(
         self, conversation_id: str, message_id: str, *, new_content: str, edited_by: str
     ) -> object: ...
+
+    async def switch_mode(
+        self,
+        conversation_id: str,
+        target: ConversationMode,
+        *,
+        triggered_by: str,
+        trigger: str,
+    ) -> None: ...
 
 
 # Model call interface
@@ -182,12 +192,42 @@ class PlaceholderStreamFlow:
             ctx.conversation_id, placeholder_msg.id,
         )
 
-        # Step 2: Generate full response via slow model
-        raw_response = await self._slow_call(
-            ctx.routing.agent_role.value,
-            ctx.conversation_id,
-            ctx.customer_message,
-        )
+        # Step 2: Generate full response via slow model (with timeout)
+        timeout_s = self._config.max_slow_response_ms / 1000.0
+        try:
+            raw_response = await asyncio.wait_for(
+                self._slow_call(
+                    ctx.routing.agent_role.value,
+                    ctx.conversation_id,
+                    ctx.customer_message,
+                ),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            # Placeholder timed out — escalate to human (copilot mode)
+            logger.warning(
+                "Slow model timed out after %.1fs: conv=%s — escalating to human",
+                timeout_s, ctx.conversation_id,
+            )
+            escalation_text = "正在为您转接人工客服"
+            await self._engine.switch_mode(
+                ctx.conversation_id,
+                ConversationMode.COPILOT,
+                triggered_by="system:placeholder_timeout",
+                trigger="placeholder_timeout",
+            )
+            edited_msg = await self._engine.edit_message(
+                ctx.conversation_id,
+                placeholder_msg.id,
+                new_content=escalation_text,
+                edited_by="system:placeholder_timeout",
+            )
+            return ReplyResult(
+                conversation_id=ctx.conversation_id,
+                message_id=edited_msg.id,
+                content=escalation_text,
+                used_placeholder=True,
+            )
 
         sentiment_result, clean_content = parse_sentiment(raw_response)
         if sentiment_result and ctx.previous_sentiment is not None:

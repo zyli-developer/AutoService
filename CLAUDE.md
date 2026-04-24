@@ -11,8 +11,23 @@ AutoService is a three-layer fork-based framework for building AI-powered social
 - **L3 `plugins/<tenant>/`** — Tenant instance: customer-specific plugins and data
 
 **Two channels:**
-- **Feishu IM** (primary) — MCP-based, runs as `channels/feishu/channel.py`
-- **Web chat** (secondary) — FastAPI app at `channels/web/app:app`
+- **Web chat** — FastAPI app at `channels/web/app:app`. **Canonical
+  customer message path** for M2/M3+ (triage, multi-role, tenant sandbox,
+  KB pre-fetch all live here).
+- **Feishu IM** — MCP-based, runs as `channels/feishu/channel.py`. M1
+  legacy entry; **not kept in sync** with M2/M3 features. See "Channel
+  feature parity" below before touching it.
+
+## Glossary
+
+- **Admin** — 整个 Socialware 服务的管理者（目前就是我们自己）。
+- **Tenant** — 租户，开启/安装一个 Socialware 的商户（例如一个电商平台、CX）。租户不可以嵌套：租户的客户（例如 CX 服务的客户）在我们系统看起来是和上游租户平行的租户，即没有 `CX/Hotel` 的嵌套路径，只有 `CX/` 和 `Hotel/` 两个平行路径。
+- **Operator** — 会和一个或多个 Agent 进行 copilot 的人类操作员。
+- **EndUser** — 终端用户，例如访问电商平台的客户、酒店入住客户，是 Socialware 最终服务的用户。
+- **Mode**
+  - **Takeover** — Operator 完全替代 Agent 进行服务。
+  - **Copilot** — Operator 给 Agent 建议，Agent 进行服务，Operator 的信息对 EndUser 不可见；Copilot 也可以调整为 Agent 给 Operator 建议的模式，此时 Agent 信息对 EndUser 不可见。
+  - **Auto** — Agent 全自动服务 EndUser，Operator 只可以观察，不可以介入。
 
 ## Commands
 
@@ -80,6 +95,28 @@ from autoservice import generate_id, load_config  # re-exported from socialware
 > adapters, the generic parts (~40% of code: WebSocket routing, pub/sub bridge, message dispatch)
 > should be extracted to `socialware/` as an L1 channel framework. See analysis below.
 
+### Channel feature parity (as of M3)
+
+The web channel is the canonical customer message path. Feishu was the M1
+primary channel and has not been kept in sync with M2/M3 features. New
+customer-flow work should land in `channels/web` (or `autoservice/gateway/`
+which it delegates to). Touching Feishu only makes sense if it returns to
+the active product roadmap.
+
+| Feature                                          | Web (`channels/web` + `autoservice/gateway/`) | Feishu (`channels/feishu`) |
+|--------------------------------------------------|-----------------------------------------------|----------------------------|
+| `ModelRouter` / `triage_and_route` dispatch       | ✅ `gateway/message_router.py`                 | ❌ direct `session_query` |
+| Multi-role sub-pools (lead / translate / triage) | ✅ via `cc_pool.acquire(role=…)`                | ❌ customer sticky only   |
+| Per-tenant sticky binding (`tenant_id`)           | ✅ via `session_query(tenant_id=…)`            | ❌ no tenant injection     |
+| KB pre-fetch (`_build_customer_prompt`)           | ✅                                             | ❌                          |
+| Cross-role history reseed                         | ✅ `_build_reseeded_prompt`                    | ❌                          |
+| Per-role model tier (fast/slow/dream)             | ✅ flows through cc_pool                       | ⚠️ only customer pool's `slow_model` is reachable |
+
+The Feishu channel still works for single-tenant customer chat with M1
+semantics. If/when Feishu re-enters scope, the alignment work is roughly
+"port the call site at `channels/feishu/channel_server.py:432` and `:1361`
+to the same triage + tenant flow as `gateway/message_router.py`".
+
 ### channels/ L1 extraction roadmap (deferred)
 
 The following generic components are candidates for future L1 extraction:
@@ -126,8 +163,119 @@ git fetch upstream
 git merge upstream/main
 ```
 
+## Dev Auth Bypass
+
+`AUTH_DEV_MODE=1` enables two dev-only endpoints (`GET /api/auth/dev-mode`,
+`POST /api/auth/dev-login`) that let developers mint an admin session without
+going through the magic-link flow. **This variable MUST NOT be set in
+production, staging, or any shared/networked environment** — it turns the
+admin portal into a no-password console for anyone who can reach it.
+
+- `make run-web` sets it automatically for local dev.
+- Production Docker/compose/k8s configs must leave it unset.
+- Spec: `docs/superpowers/specs/2026-04-21-dev-auto-login-design.md`.
+
+## Dream Dev Stub
+
+`DREAM_DEV_STUB=1` is an offline-dev / CI fallback for `/api/dream/trigger`.
+Post-T5S.14 (M3.5) the default path always drives a real LLM tool-loop —
+per-tenant via `dream_agent.run_dream` and master via `master_dream_agent.
+run_platform_dream`, both backed by the CC pool's `call_with_tools`
+surface (local `claude_agent_sdk`, not the Anthropic cloud SDK).
+
+Setting `DREAM_DEV_STUB=1` short-circuits BOTH paths (master and per-tenant)
+to `_run_dev_stub_dream`: three seed proposals emitted after a 3-second
+sleep, no LLM traffic, no key required. Useful for:
+
+- CI without an `ANTHROPIC_API_KEY` / without a local Claude CLI installed.
+- Offline demos / video capture where deterministic output matters.
+- Smoke-testing the Dream Engine UI flows without spending tokens.
+
+Unlike `AUTH_DEV_MODE`, `DREAM_DEV_STUB` does not expose an auth-bypass
+surface, so the production risk is strictly "wrong output" rather than
+"unauthenticated access". Still leave it unset in production — seed
+proposals would pollute real `proposals` tables.
+
+## Triage Agent Kill-Switch
+
+`TRIAGE_AGENT_ENABLED` controls the haiku-backed triage agent fallback
+that runs when FastClassifier confidence is below the medium threshold
+(`classify_intent.yaml::confidence.medium`, default 0.6).
+
+**Default: enabled** (as of 2026-04-23 afternoon — flipped back on
+after the morning's disable experiment). The agent is needed for tier
+selection on keyword-miss messages: FastClassifier's
+`general_question` fallback always uses `fast` tier, so ambiguous
+messages that actually need sonnet never get it without the agent.
+`_TRIAGE_AGENT_TIMEOUT` is **8 s** (bumped again from 4 s late the
+same day after observing recurring exact-4.000s timeouts in the
+gateway log — haiku's real round-trip on this network + prompt size
+consistently pushed past 4 s even with a warm pool instance). Override
+per-deploy with `TRIAGE_AGENT_TIMEOUT_S` env var (e.g.
+`TRIAGE_AGENT_TIMEOUT_S=12` for slow links).
+
+Off (`TRIAGE_AGENT_ENABLED=0`): low-confidence messages route via
+`_triage_fallback` (intent, confidence, routing, and tier taken
+directly from FastClassifier). Downstream SIDE `[分流]` messages carry
+`source: "fallback"`. Use when strict latency cap matters more than
+tier accuracy on the ~10% of messages that miss all keywords.
+
+Gate: `autoservice/model_router.py::_triage_agent_enabled`.
+
+## Placeholder Filler Kill-Switch
+
+`PLACEHOLDER_ENABLED` controls the **filler text** ("正在为您查询..."
+or soothe-picker variant) that gets emitted on a 1.5s timer if the
+model hasn't produced a first token yet. Default **on**.
+
+When set to `0`:
+
+- The timer-based `_placeholder_worker` is never scheduled, so no
+  filler bubble is ever emitted.
+- **Streaming is preserved.** On the first real model token,
+  `_drain_with_placeholder` inline-creates a message with that chunk
+  as its content (no `is_placeholder` flag) — this becomes the edit
+  target for subsequent progressive `message_edited` frames. The
+  customer still gets the typewriter-style fill-in, just without the
+  stiff filler bubble preceding it.
+- Overrides `SOOTHE_PLACEHOLDER_ENABLED` — with this off, soothe
+  templates are irrelevant because no filler is ever produced.
+
+Net customer UX with `PLACEHOLDER_ENABLED=0`: ~0.5-1 s of empty wait
+(haiku TTFT on warm pool), then the real reply streams in token-by-
+token as normal. Use when the filler text feels stiff.
+
+`make run-web` / `make run-gateway` set this to `0` for local dev;
+production leaves it unset (defaults to on).
+
+Gate: `autoservice/gateway/message_router.py::PLACEHOLDER_ENABLED`.
+
 ## Credentials
 
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)
 - `.autoservice/config.local.yaml` — Local API keys and endpoints (gitignored)
 - `.env` — Environment variables (gitignored)
+
+## /autorun & batch execution conventions
+
+When running `/autorun`, `/batch-dispatch`, or any multi-task execution:
+
+1. **`{plans_dir}/task-status.md` is the authoritative truth** — not TodoWrite,
+   not commit messages, not chat. It must be updated at every batch boundary
+   (same commit as code, or a trailing `chore(m2):` commit in the same work
+   session). Never skip to the next batch dispatch without updating it.
+
+2. **Read `{plans_dir}/cc-prompt-templates.md` §3 Closing** at autorun start and
+   treat it as a checklist. The template prescribes: edit task-status (phase row
+   + batch row + summary + session log) → git add code + status → commit →
+   declare next candidate.
+
+3. **Subagent dispatch prompts must inline the Closing constraint**
+   (see `cc-prompt-templates.md` §6). A subagent that commits without updating
+   task-status is a breach — its code is correct but the record is stale and
+   the next dispatch acts on wrong state.
+
+4. **Yellow tasks** route through §5 — code-reviewer subagent review before
+   Closing; reviewer verdict in commit body.
+
+plans_dir is resolved from `docs/plans/project.yaml → project.plans_dir`.

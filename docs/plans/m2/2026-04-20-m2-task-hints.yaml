@@ -1,0 +1,493 @@
+task_hints:
+  source_type: "ingested"
+  source_files:
+    - "docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md"
+    - "docs/superpowers/plans/2026-04-20-tenant-sandbox-m2.md"
+
+  file_changes:
+    # Backend (from spec §6.1)
+    - path: "autoservice/bootstrap.py"
+      change_type: create
+      purpose: "get_deployment_mode / get_tenant_id / ensure_master_tenant / ensure_local_admin"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/master_tenant.py"
+      change_type: create
+      purpose: "_master + _local_admin bootstrap shared logic"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/dream_scheduler.py"
+      change_type: create
+      purpose: "asyncio background loop"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/dream_agent.py"
+      change_type: create
+      purpose: "run_dream() agent loop + tool definitions"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/auth.py"
+      change_type: create
+      purpose: "sessions.db, login_tokens, require_tenant_access, SMTP"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/soul_generator.py"
+      change_type: modify
+      purpose: "5 roles; dream template; fallback constant"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/proposal_pipeline.py"
+      change_type: modify
+      purpose: "schema migration; run_once → run_once_legacy"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/cc_pool.py"
+      change_type: modify
+      purpose: "role='dream'; independent dream_pool"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/memory_pool.py"
+      change_type: modify
+      purpose: "tenant_id column; recent(tid) / last_message_at(tid)"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/api_routes.py"
+      change_type: modify
+      purpose: "/api/session/mode extension; /api/auth/*; /api/dream/*; /api/admin/* namespace"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/publish.py"
+      change_type: modify
+      purpose: "GitHubApiForkCreator; LocalTarballForkCreator runbook adds config.local.yaml write step"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/web_gateway.py"
+      change_type: modify
+      purpose: "lifespan startup; TenantContext middleware mode branching"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/onboarding.py"
+      change_type: modify
+      purpose: "Call 5-role soul_generator; stop copying static dream template"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/dream_soul_template.md"
+      change_type: delete
+      purpose: "Content migrated to soul_generator._FALLBACK_DREAM_SOUL constant"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "autoservice/dream_config_dialog.py"
+      change_type: modify
+      purpose: "On confirm, trigger dream_scheduler.refresh(tenant_id)"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    # Frontend (from spec §6.2)
+    - path: "frontend/packages/shared/useTenantId.ts"
+      change_type: create
+      purpose: "Real implementation (M1 spec reserved stub)"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/packages/shared/useSessionMode.ts"
+      change_type: modify
+      purpose: "Real fetch; return body extended with tier/brand_name/authenticated_as"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/layouts/TenantLayout.tsx"
+      change_type: create
+      purpose: "Spec §4.1 — 4-tab tenant layout"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"
+      change_type: create
+      purpose: "_local_admin conversation"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/auth/LoginPage.tsx"
+      change_type: create
+      purpose: "Magic-link request form"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/auth/AuthGate.tsx"
+      change_type: create
+      purpose: "Session check wrapper with splash"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/App.tsx"
+      change_type: modify
+      purpose: "<AuthGate> wrapper; mode branching"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/shell/AdminRail.tsx"
+      change_type: modify
+      purpose: "variant prop (master vs tenant icon sets)"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/shell/AdminTopbar.tsx"
+      change_type: modify
+      purpose: "brandName + authenticatedAs props"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/shell/AvatarMenu.tsx"
+      change_type: modify
+      purpose: "Add Logout"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/customer-chat/src/main.tsx"
+      change_type: modify
+      purpose: "Route switching by deployment_mode"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "frontend/apps/operator-console/src/main.tsx"
+      change_type: modify
+      purpose: "Same as customer-chat — mode-based routing"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    # Makefile / scripts (from spec §6.3)
+    - path: "Makefile"
+      change_type: modify
+      purpose: "setup target calls scripts/setup.sh"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+    - path: "scripts/setup.sh"
+      change_type: create
+      purpose: "Branch by deployment_mode (master vs tenant); per-tenant skill symlink in tenant mode"
+      source_anchor: "6-文件改动清单"
+      related_gap_refs: []
+
+  implementation_steps:
+    # From plan — 42 tasks across 8 phases. Each phase's first task depends only on
+    # its phase ancestor; later tasks in the same phase chain linearly.
+    - step: 1
+      description: "Task 1.1 — Extend config.local.yaml schema expectations (deployment_mode, tenant_id, dream.* fields)"
+      depends_on_steps: []
+      touches_files: []
+      source_anchor: "phase-1-bootstrap-_master-seed-spec-27-31"
+
+    - step: 2
+      description: "Task 1.2 — Extend soul_generator to 5 roles (add dream); LLM-generated dream_soul.md with fallback constant"
+      depends_on_steps: [1]
+      touches_files: ["autoservice/soul_generator.py"]
+      source_anchor: "phase-1-bootstrap-_master-seed-spec-27-31"
+
+    - step: 3
+      description: "Task 1.3 — ensure_master_tenant() bootstrap function (_master sandbox + souls + config.json)"
+      depends_on_steps: [2]
+      touches_files: ["autoservice/master_tenant.py", "autoservice/bootstrap.py"]
+      source_anchor: "phase-1-bootstrap-_master-seed-spec-27-31"
+
+    - step: 4
+      description: "Task 1.4 — ensure_local_admin() fork-side bootstrap"
+      depends_on_steps: [3]
+      touches_files: ["autoservice/master_tenant.py", "autoservice/bootstrap.py"]
+      source_anchor: "phase-1-bootstrap-_master-seed-spec-27-31"
+
+    - step: 5
+      description: "Task 1.5 — Wire bootstrap into web_gateway lifespan (mode-aware startup hook)"
+      depends_on_steps: [4]
+      touches_files: ["autoservice/web_gateway.py", "autoservice/bootstrap.py"]
+      source_anchor: "phase-1-bootstrap-_master-seed-spec-27-31"
+
+    - step: 6
+      description: "Task 2.1 — Add tenant_id column to proposals table; ALTER TABLE with DEFAULT '_master' backfill"
+      depends_on_steps: [5]
+      touches_files: ["autoservice/proposal_pipeline.py"]
+      source_anchor: "phase-2-schema-migrations-spec-24-37"
+
+    - step: 7
+      description: "Task 2.2 — Add tenant_id to memory_pool; recent(tid) / last_message_at(tid) API"
+      depends_on_steps: [6]
+      touches_files: ["autoservice/memory_pool.py"]
+      source_anchor: "phase-2-schema-migrations-spec-24-37"
+
+    - step: 8
+      description: "Task 2.3 — Create dream_runs.db schema + repository (start/end/tool_calls tracking)"
+      depends_on_steps: [7]
+      touches_files: []
+      source_anchor: "phase-2-schema-migrations-spec-24-37"
+
+    - step: 9
+      description: "Task 3.1 — emit_proposal tool"
+      depends_on_steps: [8]
+      touches_files: ["autoservice/dream_agent.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 10
+      description: "Task 3.2 — kb_search tool"
+      depends_on_steps: [9]
+      touches_files: ["autoservice/dream_agent.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 11
+      description: "Task 3.3 — list_souls tool"
+      depends_on_steps: [10]
+      touches_files: ["autoservice/dream_agent.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 12
+      description: "Task 3.4 — run_dream() agent loop (core); max_tool_turns=10 hard cap; finalize on overrun"
+      depends_on_steps: [11]
+      touches_files: ["autoservice/dream_agent.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 13
+      description: "Task 3.5 — cc_pool role='dream' support; independent dream_pool size=1"
+      depends_on_steps: [12]
+      touches_files: ["autoservice/cc_pool.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 14
+      description: "Task 3.6 — POST /api/dream/trigger + GET /api/dream/runs (manual trigger + run history)"
+      depends_on_steps: [13]
+      touches_files: ["autoservice/api_routes.py"]
+      source_anchor: "phase-3-dream-agent-spec-22---25"
+
+    - step: 15
+      description: "Task 4.1 — should_trigger() logic (idle_threshold_min=30 default; risk / coverage gates; 1h cool-down)"
+      depends_on_steps: [14]
+      touches_files: ["autoservice/dream_scheduler.py"]
+      source_anchor: "phase-4-dreamscheduler-spec-26"
+
+    - step: 16
+      description: "Task 4.2 — Scheduler loop + active-tenant discovery (asyncio background task)"
+      depends_on_steps: [15]
+      touches_files: ["autoservice/dream_scheduler.py"]
+      source_anchor: "phase-4-dreamscheduler-spec-26"
+
+    - step: 17
+      description: "Task 4.3 — /dream-config confirm → scheduler refresh (dynamic reconfig)"
+      depends_on_steps: [16]
+      touches_files: ["autoservice/dream_config_dialog.py", "autoservice/dream_scheduler.py"]
+      source_anchor: "phase-4-dreamscheduler-spec-26"
+
+    - step: 18
+      description: "Task 5.1 — Auth DB schema + session/token repo (sessions.db + login_tokens)"
+      depends_on_steps: [17]
+      touches_files: ["autoservice/auth.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 19
+      description: "Task 5.2 — POST /api/auth/request-login (token issue + SMTP; log mode in dev)"
+      depends_on_steps: [18]
+      touches_files: ["autoservice/auth.py", "autoservice/api_routes.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 20
+      description: "Task 5.3 — GET /api/auth/verify → set cookie + redirect"
+      depends_on_steps: [19]
+      touches_files: ["autoservice/auth.py", "autoservice/api_routes.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 21
+      description: "Task 5.4 — POST /api/auth/logout"
+      depends_on_steps: [20]
+      touches_files: ["autoservice/auth.py", "autoservice/api_routes.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 22
+      description: "Task 5.5 — require_tenant_access middleware (with internal-tenant exception for _master/_local_admin)"
+      depends_on_steps: [21]
+      touches_files: ["autoservice/auth.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 23
+      description: "Task 5.6 — Extend /api/session/mode with auth state (returns authenticated_as + tier + brand_name)"
+      depends_on_steps: [22]
+      touches_files: ["autoservice/api_routes.py"]
+      source_anchor: "phase-5-magic-link-auth-spec-5"
+
+    - step: 24
+      description: "Task 6.1 — useSessionMode full implementation (real fetch; return body extended)"
+      depends_on_steps: [23]
+      touches_files: ["frontend/packages/shared/useSessionMode.ts", "frontend/packages/shared/useTenantId.ts"]
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 25
+      description: "Task 6.2 — AuthGate + LoginPage (splash on loading; redirect to /login)"
+      depends_on_steps: [24]
+      touches_files:
+        - "frontend/apps/admin-portal/src/components/auth/AuthGate.tsx"
+        - "frontend/apps/admin-portal/src/components/auth/LoginPage.tsx"
+        - "frontend/apps/admin-portal/src/App.tsx"
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 26
+      description: "Task 6.3 — AdminRail variant prop (master vs tenant icon sets)"
+      depends_on_steps: [25]
+      touches_files: ["frontend/apps/admin-portal/src/components/shell/AdminRail.tsx"]
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 27
+      description: "Task 6.4 — AdminTopbar + AvatarMenu extensions (brandName + authenticatedAs + Logout)"
+      depends_on_steps: [26]
+      touches_files:
+        - "frontend/apps/admin-portal/src/components/shell/AdminTopbar.tsx"
+        - "frontend/apps/admin-portal/src/components/shell/AvatarMenu.tsx"
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 28
+      description: "Task 6.5 — TenantLayout component (Dashboard / Proposals / Billing / Chat tabs)"
+      depends_on_steps: [27]
+      touches_files: ["frontend/apps/admin-portal/src/layouts/TenantLayout.tsx"]
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 29
+      description: "Task 6.6 — ChatTab → /api/admin/chat (_local_admin conversation)"
+      depends_on_steps: [28]
+      touches_files: ["frontend/apps/admin-portal/src/components/tenant/ChatTab.tsx"]
+      source_anchor: "phase-6-admin-portal-tenantlayout-spec-4"
+
+    - step: 30
+      description: "Task 7.1 — TenantContext middleware mode branching"
+      depends_on_steps: [29]
+      touches_files: ["autoservice/web_gateway.py"]
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 31
+      description: "Task 7.2 — tenant_root() helper for unified path resolution"
+      depends_on_steps: [30]
+      touches_files: []
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 32
+      description: "Task 7.3 — customer-chat + operator-console mode-based routing"
+      depends_on_steps: [31]
+      touches_files:
+        - "frontend/apps/customer-chat/src/main.tsx"
+        - "frontend/apps/operator-console/src/main.tsx"
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 33
+      description: "Task 7.4 — scripts/setup.sh mode-aware setup (per-tenant skill symlink in tenant mode)"
+      depends_on_steps: [32]
+      touches_files: ["scripts/setup.sh", "Makefile"]
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 34
+      description: "Task 7.5 — Fork-mode boot smoke test"
+      depends_on_steps: [33]
+      touches_files: []
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 35
+      description: "Task 7.6 — /api/management/chat → _master routing (A ↔ _master self-iteration path)"
+      depends_on_steps: [34]
+      touches_files: ["autoservice/api_routes.py"]
+      source_anchor: "phase-7-fork-runtime-spec-3"
+
+    - step: 36
+      description: "Task 8.1 — GitHubApiForkCreator (gh CLI subprocess implementation)"
+      depends_on_steps: [35]
+      touches_files: ["autoservice/publish.py"]
+      source_anchor: "phase-8-forkcreator-automation-e2e-spec-34-8"
+
+    - step: 37
+      description: "Task 8.2 — LocalTarballForkCreator runbook adds config step (auto-write config.local.yaml)"
+      depends_on_steps: [36]
+      touches_files: ["autoservice/publish.py"]
+      source_anchor: "phase-8-forkcreator-automation-e2e-spec-34-8"
+
+    - step: 38
+      description: "Task 8.3 — Full E2E acceptance (manual-runnable, @pytest.mark.e2e; §8 acceptance 8 steps)"
+      depends_on_steps: [37]
+      touches_files: []
+      source_anchor: "phase-8-forkcreator-automation-e2e-spec-34-8"
+
+  non_goals:
+    # From spec §0.2 Out of scope (M3+)
+    - "Subtenant (tier=2) materialization (B creates C via wizard / whitelabel capability)"
+    - "Operator / client authentication; team invitations; RBAC"
+    - "Platform-level dream (aggregating all-tenant signals for platform-level improvements, brainstorm Q2-B)"
+    - "Merchant custom domains / wildcard DNS / domain_routing table"
+    - "Compliance templates filtered by `countries` (gap A-④)"
+    - "Sandbox GC (cleanup of over-due unpublished sandboxes)"
+    - "OAuth / SSO / 2FA / passkey"
+    - "Dream proposal auto-apply (NEVER — red line)"
+    - "Dream cross-tenant learning"
+    - "per-tenant CC process-level isolation (single-tenant fork already provides process isolation)"
+    - "Multiple admin login; admin invitations"
+    - "E2E scripting (deferred until M3 stabilizes)"
+
+  test_strategy:
+    preserved_testids: []
+    new_tests:
+      - "tests/bootstrap/test_get_deployment_mode.py"
+      - "tests/bootstrap/test_ensure_master_tenant.py"
+      - "tests/bootstrap/test_ensure_local_admin.py"
+      - "tests/soul_generator/test_dream_role.py"
+      - "tests/dream_agent/test_emit_proposal_tool.py"
+      - "tests/dream_agent/test_kb_search_tool.py"
+      - "tests/dream_agent/test_list_souls_tool.py"
+      - "tests/dream_agent/test_run_dream.py"
+      - "tests/dream_scheduler/test_should_trigger.py"
+      - "tests/dream_scheduler/test_scheduler_loop.py"
+      - "tests/auth/test_request_login.py"
+      - "tests/auth/test_verify.py"
+      - "tests/auth/test_logout.py"
+      - "tests/auth/test_require_tenant_access.py"
+      - "tests/auth/test_session_mode.py"
+      - "tests/migrations/test_proposals_tenant_id_migration.py"
+      - "tests/migrations/test_memory_pool_tenant_id_migration.py"
+      - "tests/fork_runtime/ (suite)"
+    e2e_delta: |
+      M2 acceptance E2E (manual, @pytest.mark.e2e — slow, needs Anthropic key + gh CLI + real uvicorn):
+      1. Master wizard creates tenant B → publish tarball → archive sandbox
+      2. Runbook or fork_creator=github_api forks; tarball extracts to fork repo plugins/B/;
+         ForkCreator writes .autoservice/config.local.yaml with deployment_mode=tenant + tenant_id=B
+      3. Fork repo: make setup && make run-web boots cleanly
+      4. Browser GET http://fork-host:8000/chat (no /t/<tid>/ prefix) → conversation works
+      5. admin-portal magic-link login → TenantLayout renders B's 4 tabs
+      6. After 5-turn conversation, Dream agent triggers via dream.trigger=idle
+         → proposals table gets new row; dream_runs table has run record
+      7. Back on Master: http://master:8000/admin/chat → conversation with _master
+         → _master dream produces platform-level proposal
+      8. In admin-portal Proposals tab, approve/reject a proposal → status persists
+
+  risks:
+    - risk: "Dream agent cost explosion (idle detection too loose, repeated wake-ups)"
+      mitigation: "idle_threshold_min=30 default; 1h cool-down hard-coded after run_dream completes"
+    - risk: "Dream infinite loop (LLM never calls emit_proposal, just keeps querying KB)"
+      mitigation: "max_tool_turns=10 hard cap; force finalize on overrun"
+    - risk: "_master self-iteration feedback loop drift"
+      mitigation: "proposal must have status='draft' and require human-A review; dream never auto-applies soul changes (red line)"
+    - risk: "proposals table migration breaks existing data"
+      mitigation: "ALTER TABLE ... DEFAULT '_master' + migration script backfill; run M1 test baseline first"
+    - risk: "Fork repo missing config.local.yaml"
+      mitigation: "bootstrap.get_deployment_mode() asserts at startup with clear error pointing to missing step"
+    - risk: "cc_pool dream client starves customer pool slots"
+      mitigation: "role='dream' uses independent dream_pool (size=1); not part of general pool"
+    - risk: "Admin-portal AuthGate first-frame flicker"
+      mitigation: "AuthGate loading state renders <Splash />; only judge after useSessionMode completes"
+    - risk: "Magic-link token HTTP sniffing in dev"
+      mitigation: "Dev mode accepts risk; deployment runbook adds HTTPS-required warning"
+    - risk: "GitHubApiForkCreator partial failure leaves residual state"
+      mitigation: "Failure does not auto gh repo delete (requires human confirmation); return clearly names the fork to clean up"
+    - risk: "ManagementChat regression — switching from stub LLM to _master"
+      mitigation: "Phase 1 writes _master bootstrap tests; Phase 6 branching preceded by master-behavior no-regression baseline"

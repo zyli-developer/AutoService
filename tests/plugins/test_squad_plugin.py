@@ -109,7 +109,9 @@ class TestRemovalOnClose:
         assert plugin.get_squad(conv.id) is not None
 
         await plugin.on_conversation_closed(conv)
-        assert plugin.get_squad(conv.id) is None
+        # After T6A.2, get_squad() auto-assigns default for unknown convs,
+        # so verify the explicit assignment was removed from internal state.
+        assert conv.id not in plugin._assignments
 
     @pytest.mark.asyncio
     async def test_close_unknown_conv_is_noop(self) -> None:
@@ -120,9 +122,10 @@ class TestRemovalOnClose:
 
 class TestGetSquadAndListConversations:
     @pytest.mark.asyncio
-    async def test_get_squad_unknown_returns_none(self) -> None:
+    async def test_get_squad_unknown_returns_default(self) -> None:
+        # After T6A.2, get_squad() auto-assigns default for unknown convs.
         plugin = SquadPlugin()
-        assert plugin.get_squad("nonexistent") is None
+        assert plugin.get_squad("nonexistent") == "general"
 
     @pytest.mark.asyncio
     async def test_list_conversations(self) -> None:
@@ -187,7 +190,8 @@ class TestIntegrationWithLocalEngine:
         await engine.close_conversation(
             conv.id, outcome=Outcome.RESOLVED, resolved_by="system",
         )
-        assert plugin.get_squad(conv.id) is None
+        # After T6A.2, get_squad() auto-assigns default; check internal state.
+        assert conv.id not in plugin._assignments
 
     @pytest.mark.asyncio
     async def test_multiple_convs_different_squads(self) -> None:

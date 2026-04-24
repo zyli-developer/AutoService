@@ -1,0 +1,222 @@
+prd_structure:
+  source_type: "ingested"
+  source_role: "plan"
+  source_files:
+    - "docs/superpowers/plans/2026-04-20-tenant-sandbox-m2.md"
+    - "docs/superpowers/specs/2026-04-20-tenant-sandbox-m2-design.md"
+
+  modules:
+    - id: MOD-01
+      name: "Phase 1 — Bootstrap + _master seed"
+      description: "Deployment mode detection, 5-role soul generation, _master + _local_admin bootstrap wiring (spec §2.7, §3.1)"
+      prd_sections: ["§2.7", "§3.1"]
+      sub_modules:
+        - id: MOD-01a
+          name: "Extend config.local.yaml schema expectations"
+          description: "Task 1.1 — deployment_mode, tenant_id, dream.* fields"
+        - id: MOD-01b
+          name: "Extend soul_generator to 5 roles (add dream)"
+          description: "Task 1.2 — LLM-generated dream_soul.md + fallback constant"
+        - id: MOD-01c
+          name: "ensure_master_tenant() bootstrap"
+          description: "Task 1.3 — _master sandbox + souls + config.json at master startup"
+        - id: MOD-01d
+          name: "ensure_local_admin() fork-side bootstrap"
+          description: "Task 1.4 — _local_admin sandbox at tenant-mode startup"
+        - id: MOD-01e
+          name: "Wire bootstrap into web_gateway lifespan"
+          description: "Task 1.5 — mode-aware startup hook"
+
+    - id: MOD-02
+      name: "Phase 2 — Schema migrations"
+      description: "proposals.tenant_id, memory_pool.tenant_id, dream_runs.db (spec §2.4, §3.7)"
+      prd_sections: ["§2.4", "§3.7"]
+      sub_modules:
+        - id: MOD-02a
+          name: "Add tenant_id column to proposals"
+          description: "Task 2.1 — ALTER + backfill _master default"
+        - id: MOD-02b
+          name: "Add tenant_id to memory_pool"
+          description: "Task 2.2 — migration + recent(tid) / last_message_at(tid) API"
+        - id: MOD-02c
+          name: "dream_runs.db schema + repository"
+          description: "Task 2.3 — run tracking (start/end/tool_calls)"
+
+    - id: MOD-03
+      name: "Phase 3 — Dream Agent"
+      description: "Agent loop with emit_proposal / kb_search / list_souls tools (spec §2.2 – §2.5)"
+      prd_sections: ["§2.2", "§2.3", "§2.4", "§2.5"]
+      sub_modules:
+        - id: MOD-03a
+          name: "emit_proposal tool"
+          description: "Task 3.1"
+        - id: MOD-03b
+          name: "kb_search tool"
+          description: "Task 3.2"
+        - id: MOD-03c
+          name: "list_souls tool"
+          description: "Task 3.3"
+        - id: MOD-03d
+          name: "run_dream() agent loop (core)"
+          description: "Task 3.4 — max_tool_turns=10 hard cap"
+        - id: MOD-03e
+          name: "cc_pool role=dream support"
+          description: "Task 3.5 — independent dream_pool size=1"
+        - id: MOD-03f
+          name: "POST /api/dream/trigger + GET /api/dream/runs"
+          description: "Task 3.6 — manual trigger + run history"
+
+    - id: MOD-04
+      name: "Phase 4 — DreamScheduler"
+      description: "Asyncio background scheduler per-tenant trigger reading (spec §2.6)"
+      prd_sections: ["§2.6"]
+      sub_modules:
+        - id: MOD-04a
+          name: "should_trigger() logic"
+          description: "Task 4.1 — idle/risk/coverage decision"
+        - id: MOD-04b
+          name: "Scheduler loop + active-tenant discovery"
+          description: "Task 4.2 — asyncio loop + cool-down"
+        - id: MOD-04c
+          name: "/dream-config confirm → scheduler refresh"
+          description: "Task 4.3 — dynamic reconfig"
+
+    - id: MOD-05
+      name: "Phase 5 — Magic-link auth"
+      description: "Admin-portal auth for master + tenant deployments (spec §5)"
+      prd_sections: ["§5"]
+      sub_modules:
+        - id: MOD-05a
+          name: "Auth DB schema + session/token repo"
+          description: "Task 5.1 — sessions.db + login_tokens"
+        - id: MOD-05b
+          name: "POST /api/auth/request-login"
+          description: "Task 5.2 — token issue + SMTP (log mode dev)"
+        - id: MOD-05c
+          name: "GET /api/auth/verify → set cookie + redirect"
+          description: "Task 5.3"
+        - id: MOD-05d
+          name: "POST /api/auth/logout"
+          description: "Task 5.4"
+        - id: MOD-05e
+          name: "require_tenant_access middleware"
+          description: "Task 5.5 — internal-tenant exception for _master/_local_admin"
+        - id: MOD-05f
+          name: "Extend /api/session/mode with auth state"
+          description: "Task 5.6 — returns authenticated_as + tier + brand_name"
+
+    - id: MOD-06
+      name: "Phase 6 — admin-portal TenantLayout"
+      description: "Mode-aware admin-portal with 4-tab tenant layout (spec §4)"
+      prd_sections: ["§4"]
+      sub_modules:
+        - id: MOD-06a
+          name: "useSessionMode full implementation"
+          description: "Task 6.1 — real fetch replacing master-only stub"
+        - id: MOD-06b
+          name: "AuthGate + LoginPage"
+          description: "Task 6.2 — splash on loading; redirect to /login"
+        - id: MOD-06c
+          name: "AdminRail variant prop"
+          description: "Task 6.3 — master vs tenant icon sets"
+        - id: MOD-06d
+          name: "AdminTopbar + AvatarMenu extensions"
+          description: "Task 6.4 — brandName + authenticatedAs + Logout"
+        - id: MOD-06e
+          name: "TenantLayout component"
+          description: "Task 6.5 — Dashboard / Proposals / Billing / Chat"
+        - id: MOD-06f
+          name: "ChatTab → /api/admin/chat"
+          description: "Task 6.6 — _local_admin conversation"
+
+    - id: MOD-07
+      name: "Phase 7 — Fork Runtime"
+      description: "deployment_mode=tenant URL-flat runtime + per-tenant skill symlink (spec §3)"
+      prd_sections: ["§3"]
+      sub_modules:
+        - id: MOD-07a
+          name: "TenantContext middleware mode branching"
+          description: "Task 7.1"
+        - id: MOD-07b
+          name: "tenant_root() helper for unified path resolution"
+          description: "Task 7.2"
+        - id: MOD-07c
+          name: "customer-chat + operator-console mode-based routing"
+          description: "Task 7.3"
+        - id: MOD-07d
+          name: "scripts/setup.sh mode-aware setup"
+          description: "Task 7.4 — per-tenant skill symlink in tenant mode"
+        - id: MOD-07e
+          name: "Fork-mode boot smoke test"
+          description: "Task 7.5"
+        - id: MOD-07f
+          name: "/api/management/chat → _master routing"
+          description: "Task 7.6 — A ↔ _master self-iteration path"
+
+    - id: MOD-08
+      name: "Phase 8 — ForkCreator automation + E2E"
+      description: "gh CLI GitHubApiForkCreator + runbook update + E2E acceptance (spec §3.4, §8)"
+      prd_sections: ["§3.4", "§8"]
+      sub_modules:
+        - id: MOD-08a
+          name: "GitHubApiForkCreator"
+          description: "Task 8.1 — gh CLI subprocess version"
+        - id: MOD-08b
+          name: "LocalTarballForkCreator runbook adds config step"
+          description: "Task 8.2 — runbook writes config.local.yaml automatically"
+        - id: MOD-08c
+          name: "Full E2E acceptance (manual-runnable)"
+          description: "Task 8.3 — §8 acceptance 8 steps via pytest.mark.e2e"
+
+  constraints:
+    - id: CON-01
+      type: deployment
+      description: "Deployment mode is `master` vs `tenant`, switched via .autoservice/config.local.yaml.deployment_mode"
+      rationale: "Single codebase serves both master and fork deployments; mode selected at startup"
+      prd_ref: "plan §Architecture"
+
+    - id: CON-02
+      type: architecture
+      description: "M1 preconditions must be implemented first (ForkCreator Protocol, publish.py, sandbox schema, /api/onboard/publish)"
+      rationale: "M2 builds on M1 artifacts; missing M1 = abort"
+      prd_ref: "plan §Dependency"
+
+    - id: CON-03
+      type: technology
+      description: "Backend: Python 3.11 + FastAPI + pytest + Anthropic SDK. Frontend: React 18 + TypeScript + Zustand + Vitest + @testing-library/react + TanStack Query. CSS: pure CSS (cs-* naming). DB: SQLite (stdlib sqlite3). Setup: Makefile + bash scripts/setup.sh. Optional: gh CLI for fork automation"
+      rationale: "Tech stack inherited from M1; no new runtime dependencies"
+      prd_ref: "plan §Tech Stack"
+
+    - id: CON-04
+      type: architecture
+      description: "Dream proposals must never auto-apply soul changes (red line); status='draft' + human-A review required to accept"
+      rationale: "Prevents LLM feedback-loop drift of _master soul"
+      prd_ref: "spec §9 risks + §0.2 non-goals"
+
+    - id: CON-05
+      type: architecture
+      description: "tier=0 reserved for bootstrap/internal tenants (_master, _local_admin); tier=1 for regular tenants; tier=2 field exists but unused (M3 subtenant placeholder)"
+      rationale: "Reserves subtenant namespace while keeping M2 scope minimal"
+      prd_ref: "spec §1.2"
+
+    - id: CON-06
+      type: architecture
+      description: "Dream agent runs via cc_pool role=dream in a size-1 pool, independent from customer pool"
+      rationale: "Prevents dream work from starving customer conversations on cc_pool slots"
+      prd_ref: "spec §9 risk 'cc_pool dream client 抢 customer 名额'"
+
+    - id: CON-07
+      type: architecture
+      description: "No wildcard imports; do not reformat unrelated code; preserve PROJECT_ROOT detection pattern Path(__file__).resolve().parent.parent for new autoservice/ modules"
+      rationale: "Codebase convention from plan §Conventions"
+      prd_ref: "plan §Conventions Used in This Plan"
+
+    - id: CON-08
+      type: architecture
+      description: "Magic-link token HTTP-sniffing in dev is accepted risk; deployment runbook requires HTTPS warning"
+      rationale: "Dev ergonomics vs security tradeoff documented in spec §9"
+      prd_ref: "spec §9 risk 'Magic-link token 开发时 http 嗅探'"
+
+  user_stories: []
+  nfrs: []
+  external_deps: []

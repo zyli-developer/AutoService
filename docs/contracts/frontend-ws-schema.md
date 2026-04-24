@@ -358,6 +358,7 @@ BE→FE 分两类：
 | `create_conversation` | （隐式：customer_connect → 服务端创建） | `event` 帧 (`conversation.created`) | `conversation.activated` |
 | `get_conversation` | (内部使用，不暴露) | — | — |
 | `list_active_conversations` | `admin_command /status` 或 `subscribe(squad_id=)` | `command_response` | `event` 帧（squad scope） |
+| `list_conversations_in_takeover_by` | `operator_command /my-takeovers` | `command_response` | — (pull-only; operator queries own takeovers) |
 | `close_conversation` | `operator_command /resolve` 或 `/abandon` | `command_response` | `conversation.resolved` + `conversation.closed` |
 | `set_csat` | `csat_response` | `ack` | `conversation.csat_recorded` |
 | `join` | `operator_join` | `ack` | `participant.joined` (+可能 `mode.changed`) |

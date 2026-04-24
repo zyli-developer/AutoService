@@ -14,16 +14,76 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
 import os
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger("onboarding")
+
+
+# ---------------------------------------------------------------------------
+# Sandbox paths & constants
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SANDBOX_ROOT = PROJECT_ROOT / ".autoservice" / "sandbox"
+DREAM_SOUL_TEMPLATE = Path(__file__).resolve().parent / "dream_soul_template.md"
+
+
+def sandbox_dir(tenant_id: str) -> Path:
+    """Return the sandbox root for a given tenant."""
+    return SANDBOX_ROOT / tenant_id
+
+
+# ---------------------------------------------------------------------------
+# Sandbox config & soul helpers
+# ---------------------------------------------------------------------------
+
+def _write_sandbox_config_skeleton(
+    tenant_id: str,
+    brand_name: str,
+    industry: str,
+) -> Path:
+    """Write the initial `config.json` skeleton for a sandbox tenant.
+
+    Only the fields owned by Step 0 `/upload` are set here:
+    tenant_id, brand_name, industry, status, created_at. Compliance,
+    channels, soul, and dream fields are filled by later steps
+    (`/activate`, `/dream-config`); see spec §2.2 / §3.2.
+    """
+    path = sandbox_dir(tenant_id) / "config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    skeleton = {
+        "tenant_id": tenant_id,
+        "brand_name": brand_name or "",
+        "industry": industry or "general",
+        "status": "sandbox",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path.write_text(json.dumps(skeleton, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _copy_dream_soul_template(tenant_id: str) -> Optional[Path]:
+    """Copy the static dream_soul.md template into the sandbox souls/ dir.
+
+    Returns the destination path on success, or None if the template
+    is missing (caller should log — we treat it as non-fatal).
+    """
+    if not DREAM_SOUL_TEMPLATE.exists():
+        log.warning("dream_soul_template.md not found at %s", DREAM_SOUL_TEMPLATE)
+        return None
+    dest = sandbox_dir(tenant_id) / "souls" / "dream_soul.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(DREAM_SOUL_TEMPLATE, dest)
+    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -261,65 +321,158 @@ async def upload_and_parse(
     files: list[UploadFile] = File(default=[]),
 ):
     """Upload files, parse, return extracted text + trigger soul generation."""
+    from autoservice.kb_core import KBStore
+
     pipeline = OnboardingPipeline()
-    results = []
-
-    for f in files:
-        content = await f.read()
-        suffix = Path(f.filename or "").suffix or ".txt"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-        try:
-            result = pipeline.ingest(str(tmp_path))
-            result["original_name"] = f.filename
-            results.append(result)
-        except UnsupportedFileType as exc:
-            results.append({"status": "skipped", "file_name": f.filename, "reason": str(exc)})
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-    # Optionally parse URL
-    url_result = None
-    if website_url:
-        try:
-            import requests
-            from bs4 import BeautifulSoup
-            resp = requests.get(website_url, timeout=15, headers={"User-Agent": "AutoService/1.0"})
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer"]):
-                tag.decompose()
-            url_text = soup.get_text(separator="\n", strip=True)
-            url_result = {"status": "ok", "source": website_url, "text_length": len(url_text)}
-        except Exception as exc:
-            url_result = {"status": "failed", "source": website_url, "error": str(exc)}
+    results: list[dict] = []
 
     tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
 
-    # --- Soul generation: wire soul_generator after text extraction ---
-    souls_output = None
+    config_path = None
     try:
-        from autoservice.soul_generator import TenantConfig, generate_souls
+        config_path = _write_sandbox_config_skeleton(tenant_id, brand_name, industry)
+    except Exception as exc:
+        log.warning("Failed to write sandbox config skeleton: %s", exc)
 
-        # Combine extracted text from all successfully parsed files
+    # -- KB ingest via KBStore --------------------------------------
+    # Route each file by extension BEFORE extracting text:
+    #   .pdf  -> KBStore.ingest_pdf  (preserves page_number + semantic chunking)
+    #   .xlsx -> KBStore.ingest_xlsx (previously dropped as UnsupportedFileType)
+    #   else  -> OnboardingPipeline.ingest -> KBStore.ingest_text (text-ish files)
+    kb_chunks_written = 0
+    kb_errors: list[str] = []
+    url_result: dict | None = None
+    sandbox_kb = sandbox_dir(tenant_id) / "kb" / "kb.db"
+
+    with KBStore(sandbox_kb) as store:
+        for f in files:
+            content = await f.read()
+            filename = f.filename or "uploaded"
+            suffix = Path(filename).suffix.lower()
+            source_id = f"file:{hashlib.sha256(content).hexdigest()[:16]}"
+
+            with tempfile.NamedTemporaryFile(suffix=suffix or ".tmp", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
+
+            try:
+                if suffix == ".pdf":
+                    # Route to KBStore.ingest_pdf for semantic chunking +
+                    # page_number preservation. Skip OnboardingPipeline.
+                    try:
+                        n = store.ingest_pdf(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "pdf",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                elif suffix == ".xlsx":
+                    # Route to KBStore.ingest_xlsx (rate-table detection etc).
+                    # Previously dropped as UnsupportedFileType by OnboardingPipeline.
+                    try:
+                        n = store.ingest_xlsx(
+                            tmp_path,
+                            source_id=source_id,
+                            source_name=filename,
+                            domain=industry or "",
+                        )
+                        kb_chunks_written += n
+                        results.append({
+                            "status": "ok",
+                            "file_name": filename,
+                            "file_type": "xlsx",
+                            "num_chunks": n,
+                        })
+                    except Exception as exc:
+                        kb_errors.append(f"{filename}: {exc}")
+                        results.append({
+                            "status": "failed", "file_name": filename, "reason": str(exc),
+                        })
+
+                else:
+                    # Text-ish: OnboardingPipeline extracts text -> ingest_text
+                    # chunks by paragraph. Keeps the .text field in the response
+                    # so soul generation has combined_text to work with.
+                    try:
+                        result = pipeline.ingest(str(tmp_path))
+                        result["original_name"] = filename
+                        results.append(result)
+                        text = result.get("text") or ""
+                        try:
+                            n = store.ingest_text(
+                                text,
+                                source_id=source_id,
+                                source_name=filename,
+                                source_type=result.get("file_type", "text"),
+                                file_path=filename,
+                                domain=industry or "",
+                            )
+                            kb_chunks_written += n
+                        except Exception as exc:
+                            kb_errors.append(f"{filename}: {exc}")
+                    except UnsupportedFileType as exc:
+                        results.append({
+                            "status": "skipped", "file_name": filename, "reason": str(exc),
+                        })
+            finally:
+                tmp_path.unlink(missing_ok=True)
+
+        # Website URL -- crawl 1 page, ingest into KB (bug fix).
+        if website_url:
+            try:
+                n = store.ingest_web(
+                    website_url,
+                    source_id="website",
+                    source_name=website_url,
+                    max_pages=1,
+                    crawl_depth=1,
+                    domain=industry or "",
+                )
+                kb_chunks_written += n
+                url_result = {"status": "ok", "source": website_url, "chunks_written": n}
+            except Exception as exc:
+                url_result = {"status": "failed", "source": website_url, "error": str(exc)}
+                kb_errors.append(f"{website_url}: {exc}")
+
+    # -- Soul generation (unchanged) --------------------------------
+    souls_output = None
+    souls_saved: dict[str, str] = {}
+    try:
+        from autoservice.soul_generator import TenantConfig, generate_souls, save_drafts
+
         combined_text = "\n\n".join(
             r.get("text", "") for r in results if r.get("status") == "ok"
         )
-
         soul_config = TenantConfig(
             tenant_id=tenant_id,
             brand_name=brand_name or "Unknown Brand",
             industry=industry,
             extra_context=combined_text[:8000] if combined_text else "",
         )
-
         gen_result = generate_souls(soul_config, dry_run=(not combined_text))
-
+        try:
+            paths = save_drafts(gen_result)
+            souls_saved = {role: str(p) for role, p in paths.items()}
+        except Exception as exc:
+            log.warning("save_drafts failed: %s", exc)
         souls_output = {
             "mode": gen_result.mode,
             "total_kb_hits": gen_result.total_kb_hits,
             "warnings": gen_result.warnings,
+            "saved_to": souls_saved,
             "roles": {
                 role: {
                     "content": draft.content,
@@ -333,6 +486,15 @@ async def upload_and_parse(
         log.warning("Soul generation failed (upload still succeeds): %s", exc)
         souls_output = {"error": str(exc)}
 
+    try:
+        dream_path = _copy_dream_soul_template(tenant_id)
+        if dream_path is not None:
+            souls_saved["dream"] = str(dream_path)
+            if isinstance(souls_output, dict) and "saved_to" in souls_output:
+                souls_output["saved_to"] = souls_saved
+    except Exception as exc:
+        log.warning("Dream soul template copy failed: %s", exc)
+
     return {
         "tenant_id": tenant_id,
         "brand_name": brand_name,
@@ -340,59 +502,132 @@ async def upload_and_parse(
         "files_parsed": len([r for r in results if r.get("status") == "ok"]),
         "file_results": results,
         "url_result": url_result,
+        "sandbox_dir": str(sandbox_dir(tenant_id)),
+        "config_path": str(config_path) if config_path else None,
+        "kb_chunks_written": kb_chunks_written,
+        "kb_errors": kb_errors,
         "souls": souls_output,
     }
 
 
-@onboard_router.post("/activate")
-async def activate_sandbox(tenant_id: str = Form(...)):
-    """Activate tenant sandbox: create runtime dir, write config, return usable URLs."""
-    # Configurable base URL components
+# ---------------------------------------------------------------------------
+# /activate helpers — defaults and URL builder (spec §2.2 / §3.2 / §5.1)
+# ---------------------------------------------------------------------------
+
+#: 16-field compliance defaults.  ``setdefault`` only fills this when the
+#: config has no ``compliance`` block, so tenant-facing tweaks survive.
+DEFAULT_COMPLIANCE: dict = {
+    "privacy_policy_url": "",
+    "consent_mechanism_enabled": False,
+    "data_retention_days": None,
+    "right_to_erasure_enabled": False,
+    "data_collection_disclosure": False,
+    "opt_out_enabled": False,
+    "coppa_compliant": False,
+    "provider_registration_id": "",
+    "data_cross_border_enabled": False,
+    "user_identity_verification": False,
+    "complaint_channel_url": "",
+    "training_data_compliance": False,
+}
+
+#: 4-switch soul defaults (AI disclosure / escalation / decision notice / labeling).
+DEFAULT_SOUL_CFG: dict = {
+    "disclosure_enabled": False,
+    "human_escalation_enabled": False,
+    "automated_decision_notice": False,
+    "ai_content_labeling": False,
+}
+
+#: Dream Engine defaults — spec §2.2 field.  M1 only persists these; the
+#: pipeline still reads from memory (bug #9 is fixed by just landing them).
+DEFAULT_DREAM_CFG: dict = {
+    "trigger": "idle",
+    "coverage": "all",
+    "risk_threshold": "medium",
+    "canary": {"stages": [5, 25, 100], "observe_hours": 24},
+}
+
+
+def _parse_channels(raw: str) -> list[str]:
+    """Split the comma-separated ``channels`` form field, trimming each token."""
+    if not raw:
+        return []
+    return [tok.strip() for tok in raw.split(",") if tok.strip()]
+
+
+def build_urls(tenant_id: str, channels: list[str] | None = None) -> dict[str, str]:
+    """Return the three sandbox URLs in path form (spec §5.1).
+
+    Shape: ``/tenant/<tenant_id>/{chat,operator,admin}``. The subdomain form
+    ``<tid>.sandbox.localhost`` is no longer used. ``channels`` is accepted
+    for future per-channel URL variants but currently unused — the sandbox
+    URL set is identical regardless of which channels are enabled.
+    """
     scheme = os.getenv("WEB_SCHEME", "http")
     host = os.getenv("WEB_HOST", "localhost")
     port = os.getenv("DEMO_PORT", "8000")
-    base_url = f"{scheme}://{host}:{port}"
-
-    # Create tenant runtime directory and write config
-    tenant_dir = Path(".autoservice") / "tenants" / tenant_id
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-
-    config_path = tenant_dir / "config.json"
-    config = {
-        "tenant_id": tenant_id,
-        "status": "active",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        # Compliance-relevant fields (defaults for new tenants)
-        "privacy_policy_url": "",
-        "consent_mechanism_enabled": False,
-        "data_retention_days": None,
-        "right_to_erasure_enabled": False,
-        "data_collection_disclosure": False,
-        "opt_out_enabled": False,
-        "coppa_compliant": False,
-        "provider_registration_id": "",
-        "data_cross_border_enabled": False,
-        "user_identity_verification": False,
-        "complaint_channel_url": "",
-        "training_data_compliance": False,
-        "soul": {
-            "disclosure_enabled": False,
-            "human_escalation_enabled": False,
-            "automated_decision_notice": False,
-            "ai_content_labeling": False,
-        },
+    base = f"{scheme}://{host}:{port}"
+    return {
+        "chat": f"{base}/tenant/{tenant_id}/chat",
+        "operator": f"{base}/tenant/{tenant_id}/operator",
+        "admin": f"{base}/tenant/{tenant_id}/admin",
     }
-    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+@onboard_router.post("/activate")
+async def activate_sandbox(
+    tenant_id: str = Form(...),
+    channels: str = Form(""),
+):
+    """Activate tenant sandbox — idempotent merge.
+
+    Reads ``.autoservice/sandbox/<tid>/config.json`` (written as a skeleton
+    by Step 0 ``/upload``), merges in the Step 1 payload + defaults, and
+    writes it back. Calling this twice is safe: compliance / soul / dream
+    blocks are ``setdefault``'d so any manual edits between calls survive.
+    Spec refs: §2.2, §3.2.
+    """
+    from fastapi import HTTPException
+
+    cfg_path = sandbox_dir(tenant_id) / "config.json"
+    if not cfg_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Sandbox config not found for tenant {tenant_id!r} "
+                f"(expected at {cfg_path}). Run /api/onboard/upload first."
+            ),
+        )
+
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Corrupt sandbox config at {cfg_path}: {exc}",
+        )
+
+    # Bug #3: channels is authoritative — Step 1 UI owns this field, so we
+    # overwrite rather than setdefault.  Other fields use setdefault to stay
+    # idempotent (bug #6).
+    parsed_channels = _parse_channels(channels)
+    cfg["channels"] = parsed_channels
+    cfg.setdefault("compliance", dict(DEFAULT_COMPLIANCE))
+    cfg.setdefault("soul", dict(DEFAULT_SOUL_CFG))
+    # Dream block needs a deep copy so nested canary dict isn't shared.
+    cfg.setdefault("dream", json.loads(json.dumps(DEFAULT_DREAM_CFG)))
+
+    cfg_path.write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
     return {
         "tenant_id": tenant_id,
-        "status": "active",
-        "urls": {
-            "chat": f"{base_url}/chat?tenant={tenant_id}",
-            "login": f"{base_url}/login?tenant={tenant_id}",
-            "api": f"{base_url}/api/onboard",
-        },
-        "config_dir": str(tenant_dir),
+        "status": cfg.get("status", "sandbox"),
+        "channels": parsed_channels,
+        "urls": build_urls(tenant_id, parsed_channels),
+        "config_path": str(cfg_path),
     }
 
 

@@ -1,0 +1,238 @@
+task_hints:
+  source_type: "ingested"
+  source_files:
+    - "docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md"
+
+  file_changes:
+    # Backend
+    - path: "autoservice/onboarding.py"
+      change_type: modify
+      purpose: "/upload 调 save_drafts() + KB ingest + 拷贝 dream_soul.md 模板；/activate 改幂等 merge；URL 模板改 path 形态"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-001
+        - GAP-003
+
+    - path: "autoservice/soul_generator.py"
+      change_type: modify
+      purpose: "save_drafts 目标目录从 plugins/<tid>/souls_draft/ 改到 .autoservice/sandbox/<tid>/souls/"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-005
+
+    - path: "autoservice/api_routes.py"
+      change_type: modify
+      purpose: "新增 /api/session/mode / /api/rehearsal/review / /api/onboard/publish / /api/onboard/unfreeze；/rehearsal/generate 落盘；_get_kb_path() 加 sandbox 前缀；/api/management/chat 在 /dream-config 确认时 sync 到 config.json.dream"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-003
+        - GAP-005
+        - GAP-006
+
+    - path: "autoservice/cc_pool.py"
+      change_type: modify
+      purpose: "create_cc_client(role, tenant_id=None) + _load_soul() 按 tenant 注入对应 soul 为 system prompt"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-012
+
+    - path: "autoservice/publish.py"
+      change_type: create
+      purpose: "_build_publish_archive / _check_publish_gate / _write_publish_record / _write_runbook / _archive_sandbox / ForkCreator 协议 + LocalTarballForkCreator 实现"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-003
+
+    - path: "autoservice/dream_soul_template.md"
+      change_type: create
+      purpose: "Dream Engine 静态 soul 模板；/upload 时拷贝到沙盒 souls/dream_soul.md 作为 M1 占位（M2 升级为 LLM 生成）"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-005
+
+    # Frontend shared
+    - path: "frontend/packages/shared/useTenantId.ts"
+      change_type: create
+      purpose: "通用 hook：从 URL path 或 query 读取 tenant_id，屏蔽 sandbox / fork 部署差异"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-004
+
+    - path: "frontend/packages/shared/useSessionMode.ts"
+      change_type: create
+      purpose: "调 /api/session/mode 返回 master/tenant；M1 只走 master 分支，tenant 分支为 stub"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    # Frontend apps
+    - path: "frontend/apps/customer-chat/src/App.tsx"
+      change_type: modify
+      purpose: "路由 /t/:tenantId/chat + useTenantId() 替换硬编码 ws://localhost 地址"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-004
+
+    - path: "frontend/apps/operator-console/src/components/WorkspacePage.tsx"
+      change_type: modify
+      purpose: "路由 /t/:tenantId/operator + useTenantId() 替换硬编码地址"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-004
+        - GAP-013
+
+    - path: "frontend/apps/admin-portal/src/App.tsx"
+      change_type: modify
+      purpose: "根据 useSessionMode 渲染 MasterLayout (M1) 或 TenantLayout stub"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx"
+      change_type: create
+      purpose: "平台方布局：带 wizard + 租户列表 + /master/* 路由组"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/layouts/TenantLayout.tsx"
+      change_type: create
+      purpose: "商户方布局 stub：M1 仅占位，M2 实现真正的 /admin/* 单租户视图"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/master/TenantListTab.tsx"
+      change_type: create
+      purpose: "列出所有沙盒租户，点击进入 preview"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx"
+      change_type: create
+      purpose: "代入某 tenant 视角，嵌入 customer-chat iframe (/t/<tid>/chat)"
+      source_anchor: "9----"
+      related_gap_refs: []
+
+    - path: "frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx"
+      change_type: modify
+      purpose: "路由从 /admin/wizard 迁到 /master/tenants/new；Step 4 一键对外按钮接 /onboard/publish；Step 2 审核接 /rehearsal/review"
+      source_anchor: "9----"
+      related_gap_refs:
+        - GAP-001
+        - GAP-003
+
+  implementation_steps:
+    - step: 1
+      description: "A 打开 Master：/master/tenants 租户列表（初始空）"
+      touches_files:
+        - "frontend/apps/admin-portal/src/App.tsx"
+        - "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx"
+        - "frontend/apps/admin-portal/src/components/master/TenantListTab.tsx"
+      depends_on_steps: []
+      source_anchor: "10-m1-"
+
+    - step: 2
+      description: "A 走向导：/master/tenants/new → Step 0 上传 → Step 1 渠道 → Step 2 预演+审核 → Step 3 合规 → Step 4 沙盒就绪"
+      touches_files:
+        - "frontend/apps/admin-portal/src/components/wizard/WizardTab.tsx"
+        - "autoservice/onboarding.py"
+        - "autoservice/api_routes.py"
+      depends_on_steps:
+        - 1
+      source_anchor: "10-m1-"
+
+    - step: 3
+      description: "沙盒产物齐全：souls/ 有 4 个 md + dream_soul.md 占位、kb/kb.db >0 chunk、rehearsal.json 12 条全 reviewed、config.json status=sandbox + channels/dream 字段正确"
+      touches_files:
+        - "autoservice/onboarding.py"
+        - "autoservice/soul_generator.py"
+        - "autoservice/dream_soul_template.md"
+      depends_on_steps:
+        - 2
+      source_anchor: "10-m1-"
+
+    - step: 4
+      description: "Master 沙盒预览可用：/t/<tid>/chat 能对话，WS 日志可见 tenant_id 上下文"
+      touches_files:
+        - "frontend/apps/customer-chat/src/App.tsx"
+        - "frontend/packages/shared/useTenantId.ts"
+        - "autoservice/cc_pool.py"
+      depends_on_steps:
+        - 3
+      source_anchor: "10-m1-"
+
+    - step: 5
+      description: "多租户隔离：同时启两个沙盒 X 和 Y，/t/X/chat 和 /t/Y/chat 的 agent 用各自 soul（回复风格可肉眼区分）"
+      touches_files:
+        - "autoservice/cc_pool.py"
+        - "autoservice/onboarding.py"
+      depends_on_steps:
+        - 4
+      source_anchor: "10-m1-"
+
+    - step: 6
+      description: "A 代入预览：/master/tenants/:id/preview 嵌入展示 /t/<tid>/chat"
+      touches_files:
+        - "frontend/apps/admin-portal/src/components/master/TenantPreviewTab.tsx"
+        - "frontend/apps/admin-portal/src/layouts/MasterLayout.tsx"
+      depends_on_steps:
+        - 4
+      source_anchor: "10-m1-"
+
+    - step: 7
+      description: "Dream 配置落盘：ManagementChat 走完 /dream-config，config.json.dream 有 4 参数"
+      touches_files:
+        - "autoservice/api_routes.py"
+        - "autoservice/dream_soul_template.md"
+      depends_on_steps:
+        - 3
+      source_anchor: "10-m1-"
+
+    - step: 8
+      description: "Publish 完整产物：点一键对外 → tarball + runbook + record 写入 → 沙盒物理移动到 archived/ → /t/<tid>/* 返回 410"
+      touches_files:
+        - "autoservice/publish.py"
+        - "autoservice/api_routes.py"
+      depends_on_steps:
+        - 3
+        - 7
+      source_anchor: "10-m1-"
+
+    - step: 9
+      description: "Fork 手工验证：tarball 解压得到的 plugins/<tid>/ 手工 git mv 到 fork 仓，make check 通过"
+      touches_files: []
+      depends_on_steps:
+        - 8
+      source_anchor: "10-m1-"
+
+  non_goals:
+    - "把商户侧 fork 仓的生产部署真跑起来（M2）"
+    - "商户登录视角的完整布局可用（M2）"
+    - "提案引擎升级为独立人格驱动的智能体（M2）"
+    - "自动化的 git 建仓与部署推送"
+    - "成员账号邀请与权限管控体系"
+    - "按商户隔离的能力集与运行进程"
+    - "数据库或操作系统级的商户隔离"
+    - "反向代理多级路由配置"
+    - "商户自带域名接入映射"
+    - "未发布沙盒超期自动清理"
+    - "并发数量上限与限流"
+    - "按注册国家代码筛合规子集"
+
+  test_strategy:
+    preserved_testids: []
+    new_tests:
+      - "test_onboarding_upload_persists_souls_and_kb.py — 验证 Step 0 产物落盘"
+      - "test_activate_is_idempotent.py — 验证 Step 1 幂等 merge"
+      - "test_rehearsal_review_persists.py — 验证 Step 2 审核持久化"
+      - "test_publish_gate_checks.py — 验证 gate 条件 + tarball 内容 + 归档"
+      - "test_cc_pool_tenant_soul_injection.py — 验证 per-tenant soul 注入"
+      - "e2e_sandbox_provisioning.spec.ts — 前端 9 步 E2E 链路"
+    e2e_delta: "9 步端到端沙盒 provisioning 流程：从 /master/tenants 创建到 /publish 产出 tarball，覆盖多租户隔离和代入预览"
+
+  risks:
+    - risk: "cc_pool 已 warm 的 worker 若必须在启动时就固定 system prompt，则无法按 tenant 动态注入"
+      mitigation: "在 writing-plans 阶段核实 cc_pool 实际 worker 生命周期；最坏情况改为按 tenant 维护小池 + LRU 回收，不改变路由层接口"
+
+    - risk: "向导 Step 0 生成 dream_soul.md 静态模板，但 proposal_pipeline / dream_config_dialog 仍读内存，可能造成 tenant 行为差异不显著"
+      mitigation: "M1 只作为 publish tarball 占位；M2 proposal_pipeline 改造时真正切到读 tenant dream_soul"
+
+    - risk: "沙盒与 fork 双运行时路径导致前端 URL 规则容易写错（/t/<id>/chat vs /chat）"
+      mitigation: "useTenantId hook 统一屏蔽；fork 侧接受两种 URL 形态并做 assertion"

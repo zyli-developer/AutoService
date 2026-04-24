@@ -93,8 +93,11 @@ export interface CanaryStateUI {
 
 export interface AdminState {
   tenantId: string | null;
-  isLoggedIn: boolean;
-  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'billing';
+  // T6F.5 — widened to include tenant-variant `'chat'` key (spec §4.2).
+  // Master variant continues to use 'notifications'/'dashboard'/'wizard'/
+  // 'proposals'/'billing'; tenant variant adds 'chat'. The union is honest
+  // so AdminRail variant switching no longer needs a cast at the call site.
+  activeTab: 'wizard' | 'dashboard' | 'notifications' | 'proposals' | 'dream' | 'billing' | 'chat';
   notifications: Notification[];
 
   wizardStep: number;
@@ -110,7 +113,7 @@ export interface AdminState {
 
   canaryState: CanaryStateUI | null;
 
-  login: (tenantId: string) => void;
+  setTenantId: (tenantId: string | null) => void;
   logout: () => void;
   setActiveTab: (tab: AdminState['activeTab']) => void;
   addNotification: (n: Notification) => void;
@@ -143,8 +146,7 @@ const initialWizardFormData: WizardFormData = {
 
 export const initialState = {
   tenantId: null,
-  isLoggedIn: false,
-  activeTab: 'wizard' as const,
+  activeTab: 'notifications' as const,
   notifications: [] as Notification[],
   wizardStep: 0,
   wizardFormData: initialWizardFormData,
@@ -162,7 +164,7 @@ export const useAdminStore = create<AdminState>()(
     (set) => ({
       ...initialState,
 
-      login: (tenantId) => set({ tenantId, isLoggedIn: true }),
+      setTenantId: (tenantId) => set({ tenantId }),
 
       logout: () => set({ ...initialState }),
 

@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App } from '../App';
 import { useOperatorStore, initialState } from '../store/operatorStore';
 import { _setWSClientImpl } from '../hooks/useOperatorWS';
@@ -11,27 +12,67 @@ beforeEach(() => {
   _setWSClientImpl(createFakeWSClientClass() as any);
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Mock a successful POST /api/auth/operator/dev-login for UI-login tests. */
+function mockDevLoginOk(operatorId = 'op-001', tenantId = 'tenant_test') {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      ok: true,
+      redirect: '/operator',
+      operator_id: operatorId,
+      tenant_id: tenantId,
+      email: 'op@dev.local',
+    }),
+  }));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+/** Shortcut: bypass the UI and flip the store to a logged-in state. */
+function forceLoggedIn(operatorId = 'op-001') {
+  useOperatorStore.getState().login(operatorId, '');
+}
+
+// Wrap <App /> in a tenant-scoped route so WorkspacePage's useTenantId()
+// resolves (T1F.4). Operator console now expects /tenant/:tenantId/operator.
+function renderApp(initialPath = '/tenant/tenant_test/operator') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/tenant/:tenantId/operator" element={<App />} />
+        <Route path="/" element={<App />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('integration', () => {
   it('TC-016: shows LoginPage when not logged in', () => {
-    render(<App />);
-    expect(screen.getByTestId('input-operator-id')).toBeInTheDocument();
+    renderApp();
+    expect(screen.getByTestId('input-email')).toBeInTheDocument();
     expect(screen.queryByTestId('workspace-page')).toBeNull();
   });
 
-  it('TC-017: after login shows WorkspacePage', async () => {
+  it('TC-017: after successful dev-login shows WorkspacePage', async () => {
+    mockDevLoginOk('op-001', 'tenant_test');
     const user = userEvent.setup();
-    render(<App />);
-    await user.type(screen.getByTestId('input-operator-id'), 'op-001');
+    renderApp();
+    await user.type(screen.getByTestId('input-email'), 'op@dev.local');
+    await user.type(screen.getByTestId('input-tenant-id'), 'tenant_test');
     await user.click(screen.getByTestId('btn-login'));
     expect(await screen.findByTestId('workspace-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('input-operator-id')).toBeNull();
+    expect(screen.queryByTestId('input-email')).toBeNull();
   });
 
   it('TC-018: adding squad makes channel appear in sidebar', async () => {
     const user = userEvent.setup();
-    render(<App />);
-    await user.type(screen.getByTestId('input-operator-id'), 'op-001');
-    await user.click(screen.getByTestId('btn-login'));
+    forceLoggedIn('op-001');
+    renderApp();
     await screen.findByTestId('workspace-page');
     await user.type(screen.getByTestId('input-squad-id'), 'sq-A');
     await user.click(screen.getByTestId('btn-add-squad'));
@@ -40,9 +81,8 @@ describe('integration', () => {
 
   it('TC-019: clicking different channel changes activeSquadId', async () => {
     const user = userEvent.setup();
-    render(<App />);
-    await user.type(screen.getByTestId('input-operator-id'), 'op-001');
-    await user.click(screen.getByTestId('btn-login'));
+    forceLoggedIn('op-001');
+    renderApp();
     await screen.findByTestId('workspace-page');
     await user.type(screen.getByTestId('input-squad-id'), 'sq-A');
     await user.click(screen.getByTestId('btn-add-squad'));
@@ -54,12 +94,11 @@ describe('integration', () => {
 
   it('TC-020: clicking logout returns to LoginPage', async () => {
     const user = userEvent.setup();
-    render(<App />);
-    await user.type(screen.getByTestId('input-operator-id'), 'op-001');
-    await user.click(screen.getByTestId('btn-login'));
+    forceLoggedIn('op-001');
+    renderApp();
     await screen.findByTestId('workspace-page');
     await user.click(screen.getByTestId('btn-logout'));
-    expect(await screen.findByTestId('input-operator-id')).toBeInTheDocument();
+    expect(await screen.findByTestId('input-email')).toBeInTheDocument();
     expect(useOperatorStore.getState().isLoggedIn).toBe(false);
   });
 });

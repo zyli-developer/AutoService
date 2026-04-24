@@ -49,3 +49,100 @@ describe('operatorStore', () => {
     expect(useOperatorStore.getState().subscriptions['sq-A']).toBe('sub-001');
   });
 });
+
+describe('takeover warning state', () => {
+  beforeEach(() => {
+    const logout = useOperatorStore.getState().logout;
+    if (typeof logout === 'function') logout();
+  });
+
+  function addConv(id = 'c1') {
+    useOperatorStore.getState().addConversation({
+      id,
+      squadId: 'web-support',
+      customerId: 'cust1',
+      mode: 'takeover',
+      state: 'active',
+      lastMessage: '',
+      lastMessageSender: '',
+      lastActivityTs: '',
+    } as any);
+  }
+
+  it('setTakeoverWarning stores per-conversation', () => {
+    addConv('c1');
+    useOperatorStore.getState().setTakeoverWarning('c1', {
+      remainingMs: 5000,
+      reason: 'idle',
+      warningFrameId: 'f1',
+      armedAt: '2026-04-17T00:00:00Z',
+    });
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.takeoverWarning?.remainingMs).toBe(5000);
+    expect(conv?.takeoverWarning?.warningFrameId).toBe('f1');
+  });
+
+  it('clearTakeoverWarning removes the warning', () => {
+    addConv('c1');
+    useOperatorStore.getState().setTakeoverWarning('c1', {
+      remainingMs: 5000,
+      reason: 'idle',
+      warningFrameId: 'f1',
+      armedAt: '',
+    });
+    useOperatorStore.getState().clearTakeoverWarning('c1');
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.takeoverWarning).toBeUndefined();
+  });
+
+  it('setTakeoverWarning is a no-op for unknown conversation', () => {
+    useOperatorStore.getState().setTakeoverWarning('nonexistent', {
+      remainingMs: 5000,
+      reason: 'idle',
+      warningFrameId: 'f1',
+      armedAt: '',
+    });
+    expect(useOperatorStore.getState().conversations['nonexistent']).toBeUndefined();
+  });
+});
+
+describe('setTakeoverArmed', () => {
+  beforeEach(() => {
+    useOperatorStore.getState().logout();
+  });
+
+  function addConv(id = 'c1') {
+    useOperatorStore.getState().addConversation({
+      id,
+      squadId: 'web-support',
+      customerId: 'cust1',
+      mode: 'takeover',
+      state: 'active',
+      lastMessage: '',
+      lastMessageSender: '',
+      lastActivityTs: '',
+    } as any);
+  }
+
+  it('stores armedAt, idleMs, warningMs on the conversation', () => {
+    addConv('c1');
+    useOperatorStore.getState().setTakeoverArmed('c1', {
+      armedAt: '2026-04-18T00:00:00Z',
+      idleMs: 8000,
+      warningMs: 3000,
+    });
+    const conv = useOperatorStore.getState().conversations['c1'];
+    expect(conv?.takeoverArmedAt).toBe('2026-04-18T00:00:00Z');
+    expect(conv?.takeoverIdleMs).toBe(8000);
+    expect(conv?.takeoverWarningMs).toBe(3000);
+  });
+
+  it('is a no-op for unknown conversation', () => {
+    useOperatorStore.getState().setTakeoverArmed('nonexistent', {
+      armedAt: '2026-04-18T00:00:00Z',
+      idleMs: 8000,
+      warningMs: 3000,
+    });
+    expect(useOperatorStore.getState().conversations['nonexistent']).toBeUndefined();
+  });
+});

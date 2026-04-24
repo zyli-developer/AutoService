@@ -383,6 +383,853 @@
         "T3B.4",
         "eval-T3A.2"
       ]
+    },
+    {
+      "id": "plan-T6A.1",
+      "name": "T6A.1 Subscription Registry test-plan (8 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-phase6-pb"
+      ],
+      "path": ".artifacts/test-plans/plan-T6A.1-subscription-registry.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "plan-T6A.2",
+      "name": "T6A.2 Squad-Filtered Broadcast test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-phase6-pb"
+      ],
+      "path": ".artifacts/test-plans/plan-T6A.2-squad-filtered-broadcast.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": [
+        "plan-T6A.1"
+      ]
+    },
+    {
+      "id": "plan-T6C.1",
+      "name": "T6C.1 CSAT Rating E2E test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-phase6-pb"
+      ],
+      "path": ".artifacts/test-plans/plan-T6C.1-csat-rating-e2e.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": [
+        "plan-T6A.1"
+      ]
+    },
+    {
+      "id": "plan-T6C.2",
+      "name": "T6C.2 Metrics→Billing Wiring test-plan (5 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-phase6-pb"
+      ],
+      "path": ".artifacts/test-plans/plan-T6C.2-metrics-billing-wiring.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "plan-T6C.3",
+      "name": "T6C.3 /approve /reject Commands test-plan (6 cases)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": [
+        "test-diff-phase6-pb"
+      ],
+      "path": ".artifacts/test-plans/plan-T6C.3-approve-reject-commands.md",
+      "created_at": "2026-04-17T17:00:00Z",
+      "updated_at": "2026-04-17T17:05:00Z",
+      "related_ids": []
+    },
+    {
+      "id": "test-diff-phase6-pb",
+      "name": "Phase 6 Protocol+Billing test-diff (29 cases across 5 files)",
+      "type": "test-diff",
+      "status": "draft",
+      "producer": "skill-3",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-phase6-protocol-billing.md",
+      "created_at": "2026-04-17T17:30:00Z",
+      "updated_at": "2026-04-17T17:30:00Z",
+      "related_ids": [
+        "plan-T6A.1",
+        "plan-T6A.2",
+        "plan-T6C.1",
+        "plan-T6C.2",
+        "plan-T6C.3"
+      ]
+    },
+    {
+      "id": "e2e-report-phase6-pb",
+      "name": "Phase 6 Protocol+Billing e2e-report (29/29 passed)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-phase6-protocol-billing.md",
+      "created_at": "2026-04-17T17:45:00Z",
+      "updated_at": "2026-04-17T17:45:00Z",
+      "related_ids": [
+        "test-diff-phase6-pb",
+        "plan-T6A.1",
+        "plan-T6A.2",
+        "plan-T6C.1",
+        "plan-T6C.2",
+        "plan-T6C.3"
+      ]
+    },
+    {
+      "id": "eval-doc-005",
+      "name": "M2 Phase 1 summary — Bootstrap + _master seed",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-m2-phase1.md",
+      "created_at": "2026-04-21T00:22:53Z",
+      "updated_at": "2026-04-21T00:22:53Z",
+      "related_ids": [
+        "test-diff-004",
+        "test-diff-005",
+        "e2e-report-003"
+      ]
+    },
+    {
+      "id": "eval-doc-006",
+      "name": "M2 Phase 2 summary — Schema migrations",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-m2-phase2.md",
+      "created_at": "2026-04-21T00:22:59Z",
+      "updated_at": "2026-04-21T00:22:59Z",
+      "related_ids": [
+        "test-diff-006",
+        "e2e-report-003"
+      ]
+    },
+    {
+      "id": "eval-doc-007",
+      "name": "M2 Phase 3 summary — Dream Agent",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-m2-phase3.md",
+      "created_at": "2026-04-21T00:23:04Z",
+      "updated_at": "2026-04-21T00:23:04Z",
+      "related_ids": [
+        "test-diff-007",
+        "test-diff-008",
+        "test-diff-009",
+        "e2e-report-003"
+      ]
+    },
+    {
+      "id": "eval-doc-008",
+      "name": "M2 Phase 4 summary — DreamScheduler",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-m2-phase4.md",
+      "created_at": "2026-04-21T00:23:08Z",
+      "updated_at": "2026-04-21T00:23:08Z",
+      "related_ids": [
+        "test-diff-010",
+        "e2e-report-003"
+      ]
+    },
+    {
+      "id": "test-diff-004",
+      "name": "M2 batch-0 test-diff (T1B.1 + T1B.2)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-0.md",
+      "created_at": "2026-04-21T00:23:12Z",
+      "updated_at": "2026-04-21T00:23:12Z",
+      "related_ids": [
+        "eval-doc-005"
+      ]
+    },
+    {
+      "id": "test-diff-005",
+      "name": "M2 batch-1 test-diff (T1B.3 + T1B.4 + T1B.5)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-1.md",
+      "created_at": "2026-04-21T00:23:15Z",
+      "updated_at": "2026-04-21T00:23:15Z",
+      "related_ids": [
+        "eval-doc-005"
+      ]
+    },
+    {
+      "id": "test-diff-006",
+      "name": "M2 batch-2 test-diff (T2B.1 + T2B.2 + T2B.3 parallel)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-2.md",
+      "created_at": "2026-04-21T00:23:18Z",
+      "updated_at": "2026-04-21T00:23:18Z",
+      "related_ids": [
+        "eval-doc-006"
+      ]
+    },
+    {
+      "id": "test-diff-007",
+      "name": "M2 batch-3 test-diff (T3B.1 + T3B.2 + T3B.3 dream tools)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-3.md",
+      "created_at": "2026-04-21T00:23:22Z",
+      "updated_at": "2026-04-21T00:23:22Z",
+      "related_ids": [
+        "eval-doc-007"
+      ]
+    },
+    {
+      "id": "test-diff-008",
+      "name": "M2 batch-4 test-diff (T3B.4 run_dream yellow)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-4.md",
+      "created_at": "2026-04-21T00:23:26Z",
+      "updated_at": "2026-04-21T00:23:26Z",
+      "related_ids": [
+        "eval-doc-007"
+      ]
+    },
+    {
+      "id": "test-diff-009",
+      "name": "M2 batch-5 test-diff (T3B.5 cc_pool + T3B.6 /api/dream)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-5.md",
+      "created_at": "2026-04-21T00:23:30Z",
+      "updated_at": "2026-04-21T00:23:30Z",
+      "related_ids": [
+        "eval-doc-007"
+      ]
+    },
+    {
+      "id": "test-diff-010",
+      "name": "M2 batch-6 test-diff (T4B.1 + T4B.2 + T4B.3 DreamScheduler)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-6.md",
+      "created_at": "2026-04-21T00:23:33Z",
+      "updated_at": "2026-04-21T00:23:33Z",
+      "related_ids": [
+        "eval-doc-008"
+      ]
+    },
+    {
+      "id": "e2e-report-003",
+      "name": "M2 Phase 1-4 full regression (207 pass / 0 fail)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "backfill-subagent",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-m2-phase1-4.md",
+      "created_at": "2026-04-21T00:23:37Z",
+      "updated_at": "2026-04-21T00:23:37Z",
+      "related_ids": [
+        "eval-doc-005",
+        "eval-doc-006",
+        "eval-doc-007",
+        "eval-doc-008"
+      ]
+    },
+    {
+      "id": "eval-doc-009",
+      "name": "batch-7 auth foundations",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-batch-7",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-7-auth.md",
+      "created_at": "2026-04-21T00:29:57Z",
+      "updated_at": "2026-04-21T00:29:57Z",
+      "related_ids": [
+        "test-diff-011"
+      ]
+    },
+    {
+      "id": "test-diff-011",
+      "name": "batch-7 auth tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "subagent-batch-7",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-7.md",
+      "created_at": "2026-04-21T00:37:30Z",
+      "updated_at": "2026-04-21T00:37:30Z",
+      "related_ids": [
+        "eval-doc-009",
+        "e2e-report-004"
+      ]
+    },
+    {
+      "id": "e2e-report-004",
+      "name": "batch-7 auth e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "subagent-batch-7",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-7.md",
+      "created_at": "2026-04-21T00:39:05Z",
+      "updated_at": "2026-04-21T00:39:05Z",
+      "related_ids": [
+        "test-diff-011"
+      ]
+    },
+    {
+      "id": "eval-doc-010",
+      "name": "batch-8 auth gating (T5B.5/T5B.6)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-batch-8",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-8-auth-gating.md",
+      "created_at": "2026-04-21T00:44:07Z",
+      "updated_at": "2026-04-21T00:44:07Z",
+      "related_ids": [
+        "test-diff-012"
+      ]
+    },
+    {
+      "id": "test-diff-012",
+      "name": "batch-8 auth gating tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "subagent-batch-8",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-8.md",
+      "created_at": "2026-04-21T00:49:10Z",
+      "updated_at": "2026-04-21T00:49:10Z",
+      "related_ids": [
+        "eval-doc-010",
+        "e2e-report-005"
+      ]
+    },
+    {
+      "id": "e2e-report-005",
+      "name": "batch-8 auth gating e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "subagent-batch-8",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-8.md",
+      "created_at": "2026-04-21T00:50:52Z",
+      "updated_at": "2026-04-21T00:50:52Z",
+      "related_ids": [
+        "test-diff-012"
+      ]
+    },
+    {
+      "id": "eval-doc-011",
+      "name": "batch-9 frontend shell hooks",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-batch-9",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-9-shell-hooks.md",
+      "created_at": "2026-04-21T00:59:37Z",
+      "updated_at": "2026-04-21T00:59:37Z",
+      "related_ids": [
+        "test-diff-013",
+        "e2e-report-006",
+        "eval-doc-017"
+      ]
+    },
+    {
+      "id": "test-diff-013",
+      "name": "batch-9 frontend shell hooks test diff",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "subagent-batch-9",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-9.md",
+      "created_at": "2026-04-21T01:07:29Z",
+      "updated_at": "2026-04-21T01:07:29Z",
+      "related_ids": [
+        "eval-doc-011",
+        "e2e-report-006"
+      ]
+    },
+    {
+      "id": "e2e-report-006",
+      "name": "batch-9 frontend shell hooks e2e report",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "subagent-batch-9",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-9.md",
+      "created_at": "2026-04-21T01:08:33Z",
+      "updated_at": "2026-04-21T01:08:33Z",
+      "related_ids": [
+        "eval-doc-011",
+        "test-diff-013"
+      ]
+    },
+    {
+      "id": "eval-doc-012",
+      "name": "T6F.3 AdminRail variant prop (master vs tenant icon sets)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-t6f-3",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t6f-3-adminrail.md",
+      "created_at": "2026-04-21T01:13:26Z",
+      "updated_at": "2026-04-21T01:13:26Z",
+      "related_ids": [
+        "test-diff-014"
+      ]
+    },
+    {
+      "id": "eval-doc-013",
+      "name": "T6F.4 AdminTopbar + AvatarMenu extensions",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "subagent-t6f-4",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t6f-4-topbar-avatar.md",
+      "created_at": "2026-04-21T01:14:39Z",
+      "updated_at": "2026-04-21T01:14:39Z",
+      "related_ids": [
+        "test-diff-014"
+      ]
+    },
+    {
+      "id": "test-diff-014",
+      "name": "batch-10 T6F.3+T6F.4 shell components",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-10.md",
+      "created_at": "2026-04-21T01:32:43Z",
+      "updated_at": "2026-04-21T01:32:43Z",
+      "related_ids": [
+        "eval-doc-012",
+        "eval-doc-013",
+        "e2e-report-007"
+      ]
+    },
+    {
+      "id": "e2e-report-007",
+      "name": "batch-10 shell components e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-10.md",
+      "created_at": "2026-04-21T01:33:05Z",
+      "updated_at": "2026-04-21T01:33:05Z",
+      "related_ids": [
+        "test-diff-014"
+      ]
+    },
+    {
+      "id": "eval-doc-014",
+      "name": "batch-11 TenantLayout 4-tab + ChatTab /api/admin/chat",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "batch-11",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-11-layout-chat.md",
+      "created_at": "2026-04-21T01:38:57Z",
+      "updated_at": "2026-04-21T01:38:57Z",
+      "related_ids": [
+        "test-diff-015",
+        "e2e-report-008",
+        "eval-doc-019"
+      ]
+    },
+    {
+      "id": "test-diff-015",
+      "name": "batch-11 TenantLayout + ChatTab",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "batch-11",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-11.md",
+      "created_at": "2026-04-21T01:42:47Z",
+      "updated_at": "2026-04-21T01:42:47Z",
+      "related_ids": [
+        "eval-doc-014",
+        "e2e-report-008"
+      ]
+    },
+    {
+      "id": "e2e-report-008",
+      "name": "batch-11 P6 TenantLayout + ChatTab focused e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "batch-11",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-11.md",
+      "created_at": "2026-04-21T01:43:28Z",
+      "updated_at": "2026-04-21T01:43:28Z",
+      "related_ids": [
+        "eval-doc-014",
+        "test-diff-015"
+      ]
+    },
+    {
+      "id": "eval-doc-015",
+      "name": "batch-12 P7 TenantContext middleware + tenant_root helper",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-12-p7-middleware.md",
+      "created_at": "2026-04-21T01:49:38Z",
+      "updated_at": "2026-04-21T01:49:38Z",
+      "related_ids": [
+        "test-diff-016",
+        "e2e-report-009",
+        "eval-doc-017",
+        "eval-doc-019"
+      ]
+    },
+    {
+      "id": "test-diff-016",
+      "name": "batch-12 P7 TenantContext middleware + tenant_root tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-12.md",
+      "created_at": "2026-04-21T01:53:58Z",
+      "updated_at": "2026-04-21T01:53:58Z",
+      "related_ids": [
+        "eval-doc-015",
+        "e2e-report-009"
+      ]
+    },
+    {
+      "id": "e2e-report-009",
+      "name": "batch-12 P7 TenantContext middleware + tenant_root E2E",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-12.md",
+      "created_at": "2026-04-21T01:54:19Z",
+      "updated_at": "2026-04-21T01:54:19Z",
+      "related_ids": [
+        "test-diff-016",
+        "eval-doc-015"
+      ]
+    },
+    {
+      "id": "eval-doc-016",
+      "name": "T7S.4 setup.sh mode-aware",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "subagent-t7s-4",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7s-4-setup.md",
+      "created_at": "2026-04-21T01:58:25Z",
+      "updated_at": "2026-04-21T01:58:25Z",
+      "related_ids": [
+        "test-diff-017"
+      ]
+    },
+    {
+      "id": "eval-doc-017",
+      "name": "T7F.3 customer-chat + operator-console mode-based routing",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "phase-7-main",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7f-3-routing.md",
+      "created_at": "2026-04-21T01:59:28Z",
+      "updated_at": "2026-04-21T01:59:28Z",
+      "related_ids": [
+        "eval-doc-011",
+        "eval-doc-015",
+        "test-diff-018"
+      ]
+    },
+    {
+      "id": "test-diff-017",
+      "name": "T7S.4 setup.sh tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "subagent-t7s-4",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7s-4.md",
+      "created_at": "2026-04-21T02:02:23Z",
+      "updated_at": "2026-04-21T02:02:23Z",
+      "related_ids": [
+        "eval-doc-016",
+        "e2e-report-010"
+      ]
+    },
+    {
+      "id": "test-diff-018",
+      "name": "T7F.3 customer-chat + operator-console mode-routing tests",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "phase-7-main",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7f-3.md",
+      "created_at": "2026-04-21T02:03:16Z",
+      "updated_at": "2026-04-21T02:03:16Z",
+      "related_ids": [
+        "eval-doc-017",
+        "e2e-report-010"
+      ]
+    },
+    {
+      "id": "e2e-report-010",
+      "name": "batch-13 P7 routing + infra e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-13.md",
+      "created_at": "2026-04-21T02:07:25Z",
+      "updated_at": "2026-04-21T02:07:25Z",
+      "related_ids": [
+        "test-diff-017",
+        "test-diff-018"
+      ]
+    },
+    {
+      "id": "eval-doc-018",
+      "name": "T7S.5 fork-mode boot smoke test",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "orchestrator-t7s-5",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7s-5-smoke.md",
+      "created_at": "2026-04-21T02:12:11Z",
+      "updated_at": "2026-04-21T02:12:11Z",
+      "related_ids": [
+        "test-diff-019"
+      ]
+    },
+    {
+      "id": "eval-doc-019",
+      "name": "T7B.6 /api/management/chat -> _master routing",
+      "type": "eval-doc",
+      "status": "draft",
+      "producer": "main orchestrator",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-t7b-6-management-chat.md",
+      "created_at": "2026-04-21T02:12:37Z",
+      "updated_at": "2026-04-21T02:12:37Z",
+      "related_ids": [
+        "eval-doc-015",
+        "eval-doc-014",
+        "test-diff-020",
+        "test-diff-021"
+      ]
+    },
+    {
+      "id": "test-diff-019",
+      "name": "T7S.5 fork-mode boot smoke test",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "orchestrator-t7s-5",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7s-5.md",
+      "created_at": "2026-04-21T02:12:46Z",
+      "updated_at": "2026-04-21T02:12:46Z",
+      "related_ids": [
+        "eval-doc-018",
+        "e2e-report-011"
+      ]
+    },
+    {
+      "id": "test-diff-020",
+      "name": "T7B.6 /api/management/chat -> _master routing (7 tests)",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7b-6.md",
+      "created_at": "2026-04-21T02:15:08Z",
+      "updated_at": "2026-04-21T02:15:08Z",
+      "related_ids": [
+        "eval-doc-019"
+      ]
+    },
+    {
+      "id": "test-diff-021",
+      "name": "T7B.6 management-chat tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-t7b-6.md",
+      "created_at": "2026-04-21T02:15:55Z",
+      "updated_at": "2026-04-21T02:15:55Z",
+      "related_ids": [
+        "eval-doc-019",
+        "e2e-report-011"
+      ]
+    },
+    {
+      "id": "e2e-report-011",
+      "name": "batch-14 P7 smoke + mgmt e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-14.md",
+      "created_at": "2026-04-21T02:16:46Z",
+      "updated_at": "2026-04-21T02:16:46Z",
+      "related_ids": [
+        "test-diff-019",
+        "test-diff-021"
+      ]
+    },
+    {
+      "id": "eval-doc-020",
+      "name": "batch-15 T8B.1 GitHubApiForkCreator + T8B.2 LocalTarballForkCreator runbook config step",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "main-orchestrator-batch-15",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-15-forkcreator.md",
+      "created_at": "2026-04-21T02:21:31Z",
+      "updated_at": "2026-04-21T02:21:31Z",
+      "related_ids": [
+        "test-diff-022"
+      ]
+    },
+    {
+      "id": "test-diff-022",
+      "name": "batch-15 ForkCreator tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-15.md",
+      "created_at": "2026-04-21T02:43:52Z",
+      "updated_at": "2026-04-21T02:43:52Z",
+      "related_ids": [
+        "eval-doc-020",
+        "e2e-report-012"
+      ]
+    },
+    {
+      "id": "e2e-report-012",
+      "name": "batch-15 ForkCreator e2e",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-15.md",
+      "created_at": "2026-04-21T02:43:52Z",
+      "updated_at": "2026-04-21T02:43:52Z",
+      "related_ids": [
+        "test-diff-022"
+      ]
+    },
+    {
+      "id": "eval-doc-021",
+      "name": "batch-16 E2E test code design",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/eval-docs/eval-batch-16-e2e.md",
+      "created_at": "2026-04-21T03:19:38Z",
+      "updated_at": "2026-04-21T03:19:38Z",
+      "related_ids": [
+        "test-diff-023"
+      ]
+    },
+    {
+      "id": "test-diff-023",
+      "name": "batch-16 E2E acceptance tests",
+      "type": "test-diff",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/test-diffs/test-diff-batch-16.md",
+      "created_at": "2026-04-21T03:19:39Z",
+      "updated_at": "2026-04-21T03:19:39Z",
+      "related_ids": [
+        "eval-doc-021",
+        "e2e-report-013"
+      ]
+    },
+    {
+      "id": "e2e-report-013",
+      "name": "batch-16 code verification",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-batch-16.md",
+      "created_at": "2026-04-21T03:19:39Z",
+      "updated_at": "2026-04-21T03:19:39Z",
+      "related_ids": [
+        "test-diff-023"
+      ]
+    },
+    {
+      "id": "e2e-report-014",
+      "name": "M2 §8 acceptance RUN 2026-04-21 (5/8 pass, local SDK verified)",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-m2-acceptance-RUN-2026-04-21.md",
+      "created_at": "2026-04-21T04:01:20Z",
+      "updated_at": "2026-04-21T04:01:20Z",
+      "related_ids": []
+    },
+    {
+      "id": "e2e-report-015",
+      "name": "M2 §8 acceptance RUN #2 (7/8 pass, all executable steps green)",
+      "type": "e2e-report",
+      "status": "confirmed",
+      "producer": "main-orchestrator",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-m2-acceptance-RUN-2026-04-21-v2.md",
+      "created_at": "2026-04-21T04:23:48Z",
+      "updated_at": "2026-04-21T04:23:48Z",
+      "related_ids": []
     }
   ]
 }

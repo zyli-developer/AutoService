@@ -185,7 +185,11 @@ class TestTemplates:
         assert "## 角色定位" in template
 
     def test_load_all_templates(self):
+        # 'dream' intentionally has no agents/dream/soul.md — uses
+        # _FALLBACK_DREAM_SOUL constant instead (spec §2.3).
         for role in AGENT_ROLES:
+            if role == "dream":
+                continue
             template = _load_soul_template(role)
             assert template, f"Template for {role} should not be empty"
             assert "## 角色定位" in template
@@ -316,7 +320,7 @@ class TestSaveDrafts:
         output_dir = tmp_path / "drafts"
         paths = save_drafts(result, output_dir=output_dir)
 
-        assert len(paths) == 4
+        assert len(paths) == len(AGENT_ROLES)
         for role, path in paths.items():
             assert path.exists()
             content = path.read_text(encoding="utf-8")

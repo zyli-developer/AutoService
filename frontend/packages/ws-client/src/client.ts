@@ -127,6 +127,12 @@ export class WSClient {
             this.versionIncompatible = true;
             this.closedByUser = true; // prevent reconnect
           }
+          // Handshake-phase auth errors (4011): tenant_mismatch /
+          // unknown_tenant / operator cookie invalid — retry would fail the
+          // same way and only floods the server. Suppress reconnect.
+          if (payload.code === ERROR_CODES.AUTH) {
+            this.closedByUser = true;
+          }
           this.opts.onError?.(payload);
           this.opts.onFrame?.(frame);
           return;
@@ -173,7 +179,7 @@ export class WSClient {
   }
 
   private handleAckIfAny(frame: Envelope): void {
-    const feTypesWithAck: BeToFeType[] = ['ack', 'pong', 'error', 'command_response'];
+    const feTypesWithAck: BeToFeType[] = ['ack', 'pong', 'error', 'command_response', 'subscription_added', 'subscription_removed'];
     if (!feTypesWithAck.includes(frame.type as BeToFeType)) return;
     if (!frame.ref) return;
     const pending = this.pendingAcks.get(frame.ref);

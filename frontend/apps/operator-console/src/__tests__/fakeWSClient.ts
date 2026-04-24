@@ -6,12 +6,14 @@ type OnCloseCb = (code: number, reason: string) => void;
 type OnFrameCb = (frame: Envelope) => void;
 
 interface FakeOpts {
+  url?: string;
   onOpen?: OnOpenCb;
   onClose?: OnCloseCb;
   onFrame?: OnFrameCb;
 }
 
 export class FakeWSClient {
+  url?: string;
   onOpen?: OnOpenCb;
   onClose?: OnCloseCb;
   onFrame?: OnFrameCb;
@@ -20,6 +22,7 @@ export class FakeWSClient {
   connectCallCount = 0;
 
   constructor(opts: FakeOpts) {
+    this.url = opts.url;
     this.onOpen = opts.onOpen;
     this.onClose = opts.onClose;
     this.onFrame = opts.onFrame;
@@ -30,8 +33,13 @@ export class FakeWSClient {
     // no-op: test calls triggerOpen manually
   }
 
-  send(frame: Envelope) {
-    this.sendCalls.push(frame);
+  send(typeOrFrame: string | Envelope, payload?: unknown): Promise<void> {
+    if (typeof typeOrFrame === 'string') {
+      this.sendCalls.push({ v: 1, type: typeOrFrame, id: 'fake-send', ts: new Date().toISOString(), payload } as Envelope);
+    } else {
+      this.sendCalls.push(typeOrFrame);
+    }
+    return Promise.resolve();
   }
 
   close() {

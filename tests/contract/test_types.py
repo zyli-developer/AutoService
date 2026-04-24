@@ -36,6 +36,7 @@ def test_participant_role_values():
         "agent",
         "operator",
         "observer",
+        "triage",  # de5e0b5 — additive enum member for triage-state routing
     }
 
 

@@ -6,7 +6,7 @@
 **状态图例**: ⬜ pending · 🟦 in_progress · 🟩 completed · ⚠️ blocked · 🟥 failed(需重做)
 **类型图例**: 🟢 Green(AI 独立) · 🟡 Yellow(AI+人审) · 🔴 Red(人主导)
 
-**最后更新**: 2026-04-17 · **整体进度**: 66/100 (66%) · ⚠️ 9 tasks blocked on zchat · 25 Phase 6 gap-fix tasks added
+**最后更新**: 2026-04-17 · **整体进度**: 92/100 (92%) · ⚠️ 9 tasks blocked on zchat · 25 Phase 6 gap-fix tasks added
 
 ## ⚡ AI 快车道时间表
 
@@ -121,7 +121,7 @@
 | T3B.4 | 向导 Step3 虚拟预演 UI | 🟢 | 🟩 | DevB | T3A.2 | eval-T3B.4, plan-T3B.4, test-diff-022 |
 | T3B.5 | 向导 Step4 合规预检可视化 | 🟢 | 🟩 | DevB | T3A.7 | test-diff-017 |
 | T3B.6 | 运营仪表盘页 | 🟢 | 🟩 | DevB | T1A.8 | test-diff-018 |
-| T3B.7 | 管理群（Dream Engine 对话式命令） | 🟢 | 🟦 | DevA | T2A.1 | test-diff-019 |
+| T3B.7 | 管理群（Dream Engine 对话式命令） | 🟢 | 🟩 | DevA | T2A.1 | test-diff-019 |
 
 **🤝 M3 联调**: Thu EOD，30 min smoke test
 
@@ -200,17 +200,17 @@
 |---|---|---|---|---|---|---|
 | T6A.1 | 订阅注册表 + S13 响应 | 🟡 | 🟩 | Dev | — | BRK-01 |
 | T6A.2 | 消息广播按分队过滤 | 🟢 | 🟩 | Dev | T6A.1 | BRK-02 |
-| T6A.3 | 重连消息回放 | 🟢 | ⬜ | Agent | — | BRK-03 |
-| T6A.4 | 错误码前后端对齐 | 🟢 | ⬜ | Agent | — | BRK-04 |
+| T6A.3 | 重连消息回放 | 🟢 | 🟩 | Dev | — | BRK-03 |
+| T6A.4 | 错误码前后端对齐 | 🟢 | 🟩 | Agent | — | BRK-04 |
 
 ### Phase 6B · 向导端到端打通（P0 · M6.0）
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
 | T6B.1 | Upload → soul 生成接线 | 🟢 | 🟩 | Agent | — | BRK-05 |
-| T6B.2 | Activate 返回可用 URL | 🟢 | ⬜ | Agent | — | BRK-06 |
-| T6B.3 | 虚拟预演传正确参数 | 🟢 | ⬜ | Agent | T6B.1 | BRK-07 |
-| T6B.4 | 合规预检传真实 config | 🟢 | ⬜ | Agent | T6B.2 | BRK-08 |
+| T6B.2 | Activate 返回可用 URL | 🟢 | 🟩 | Agent | — | BRK-06 |
+| T6B.3 | 虚拟预演传正确参数 | 🟢 | 🟩 | Agent | T6B.1 | BRK-07 |
+| T6B.4 | 合规预检传真实 config | 🟢 | 🟩 | Agent | T6B.2 | BRK-08 |
 | T6B.5 | 向导步骤校验 + 持久化 | 🟢 | 🟩 | Agent | — | DEV-01 |
 
 ### Phase 6C · 计费链路打通（P0 · M6.1）
@@ -218,33 +218,33 @@
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
 | T6C.1 | CSAT 评分全链路 | 🟡 | 🟩 | Dev | T6A.1 | MISS-07 |
-| T6C.2 | Metrics→Billing 联通 | 🟢 | ⬜ | Agent | — | DEV-10 |
+| T6C.2 | Metrics→Billing 联通 | 🟢 | 🟩 | Dev | — | DEV-10 |
 | T6C.3 | /approve /reject 真实执行 | 🟡 | 🟩 | Dev | — | BRK-09 |
 
 ### Phase 6D · 仪表盘补全（P1 · M6.2）
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
-| T6D.1 | SLA 接入真实数据 | 🟡 | ⬜ | Dev | T6C.2 | DEV-02 |
-| T6D.2 | Dashboard 布局重组 | 🟢 | ⬜ | Agent | — | MISS-01 |
-| T6D.3 | 接管次数趋势图 | 🟢 | ⬜ | Agent | T6C.2 | MISS-02 |
-| T6D.4 | 人工客服 Leaderboard | 🟢 | ⬜ | Agent | T6C.2 | MISS-03 |
-| T6D.5 | 时间切片选择器 | 🟢 | ⬜ | Dev | T6D.1 | MISS-04 |
+| T6D.1 | SLA 接入真实数据 | 🟡 | 🟩 | Dev | T6C.2 | DEV-02 |
+| T6D.2 | Dashboard 布局重组 | 🟢 | 🟩 | Agent | — | MISS-01 |
+| T6D.3 | 接管次数趋势图 | 🟢 | 🟩 | Agent | T6C.2 | MISS-02 |
+| T6D.4 | 人工客服 Leaderboard | 🟢 | 🟩 | Agent | T6C.2 | MISS-03 |
+| T6D.5 | 时间切片选择器 | 🟢 | 🟩 | DevA | T6D.1 | eval-T6D.5, test-plan-T6D.5 |
 
 ### Phase 6E · 体验打磨（P1-P3 · M6.3）
 
 | ID | 名称 | 类型 | 状态 | Mode | 依赖 | Gap |
 |---|---|---|---|---|---|---|
-| T6E.1 | 快速三连（并发+通知+语言） | 🟢 | ⬜ | Agent | — | DEV-06/07,MISS-08 |
-| T6E.2 | 占位超时自动升级 | 🟢 | ⬜ | Agent | — | DEV-04 |
-| T6E.3 | 老客户上下文问候 | 🟢 | ⬜ | Agent | — | DEV-05 |
-| T6E.4 | Canary advance 修复 | 🟢 | ⬜ | Agent | — | DEV-03 |
-| T6E.5 | Memory Pool 自动录入 | 🟢 | ⬜ | Agent | — | DEV-12 |
-| T6E.6 | 旧 WS 栈标记 deprecated | 🟢 | ⬜ | Agent | — | DEV-09 |
-| T6E.7 | SLA 告警 WS 推送 | 🟡 | ⬜ | Dev | T6A.1,T6D.1 | MISS-06 |
-| T6E.8 | Agent 草稿展示 | 🟡 | ⬜ | Dev | T6A.1 | MISS-09 |
-| T6E.9 | Dream Engine 对话式配置 | 🟡 | ⬜ | Dev | — | MISS-05 |
-| T6E.10 | Proposal analyzer 替换 | 🟡 | ⬜ | Dev | — | DEV-11 |
+| T6E.1 | 快速三连（并发+通知+语言） | 🟢 | 🟩 | Agent | — | DEV-06/07,MISS-08 |
+| T6E.2 | 占位超时自动升级 | 🟢 | 🟩 | Agent | — | DEV-04 |
+| T6E.3 | 老客户上下文问候 | 🟢 | 🟩 | Agent | — | DEV-05 |
+| T6E.4 | Canary advance 修复 | 🟢 | 🟩 | Agent | — | DEV-03 |
+| T6E.5 | Memory Pool 自动录入 | 🟢 | 🟩 | Agent | — | DEV-12 |
+| T6E.6 | 旧 WS 栈标记 deprecated | 🟢 | 🟩 | Agent | — | DEV-09 |
+| T6E.7 | SLA 告警 WS 推送 | 🟡 | 🟩 | Dev | T6A.1,T6D.1 | MISS-06 |
+| T6E.8 | Agent 草稿展示 | 🟡 | 🟩 | Dev | T6A.1 | MISS-09 |
+| T6E.9 | Dream Engine 对话式配置 | 🟡 | 🟩 | Dev | — | MISS-05 |
+| T6E.10 | Proposal analyzer 替换 | 🟡 | 🟩 | Dev | — | DEV-11 |
 
 ---
 
@@ -258,12 +258,12 @@
 | P3 | 14 | 0 | 0 | 14 | 0 |
 | P4 | 13 | 0 | 0 | 13 | 0 |
 | P5 | 13 | 0 | 0 | 4 | 9 |
-| **P6A** | **4** | **4** | **0** | **0** | **0** |
-| **P6B** | **5** | **5** | **0** | **0** | **0** |
-| **P6C** | **3** | **3** | **0** | **0** | **0** |
-| **P6D** | **5** | **5** | **0** | **0** | **0** |
-| **P6E** | **10** | **10** | **0** | **0** | **0** |
-| **合计** | **100** | **25** | **0** | **66** | **9** |
+| **P6A** | **4** | **0** | **0** | **4** | **0** |
+| **P6B** | **5** | **0** | **0** | **5** | **0** |
+| **P6C** | **3** | **0** | **0** | **3** | **0** |
+| **P6D** | **5** | **1** | **0** | **4** | **0** |
+| **P6E** | **10** | **0** | **0** | **10** | **0** |
+| **合计** | **100** | **1** | **0** | **92** | **9** | <!-- T6D.5 pending (you) -->
 
 **P0-P5**: A 线 43 / B 线 29 / 协作 3
 **P6**: Dev 亲做 8 (Yellow) / Agent 并行 17 (Green)

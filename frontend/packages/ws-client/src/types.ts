@@ -37,6 +37,9 @@ export const BE_TO_FE_TYPES = [
   'replay_complete',     // S12
   'subscription_added',  // S13
   'subscription_removed',// S14
+  'takeover_warning',    // S15
+  'takeover_warning_cancelled',// S16
+  'takeover_timer_armed',// S17
 ] as const;
 export type BeToFeType = (typeof BE_TO_FE_TYPES)[number];
 
@@ -85,6 +88,13 @@ export interface ServerHelloPayload {
   viewer_role: ViewerRole;
   accepted_subscriptions: string[];
   server_capabilities: string[];
+  /**
+   * Tenant-scoped brand name surfaced for the customer widget so it can
+   * render tenant-specific branding without a separate HTTP fetch.
+   * Absent when the tenant has no brand configured — the widget falls
+   * back to its i18n default.  Only emitted for `viewer_role: "customer"`.
+   */
+  brand_name?: string;
 }
 
 /** T0.2 §6 error payload */

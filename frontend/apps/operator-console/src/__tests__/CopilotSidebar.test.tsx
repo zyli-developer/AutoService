@@ -53,12 +53,11 @@ describe('CopilotView', () => {
     useOperatorStore.setState({ activeCopilotConvId: 'conv-1' });
     const send = vi.fn();
     const user = userEvent.setup();
-    render(
-      <>
-        <CopilotView send={send} />
-        <IMInput send={send} />
-      </>
-    );
+    // CopilotView now renders IMInput inside .op-chat-col so the composer
+    // shrinks together with the chat stream when the right panel toggles.
+    // Rendering IMInput separately here would create two `copilot-input`
+    // testids in the DOM.
+    render(<CopilotView send={send} />);
 
     const input = screen.getByTestId('copilot-input');
     await user.type(input, 'hello world');
@@ -69,9 +68,66 @@ describe('CopilotView', () => {
     expect(frame.type).toBe('operator_message');
     expect(frame.v).toBe(1);
     expect(frame.payload.conversation_id).toBe('conv-1');
-    expect(frame.payload.text).toBe('hello world');
+    expect(frame.payload.content).toBe('hello world');
 
     expect(screen.getByTestId('copilot-input')).toHaveValue('');
+  });
+
+  it('TC-06: operator message tag follows msg.visibility, not current conv.mode', () => {
+    // Regression: StreamMessage used to branch on isTakeover (current mode),
+    // causing every historical operator message to change tag when the user
+    // hijacked/released. A SIDE suggestion and a PUBLIC hijack reply must
+    // keep their own tags independent of the current mode.
+    const messages: CopilotMessage[] = [
+      { id: 'm-side', text: 'real suggestion', sender: 'operator',
+        ts: '2026-04-20T13:09:33Z', visibility: 'side' },
+      { id: 'm-public', text: 'hijack reply', sender: 'operator',
+        ts: '2026-04-20T13:09:42Z', visibility: 'public' },
+      { id: 'm-agent-public', text: 'Hello!', sender: 'agent',
+        ts: '2026-04-20T13:09:29Z', visibility: 'public' },
+      { id: 'm-agent-side', text: 'gated draft', sender: 'agent',
+        ts: '2026-04-20T13:09:30Z', visibility: 'side' },
+    ];
+
+    useOperatorStore.setState({
+      activeCopilotConvId: 'conv-1',
+      conversations: {
+        'conv-1': {
+          id: 'conv-1', squadId: 'web-support', customerId: 'c1',
+          mode: 'takeover', state: 'active',
+          lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+        } as any,
+      },
+      copilotMessages: { 'conv-1': messages },
+    });
+
+    const send = vi.fn();
+    const { rerender } = render(<CopilotView send={send} />);
+
+    // In takeover mode: SIDE operator msg still renders "建议", PUBLIC still renders "driver".
+    const takeoverSide = screen.getByTestId('copilot-message-m-side');
+    const takeoverPublic = screen.getByTestId('copilot-message-m-public');
+    expect(takeoverSide.textContent).toContain('operator.chat.tag.suggestion');
+    expect(takeoverPublic.textContent).toContain('driver');
+    expect(screen.getByTestId('copilot-message-m-agent-public').textContent).toContain('auto');
+    expect(screen.getByTestId('copilot-message-m-agent-side').textContent).toContain('side');
+
+    // Flip to copilot mode: tags MUST NOT change.
+    useOperatorStore.setState({
+      conversations: {
+        'conv-1': {
+          id: 'conv-1', squadId: 'web-support', customerId: 'c1',
+          mode: 'copilot', state: 'active',
+          lastMessage: '', lastMessageSender: '', lastActivityTs: '',
+        } as any,
+      },
+    });
+    rerender(<CopilotView send={send} />);
+
+    expect(screen.getByTestId('copilot-message-m-side').textContent).toContain('operator.chat.tag.suggestion');
+    expect(screen.getByTestId('copilot-message-m-public').textContent).toContain('driver');
+    expect(screen.getByTestId('copilot-message-m-agent-public').textContent).toContain('auto');
+    expect(screen.getByTestId('copilot-message-m-agent-side').textContent).toContain('side');
   });
 
   it('TC-05: close button calls closeCopilot', async () => {

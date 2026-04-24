@@ -322,3 +322,224 @@
   description_zh: "训练数据来源及处理须符合法规要求"
   remediation_doc: "docs/compliance/cn-06.md"
   tags: ["training-data", "compliance"]
+
+# ============================================================
+# JP 区 (4 条) — APPI (Act on Protection of Personal Information) — M3 T4S.6
+# ============================================================
+
+- rule_id: jp-01
+  name: "Purpose limitation disclosure"
+  name_zh: "目的限定披露"
+  region: JP
+  regulation: "APPI §15-17"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.data_purpose_disclosure"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Personal data collection purpose must be disclosed at point of collection"
+  description_zh: "个人信息收集时必须告知使用目的"
+  remediation_doc: "docs/compliance/jp-01.md"
+  tags: ["disclosure", "purpose-limitation"]
+
+- rule_id: jp-02
+  name: "Data subject access right"
+  name_zh: "数据主体访问权"
+  region: JP
+  regulation: "APPI §28"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.access_request_channel"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Data subject must have an access/correction request channel"
+  description_zh: "数据主体须提供访问/更正请求渠道"
+  remediation_doc: "docs/compliance/jp-02.md"
+  tags: ["data-subject-rights"]
+
+- rule_id: jp-03
+  name: "Cross-border transfer opt-in"
+  name_zh: "跨境传输选择同意"
+  region: JP
+  regulation: "APPI §24"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.cross_border_consent_mechanism"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Cross-border data transfer requires explicit opt-in consent"
+  description_zh: "跨境数据传输须取得明确同意"
+  remediation_doc: "docs/compliance/jp-03.md"
+  tags: ["cross-border", "consent"]
+
+- rule_id: jp-04
+  name: "Breach notification 72h"
+  name_zh: "泄露 72 小时通报"
+  region: JP
+  regulation: "APPI 2022 amendment (leakage notification)"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.breach_notification_sla_h"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Data breaches must be reported to PPC within 72 hours"
+  description_zh: "数据泄露须在 72 小时内向 PPC 通报"
+  remediation_doc: "docs/compliance/jp-04.md"
+  tags: ["breach-notification"]
+
+# ============================================================
+# SG 区 (4 条) — PDPA (Personal Data Protection Act) — M3 T4S.6
+# ============================================================
+
+- rule_id: sg-01
+  name: "Consent for collection"
+  name_zh: "收集同意"
+  region: SG
+  regulation: "PDPA §13"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.consent_collection_mechanism"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Personal data collection requires informed consent per PDPA"
+  description_zh: "收集个人数据须取得知情同意"
+  remediation_doc: "docs/compliance/sg-01.md"
+  tags: ["consent", "collection"]
+
+- rule_id: sg-02
+  name: "DNC registry check"
+  name_zh: "DNC 名单检查"
+  region: SG
+  regulation: "PDPA §36-48 (DNC Registry)"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.dnc_registry_check_enabled"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Marketing calls/messages must check the Do Not Call registry"
+  description_zh: "营销电话/消息须检查 DNC 名单"
+  remediation_doc: "docs/compliance/sg-02.md"
+  tags: ["marketing", "dnc"]
+
+- rule_id: sg-03
+  name: "Data protection officer disclosure"
+  name_zh: "数据保护官披露"
+  region: SG
+  regulation: "PDPA §11"
+  severity: medium
+  trigger:
+    type: config_check
+    field: "tenant.data_protection_officer_contact"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: false
+    dream_engine: false
+  description: "A Data Protection Officer contact must be publicly disclosed"
+  description_zh: "须公开披露数据保护官的联系方式"
+  remediation_doc: "docs/compliance/sg-03.md"
+  tags: ["dpo", "disclosure"]
+
+- rule_id: sg-04
+  name: "Data breach notification 72h"
+  name_zh: "数据泄露 72 小时通报"
+  region: SG
+  regulation: "PDPA §26D (notifiable data breach)"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.breach_notification_sla_h"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Notifiable data breaches must be reported within 72 hours"
+  description_zh: "可通报数据泄露须在 72 小时内通报"
+  remediation_doc: "docs/compliance/sg-04.md"
+  tags: ["breach-notification"]
+
+# ============================================================
+# AU 区 (3 条) — Privacy Act 1988 — M3 T4S.6
+# ============================================================
+
+- rule_id: au-01
+  name: "APP 3 consent for collection"
+  name_zh: "APP 3 收集同意"
+  region: AU
+  regulation: "Australian Privacy Principles (APP) 3"
+  severity: critical
+  trigger:
+    type: config_check
+    field: "tenant.consent_collection_mechanism"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: true
+  description: "Collection of personal information requires APP 3 consent"
+  description_zh: "收集个人信息须符合 APP 3 同意要求"
+  remediation_doc: "docs/compliance/au-01.md"
+  tags: ["app3", "consent"]
+
+- rule_id: au-02
+  name: "APP 7 direct marketing opt-out"
+  name_zh: "APP 7 直接营销退出"
+  region: AU
+  regulation: "APP 7 (direct marketing)"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.marketing_opt_out_url"
+    condition: "must_not_empty"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Direct marketing communications must include opt-out mechanism"
+  description_zh: "直接营销通讯须包含退出机制"
+  remediation_doc: "docs/compliance/au-02.md"
+  tags: ["marketing", "app7"]
+
+- rule_id: au-03
+  name: "Notifiable Data Breach 30 days"
+  name_zh: "可通报数据泄露 30 日"
+  region: AU
+  regulation: "Notifiable Data Breach scheme"
+  severity: high
+  trigger:
+    type: config_check
+    field: "tenant.breach_notification_sla_h"
+    condition: "must_be_true"
+  blocking:
+    sandbox: false
+    production: true
+    dream_engine: false
+  description: "Notifiable breaches must be reported to OAIC within 30 days"
+  description_zh: "可通报数据泄露须在 30 日内向 OAIC 通报"
+  remediation_doc: "docs/compliance/au-03.md"
+  tags: ["breach-notification"]

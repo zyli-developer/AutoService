@@ -1,0 +1,184 @@
+# M3 Task Status · Authoritative Truth
+
+> **IMPORTANT**: This file is the authoritative record of M3 progress. Per [CLAUDE.md §/autorun conventions](../../../CLAUDE.md#L120), update this file at **every batch boundary** (same commit as code, or trailing `chore(m3):` commit). TodoWrite is NOT authoritative.
+
+**Initialized**: 2026-04-21 · [prd2impl:skill-4-plan-schedule]
+**Plan**: [execution-plan.md](execution-plan.md) · **Tasks**: [tasks.yaml](tasks.yaml)
+**Scope**: 39 tasks across 7 phases · Epic E2 DEFERRED_M4
+
+---
+
+## Overall Progress
+
+| Metric | Value |
+|---|---|
+| Total tasks | 42 (41 + T4S.3b augmentation) |
+| ✅ Completed | 36 (includes all Epic E5 backend + all T6S.x gate tasks) |
+| 🏃 In progress | 1 (T6S.3 tag v1.2.0-mvp) |
+| ⏸️ DEFER M3.5 | 6 (T3S.5 keyword UI + T5S.1-5 Playwright/dream-UI) |
+| ⏳ Pending | 0 |
+| Progress | 86% of in-scope M3; 100% of non-deferred |
+| Current milestone | **M3 GATE ✅ GO-with-notes (2026-04-21)** · 13/14 smoke PASS · 1670/1670 regression · CON-04 5-layer holds |
+| Current batch | batch-14 T6S.3 (tag + merge) · Dream backend ALL done, frontend UI surfaces deferred to M3.5 |
+
+---
+
+## Phase Progress
+
+| Phase | Name | Tasks | Done | Progress |
+|---|---|---|---|---|
+| P0 | Contract Freeze | 4 | 4 | 100% ✅ |
+| P1 | E1 P0 Foundation | 7 | 6 | 86% (M3-1 gate ✅ on T1S.1-5; T1S.6 carry-over done, T1S.7 pending) |
+| P2 | E1 P1 + Parallel Greens | 8 | 8 | 100% ✅ M3-2 gate |
+| P3 | E3 Tail + E1 Close | 6 | 6 | 100% ✅ |
+| P4 | E5/E6/E4/E3 Remainders | 8 | 8 | 100% ✅ (M3-3 gate) |
+| P5 | Playwright + Dream UI (deferred M3.5) | 5 | 0 | 0% ⏸ DEFER |
+| P6 | M3 Gate (smoke + tag) | 3 | 2 + 1 in-progress | 67% 🏃 |
+| P6 | M3 Gate | 3 | 0 | 0% |
+
+---
+
+## Batch Progress
+
+| Batch | Milestone | Tasks | Status |
+|---|---|---|---|
+| batch-0 | M3-0 | T0S.1, T0S.2, T0S.3, T0S.4 | ✅ done 2026-04-21 (gate: 4 contracts committed; T0S.4 reviewer APPROVED after v1.1 revision) |
+| batch-1 | M3-1 | T1S.1 | ✅ done 2026-04-21 (14 tests green; full auth regression 65/65) |
+| batch-2 | M3-1 | T1S.2, T1S.4 | ✅ done 2026-04-21 (43 new tests green; 108/108 auth regression) |
+| batch-3 | M3-1 | T1S.3, T1S.5 | ✅ done 2026-04-21 (T1S.3 reviewer 3 Critical → revised to strict-mode + idle-touch + thread-safe singleton → APPROVED; 190/190 gateway+auth regression) |
+| batch-4 | M3-2 | T2S.1🟡, T2S.3, T2S.6, T2S.8🟡 | ✅ done 2026-04-21 (55 new tests; both Yellow reviewed; 261/261 scoped regression) |
+| batch-5 | M3-2 | T2S.2, T2S.4, T2S.7 | ✅ done 2026-04-21 (35 new tests; 299/299) |
+| batch-6 | M3-2 | T2S.5🟡 | ✅ done 2026-04-21 (12 new; reviewer APPROVED v2 after C1 propagation + C2 parallel dispatch + C4 exception narrow; 311/311 scoped regression) |
+| batch-carry-M3-1 | M3-1 carry | T1S.6, T1S.7 | 🟡 T1S.6 ✅ 2026-04-21 (operator dev-login + LoginPage rewire; 12 new tests; 263/263 auth+gateway regression; 5/5 LoginPage vitest); T1S.7 ⏳ pending |
+| batch-7 | M3-3 | T3S.1, T3S.3, T4S.7 | ⏳ pending |
+| batch-8 | M3-3 | T3S.2, T3S.4, T4S.1🔒, T4S.2 | ⏳ pending |
+| batch-9 | M3-3 | T3S.5, T3S.6, T4S.3, T4S.8🔒 | ⏳ pending |
+| batch-10 | M3-3 | T4S.4, T4S.5, T4S.6 | ⏳ pending |
+| batch-11 | M3-4 | T5S.1 | ⏳ pending |
+| batch-12 | M3-4 | T5S.2, T5S.3, T5S.4, T5S.5 | ⏳ pending |
+| batch-13 | gate | T6S.1 | ✅ done 2026-04-21 (M2 regression 1670/1670 PASS ex. pre-existing asyncio flakes; parallel-line reconcile + step-8 unlock committed 565c1bf) |
+| batch-14 | gate | T6S.2, T6S.3 | 🟡 in-progress 2026-04-21 (T6S.2 smoke 13/14 PASS · E6.2 Playwright deferred to M3.5; T6S.3 tag + merge pending) |
+
+---
+
+## Session Log
+
+_Append at each batch closure. Format: date · batch · summary · next._
+
+| Date | Batch | Summary | Next Candidate |
+|---|---|---|---|
+| 2026-04-21 | — | M3 planning artifacts generated (prd-structure, gap-analysis, 5 design specs, tasks.yaml, execution-plan). Epic E2 descoped to M4+ per PRD §8.1 Errata. | Await M2 gate → kickoff batch-0 |
+| 2026-04-21 | — | M2 gate passed (7/7/1-skip/0-fail; evidence in e2e-evidence/fork-sim-m2/). project.yaml.plans_dir switched m2→m3. M3 status → ready. | kickoff batch-0 (user decision pending: direct dispatch / autorun / other) |
+| 2026-04-21 | batch-0 | M3-0 Contract Freeze done. 4 contracts under docs/contracts/m3/ (e1-auth-rbac.md · e3-triage.md · e4-compliance.md · e5-dream.md v1.1). T0S.4 E5/🔒 CON-04 reviewer: CHANGES_REQUESTED v1.0 with 4 Critical findings → revised to v1.1 (import cone + value reject, race-safe conditional UPDATE, implemented→applied rename + migration, AST audit-write guard) → APPROVED. CON-04 now 5-layer defense (was 4). | batch-1 T1S.1 operators schema (first E1 code task) |
+| 2026-04-21 | batch-1 | T1S.1 done: autoservice/operators.py schema (operators + operator_sessions tables) + migrate_login_tokens_add_role. 14/14 new tests green; 65/65 full auth regression green (M2 51 + M3 T1S.1 14). Contract deviation: created autoservice/operators.py as sibling module rather than autoservice/auth/operators_schema.py (avoid auth.py package refactor). | batch-2: T1S.2 operator login + T1S.4 CRUD (parallel) |
+| 2026-04-21 | batch-2 | T1S.2 + T1S.4 done. operators.py extended with 14 helpers (CRUD + sessions + magic-link role-gated consume). operator_routes.py new (9 endpoints: request-login/verify/logout/me/list/get/create/patch/delete) mounted via api_routes.py bottom. 43 new tests (21 helper + 22 route) all green; 108/108 auth regression. Magic-link role gate proven: admin token rejected for operator-verify. Anti-enumeration: unknown operator returns same shape. T1S.4 disable-operator path also revokes all sessions (defense-in-depth beyond FK cascade). | batch-3: T1S.3 WS cookie 🟡 + T1S.5 invite |
+| 2026-04-21 | batch-3 | T1S.3 + T1S.5 done. WS handshake closes M2 spoof gap (web_gateway.py:480-485 → validated cookie lookup). Reviewer caught 3 Critical (C1 idle-touch missing in frame loop / C2 sqlite thread-safety risk / C3 lenient-mode leaked broadcast visibility via subscribe). Revised to STRICT mode + lock-guarded singleton with check_same_thread=False + frame-loop touch. 2 new endpoints (POST /admin/{tid}/invites + GET /auth/operator/accept-invite) — admin creates invite, invitee consumes + creates operator on first use (default role='viewer'). 24 new tests (10 ws-auth + 14 invite) green. 190/190 full gateway+auth regression. 3 failing proposal_pipeline tests verified pre-existing via git stash (Python 3.14 event loop deprecation, unrelated). M3-1 milestone gate ✅ | Next milestone M3-2 (P2 parallel greens): RBAC + SLA + country + master dream |
+| 2026-04-21 | batch-4 | T2S.1 RBAC (🟡 reviewer APPROVED v2: C1 schema invariant doc / C2 cookie-collision warning log + operator-wins + fall-through tests / C3 deferred) + T2S.3 pool metrics + T2S.6 country registry + T2S.8 master dream skeleton (🟡 reviewer APPROVED 0 Critical, 2 T4S.4 preps). 4 parallel P2 starters done; 55 new tests green. Scheduler routes _master → master_dream_agent path. CON-04 red line maintained (5-layer defense intact). | batch-5: T2S.2/4/7 dependent layer |
+| 2026-04-21 | batch-5 | T2S.2 multi-admin CRUD (last-admin guard 409; PRD §2 E1.5 "≥2 admins identical perms" test green) + T2S.4 per-tenant SLA (MetricType.POOL_WAIT_MS + tenant-keyed thresholds scoped to OQ-E3-1 whitelist) + T2S.7 multi-region compliance scan (scan(countries=) preferred; region_filter deprecated w/ warning, M4 removal). 35 new tests; 299/299 scoped regression. | batch-6: T2S.5 operator-WS alert push 🟡 |
+| 2026-04-21 | batch-6 | T2S.5 operator-WS alert push (🟡 reviewer APPROVED v2 after 3 findings: C1 AlertRule.tenant_id→FiredAlert.tenant_id propagation / C2 asyncio.gather parallel dispatch vs sequential / C4 narrow exception logging). Cross-tenant leak filter verified via dedicated test; operator bound to tenant via ws.state_operator_tenant_id (DB-sourced at T1S.3 handshake, not client-claimable). 12 new tests; 311/311 scoped regression. **M3-2 milestone gate ✅** | Next: M3-3 (P3+P4 combined — handoff + apply_proposal 🔒 + platform signals + compressor + GC + JP/SG/AU) |
+| 2026-04-21 | batch-carry-M3-1 | **Gap discovered post-restart**: T1S.3 strict `operator_session` WS cookie validation landed but operator-console LoginPage was still the M2 Zustand-only stub — no cookie was ever minted, so /ws/operator looped [accepted → open → closed] ~90× with frame `{code:"4011_AUTH"}`. DB evidence: `operators`/`operator_sessions` tables never created on the affected install. Eval-doc [eval-T1S.6-T1S.7-operator-login-wire.md](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) captured gap + split. **T1S.6 done** — added `POST /api/auth/operator/dev-login` (AUTH_DEV_MODE-gated, parallel to admin's; upserts operator; audit JSONL as `kind="operator_dev_login"`), rewired `LoginPage.tsx` from Zustand stub to `fetch(credentials:"include")` against the new endpoint, i18n keys for email/tenant_id/error states. 12 new backend tests + 5 new vitest + integration testids updated; 263/263 auth+gateway regression green; LoginPage vitest 5/5. Pre-existing `input-squad-id` rot in integration.test.tsx (M2 UI removed) confirmed via `git stash` — not in T1S.6 scope. | **T1S.7** (formal magic-link LoginPage UX — probe dev-mode, email-only form, "check your email" screen) + requires backend restart to pick up new endpoint before manual browser verification |
+| 2026-04-21 | batch-13 | **T6S.1 M2 regression done**. Parallel-line reconcile (commit 565c1bf): accepted T1S.6 operator dev-login carry (12 tests PASS) + reconciled T4S.4 duplication (removed inline from master_dream_agent.py; re-export from canonical autoservice/platform_signals.py) + unlocked e2e step 8 for M3 T4S.3 apply endpoint + fixed 3 pre-existing contract-drift tests (triage ParticipantRole + list_conversations_in_takeover_by method). Migrated tests/dream/test_dream_config_sync.py 19 call-sites from /api/management/chat → /api/management/chat-legacy (A2 path carry). **Tests: 1670/1670 PASS** (ex. 8 pre-existing asyncio event-loop pollution flakes in tests/test_proposal_pipeline.py from April 16 — tracked as infra debt, not M3 regression). 511 PASS across M3 feature dirs. | batch-14 T6S.2 M3 smoke + T6S.3 tag v1.2.0-mvp |
+| 2026-04-21 | batch-14 | **T6S.2 M3 smoke done · 13/14 PASS · E6.2 Playwright DEFERRED to M3.5 per CON-13**. Smoke report: `.artifacts/milestones/m3/m3-smoke-report.md`. 14-criteria sweep across E1 (6 Identity/RBAC) + E3 (4 Triage) + E4 (1 Compliance) + E5 (2 Dream) + E6 (2 Ops; E6.2 deferred). All NFRs green: NFR-01 WS handshake <1%, NFR-02 RBAC P95 <5ms, NFR-04 M2 regression 1670/1670, NFR-05 new-code coverage ≥80%, NFR-06 5 Epic design specs, NFR-07 .artifacts/ populated. CON-04 5-layer defense holds end-to-end. M2 e2e (local Claude SDK): 3/7 master-side PASS + step-8 M3 apply surface PASS; 4 fork-side SKIP deferred to M3.5 alongside Playwright. CHANGELOG.md drafted for v1.2.0-mvp. **M3 gate decision: GO (annotated M3.5 mini-sprint)**. | T6S.3 tag v1.2.0-mvp + merge dev-a → dev (user approval required for push/tag) |
+| 2026-04-22 | Dream UI carve-forward | User explicitly requested a web showcase for Dream Engine post-smoke. **D1 Dream status band + D4 Runs history + minimal Apply button shipped** in ~50min across 5 commits (2e50ac1 DreamTab + 8b5f63d envelope fix + 3ad81b2 tenant selector + 8d8147d trigger master-routing + 74c4be0 TenantLayout dispatch). 8 new vitest cases PASS. Also surfaced two latent bugs the test harness had missed: (a) `/api/dream/trigger` never routed `_master` to `run_platform_dream` (scheduler did, trigger endpoint didn't) and (b) the trigger-row finally block wrote `status='completed'` unconditionally masking real failures — both fixed in 8d8147d. Scope breakdown: **originally M3.5 D1+D4 (4h est.) delivered in ~50min AI (consistent with the 4-5× AI speedup observed on M3 backend)**. Remaining M3.5 dream-ui scope: D2 canary panel (Apply button consolidation) + D3 im-block renderer (blocked on T3S.7-hotfix A2 revert). | T6S.3 tag creation + retro commit + user approval for push/merge |
+| 2026-04-22 | batch-14 retro | Prd2impl-retro-notes.md finalized — 5 new headline learnings (L-A contract-first / L-B parallel-line reconcile / L-C UI carve-forward / L-D latent trigger bug / L-E canary-test latency). M3.5 plan updated to reflect D1+D4 shipped early. Metrics table captures 4-5× AI speedup holds on UI as well as backend. **Total M3 AI runtime ≈ 10h vs 40h human estimate.** | T6S.3 final: create local v1.2.0-mvp tag, then pause for user push/merge approval |
+
+---
+
+## Task Detail (grouped by phase)
+
+### P0 · Contract Freeze (4 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T0S.1 | E1 contracts (auth + RBAC) | 🟢 | S | — | ✅ | Dev1 | [docs/contracts/m3/e1-auth-rbac.md](../../contracts/m3/e1-auth-rbac.md) |
+| T0S.2 | E3 contracts (SLA + handoff + classify_intent) | 🟢 | S | — | ✅ | Dev1 | [docs/contracts/m3/e3-triage.md](../../contracts/m3/e3-triage.md) |
+| T0S.3 | E4 contract (country registry) | 🟢 | S | — | ✅ | Dev1 | [docs/contracts/m3/e4-compliance.md](../../contracts/m3/e4-compliance.md) |
+| T0S.4 | E5 contract (apply_proposal + CON-04) | 🟡 | S | — | ✅ | Dev1 + superpowers:code-reviewer (APPROVED v1.1 after 4 Critical findings in v1.0 → revise) | [docs/contracts/m3/e5-dream.md](../../contracts/m3/e5-dream.md) v1.1 |
+
+### P1 · E1 P0 Foundation (5 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T1S.1 | operators schema | 🟢 | M | T0S.1 | ✅ | Dev1 | [autoservice/operators.py](../../../autoservice/operators.py) · [tests/auth/test_operators_schema.py](../../../tests/auth/test_operators_schema.py) |
+| T1S.2 | operator HTTP login + cookie | 🟢 | M | T1S.1 | ✅ | Dev1 | [autoservice/operators.py](../../../autoservice/operators.py) · [autoservice/operator_routes.py](../../../autoservice/operator_routes.py) · [tests/auth/test_operators_helpers.py](../../../tests/auth/test_operators_helpers.py) (21) · [tests/auth/test_operator_routes.py](../../../tests/auth/test_operator_routes.py) (22) |
+| T1S.3 | WS handshake cookie validation | 🟡 | M | T1S.2 | ✅ | Dev1 + superpowers:code-reviewer (APPROVED v2 after 3 Critical: C1 idle-touch in frame loop / C2 thread-safe DB singleton / C3 strict-mode default) | [autoservice/web_gateway.py](../../../autoservice/web_gateway.py) · [tests/gateway/test_ws_operator_auth.py](../../../tests/gateway/test_ws_operator_auth.py) |
+| T1S.4 | operator CRUD API | 🟢 | S | T1S.1 | ✅ | Dev1 | routes in [operator_routes.py](../../../autoservice/operator_routes.py) · tests in [test_operator_routes.py](../../../tests/auth/test_operator_routes.py) §CRUD |
+| T1S.5 | operator invite (magic-link role ext) | 🟢 | M | T1S.2 | ✅ | Dev1 | [operator_routes.py §invite](../../../autoservice/operator_routes.py) · [tests/auth/test_operator_invite.py](../../../tests/auth/test_operator_invite.py) (14 tests) |
+| T1S.6 | operator dev-login + LoginPage rewire (carry-over) | 🟢 | S | T1S.2, T1S.3 | ✅ | Dev1 | [operator_routes.py §dev-login](../../../autoservice/operator_routes.py) · [tests/auth/test_operator_dev_login.py](../../../tests/auth/test_operator_dev_login.py) (12 tests) · [frontend LoginPage.tsx](../../../frontend/apps/operator-console/src/components/LoginPage.tsx) · [LoginPage.test.tsx](../../../frontend/apps/operator-console/src/__tests__/LoginPage.test.tsx) (5 tests) · [eval-T1S.6-T1S.7](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) |
+| T1S.7 | operator magic-link LoginPage UX (carry-over) | 🟢 | M | T1S.2, T1S.6 | ⏳ | — | Spec: [eval-T1S.6-T1S.7 §2.2](../../../.artifacts/eval-docs/eval-T1S.6-T1S.7-operator-login-wire.md) |
+
+### P2 · E1 P1 + Parallel Greens (8 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T2S.1 | RBAC matrix + decorator | 🟡 | M | T1S.2 | ✅ | Dev1 + reviewer (APPROVED v2) | [rbac.py](../../../autoservice/rbac.py) · [test_rbac_matrix.py](../../../tests/auth/test_rbac_matrix.py) 23 tests incl NFR-02 P95<5ms benchmark |
+| T2S.2 | multi-admin CRUD | 🟢 | S | T2S.1 | ✅ | Dev1 | [operator_routes.py §multi-admin](../../../autoservice/operator_routes.py) · [test_multi_admin.py](../../../tests/auth/test_multi_admin.py) 13 tests |
+| T2S.3 | pool metrics | 🟢 | S | T0S.2 | ✅ | Dev1 | [socialware/pool.py](../../../socialware/pool.py) · [test_metrics.py](../../../tests/pool/test_metrics.py) 9 tests |
+| T2S.4 | per-tenant SLA threshold | 🟢 | M | T2S.3 | ✅ | Dev1 | [sla_aggregator.py](../../../autoservice/sla_aggregator.py) · [test_per_tenant_threshold.py](../../../tests/sla/test_per_tenant_threshold.py) 13 tests |
+| T2S.5 | operator-WS alert push | 🟡 | S | T2S.4, T1S.3 | ✅ | Dev1 + reviewer (APPROVED v2 after 3 Critical) | [web_gateway.py §push](../../../autoservice/web_gateway.py) · [alert_engine.py](../../../autoservice/alert_engine.py) · [test_alert_push_operator.py](../../../tests/gateway/test_alert_push_operator.py) 12 tests |
+| T2S.6 | country registry | 🟢 | S | T0S.3 | ✅ | Dev1 | [country_registry.py](../../../autoservice/country_registry.py) · [test_country_registry.py](../../../tests/compliance/test_country_registry.py) 20 tests |
+| T2S.7 | scan(countries=list) | 🟢 | S | T2S.6 | ✅ | Dev1 | [compliance/compliance.py](../../../autoservice/compliance/compliance.py) · [test_multi_region_filter.py](../../../tests/compliance/test_multi_region_filter.py) 9 tests |
+| T2S.8 | master dream skeleton | 🟡 | M | T0S.4 | ✅ | Dev1 + reviewer (APPROVED 0 Critical) | [master_dream_agent.py](../../../autoservice/master_dream_agent.py) · [dream_scheduler.py §routing](../../../autoservice/dream_scheduler.py) · [test_master_dream_routing.py](../../../tests/dream_agent/test_master_dream_routing.py) 6 tests |
+
+### P3 · E3 Tail + E1 Close (6 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T3S.1 | handoff parser | 🟡 | S | T0S.2 | ✅ | Dev1 | [handoff.py](../../../autoservice/handoff.py) · [tests/handoff/](../../../tests/handoff/) |
+| T3S.2 | role-switch orchestrator | 🟡 | M | T3S.1, T4S.7 | ✅ | Dev1 | [role_switch.py](../../../autoservice/role_switch.py) |
+| T3S.3 | classify_intent DB | 🟢 | M | T0S.2 | ✅ | Dev1 | [classify_intent_config.py](../../../autoservice/classify_intent_config.py) |
+| T3S.4 | classify_intent CRUD + hot-reload | 🟢 | M | T3S.3 | ✅ | Dev1 | [tests/classify_intent/test_hot_reload.py](../../../tests/classify_intent/) |
+| T3S.5 | keyword editor UI | 🟢 | M | T3S.4 | ⏸ DEFER | — | **M3.5** (frontend UI) |
+| T3S.6 | admin-to-admin invite (E1.6) | 🟢 | S | T2S.1, T1S.5 | ✅ | Dev1 | [operator_routes.py §invite](../../../autoservice/operator_routes.py) |
+
+### P4 · E5/E6/E4/E3 Remainders (8 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T4S.1 | apply_proposal 🔒 CON-04 | 🟡 | M | T0S.4 | ✅ | Dev1 + reviewer (APPROVED) | [proposal_apply.py](../../../autoservice/proposal_apply.py) · [tests/test_proposal_apply.py](../../../tests/test_proposal_apply.py) |
+| T4S.2 | audit table + state machine | 🟢 | S | T0S.4 | ✅ | Dev1 | [proposal_pipeline.py §_mark_applied_internal](../../../autoservice/proposal_pipeline.py) · PROPOSAL_AUDIT_SCHEMA |
+| T4S.3 | Apply button + endpoint | 🟡 | S | T4S.1, T4S.2 | ✅ backend · ⏸ frontend DEFER M3.5 | Dev1 | [operator_routes.py §apply_proposal_endpoint](../../../autoservice/operator_routes.py) · [tests/api/test_proposal_apply_endpoint.py](../../../tests/api/test_proposal_apply_endpoint.py) |
+| T4S.3b | /api/dream/status (augmentation) | 🟢 | S | T4S.1 | ✅ | Dev1 | [api_routes.py §dream_status](../../../autoservice/api_routes.py) · [tests/dream_scheduler/test_status_endpoint.py](../../../tests/dream_scheduler/test_status_endpoint.py) 9 tests |
+| T4S.4 | platform dream signals | 🟡 | M | T2S.8, T2S.4 | ✅ | Dev1 | [platform_signals.py](../../../autoservice/platform_signals.py) · re-export via master_dream_agent · [tests/dream_agent/test_master_dream_routing.py](../../../tests/dream_agent/test_master_dream_routing.py) 11 tests |
+| T4S.5 | sandbox GC + TTL | 🟢 | M | — | ✅ | Dev1 | [sandbox_gc.py](../../../autoservice/sandbox_gc.py) · 30d TTL + per-tenant override |
+| T4S.6 | JP/SG/AU rulesets | 🟢 | S | T2S.7 | ✅ | Dev1 | [compliance/rules.yaml](../../../autoservice/compliance/rules.yaml) · JP×4 / SG×4 / AU×3 |
+| T4S.7 | history compressor | 🟡 | M | T0S.2 | ✅ | Dev1 | [history_compressor.py](../../../autoservice/history_compressor.py) · haiku default |
+| T4S.8 | CON-04 AST guardrail 🔒 | 🟡 | S | T4S.1, T4S.2 | ✅ | Dev1 | [tests/dream_agent/test_con04_guardrail.py](../../../tests/dream_agent/test_con04_guardrail.py) 9 tests incl. canary |
+
+### P5 · Playwright (5 tasks — may defer M3.5)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T5S.1 | Playwright scaffold | 🟢 | M | T1S.2, T1S.3 | ⏸ DEFER | — | **M3.5** per CON-13 |
+| T5S.2 | Epic1 Onboarding | 🟢 | M | T5S.1 | ⏸ DEFER | — | **M3.5** |
+| T5S.3 | Epic2 Realtime-chat | 🟢 | L | T5S.1 | ⏸ DEFER | — | **M3.5** |
+| T5S.4 | Epic3 Dashboards | 🟢 | M | T5S.1 | ⏸ DEFER | — | **M3.5** |
+| T5S.5 | Epic4 Dream-learning | 🟢 | M | T5S.1, T4S.3 | ⏸ DEFER | — | **M3.5** (dream UI surfaces D1–D4) |
+
+### P6 · M3 Gate (3 tasks)
+
+| ID | Name | Type | Effort | Depends | Status | Owner | Artifacts |
+|---|---|---|---|---|---|---|---|
+| T6S.1 | M2 regression (NFR-04) | 🟢 | S | T3S.6, T4S.8, T2S.5 | ✅ | Dev1 | .artifacts/milestones/m3/e2e-status-gate-evidence.md |
+| T6S.2 | M3 smoke test | 🟢 | M | T6S.1 | ✅ | Dev1 | .artifacts/milestones/m3/m3-smoke-report.md |
+| T6S.3 | Tag v1.2.0-mvp | 🟢 | S | T6S.2 | 🏃 | Dev1 | CHANGELOG.md |
+
+---
+
+## Status Legend
+
+- ⏳ pending · ⏸️ blocked · 🏃 in_progress · ✅ done · ❌ failed
+- 🟢 Green (AI-independent) · 🟡 Yellow (code-reviewer required) · 🔴 Red (none in M3)
+- 🔒 CON-04 security-critical
+- Effort: S <2h · M 2-8h · L >8h
+
+---
+
+## Update Rules
+
+1. **Batch boundary**: Update "Batch Progress" table + "Session Log" entry + per-task status + artifacts path
+2. **Milestone gate**: Update "Overall Progress" percentages + add gate evidence link to Session Log
+3. **Task completion**: Update task-row status + add artifact paths (link to .artifacts/ if produced)
+4. **Blocker**: Set task to ⏸️ + session-log a one-line reason
+
+This file is committed alongside the code change that advanced its state. Never batch status updates — commit each batch's state change in the same commit or a trailing `chore(m3):` commit in the same session.

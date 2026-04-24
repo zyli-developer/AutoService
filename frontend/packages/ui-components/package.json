@@ -12,6 +12,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
+  },
   "peerDependencies": {
     "react": "^18.2.0"
   },

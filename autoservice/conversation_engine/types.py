@@ -27,6 +27,7 @@ class ParticipantRole(str, Enum):
     AGENT = "agent"
     OPERATOR = "operator"
     OBSERVER = "observer"
+    TRIAGE = "triage"
 
 
 class MessageVisibility(str, Enum):
@@ -84,6 +85,7 @@ class Conversation:
     updated_at: datetime
     metadata: Mapping[str, Any] = field(default_factory=dict)
     resolution: Resolution | None = None
+    takeover_operator_id: str | None = None
 
 
 @dataclass(frozen=True)

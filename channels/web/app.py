@@ -19,6 +19,15 @@ Start:
   uv run uvicorn web.app:app --host 0.0.0.0 --port 8000
 """
 
+import warnings
+
+warnings.warn(
+    "channels.web.app is deprecated. "
+    "New frontend should connect to autoservice.web_gateway instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import asyncio
 import json
 import mimetypes

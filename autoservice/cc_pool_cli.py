@@ -25,6 +25,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# If the snapshot's updated_at is older than this, the writer has likely died
+# (e.g. gateway was force-killed on Windows, which bypasses the shutdown hook).
+STALE_THRESHOLD_SECONDS = 30
+
 
 def cmd_status():
     """显示池状态（如果有运行中的池实例）。"""
@@ -36,7 +40,22 @@ def cmd_status():
         return
 
     data = json.loads(status_file.read_text(encoding="utf-8"))
+    stale_age = _snapshot_age_seconds(data)
+    if stale_age is not None and stale_age > STALE_THRESHOLD_SECONDS:
+        print(f"[cc-pool] !! 状态文件已 {int(stale_age)}s 未更新 — "
+              f"写入者可能已终止（被强制 kill？）")
+        print("  下面是最后一次快照：\n")
     _print_status(data)
+
+
+def _snapshot_age_seconds(data: dict) -> float | None:
+    ts = data.get("updated_at")
+    if not ts:
+        return None
+    try:
+        return (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
+    except ValueError:
+        return None
 
 
 def cmd_start():
@@ -45,28 +64,25 @@ def cmd_start():
 
 
 async def _async_start():
-    from autoservice.cc_pool import get_pool, PoolConfig, load_pool_config
+    from autoservice.cc_pool import get_pool, load_pool_config
 
     print("[cc-pool] 启动实例池...")
     config = load_pool_config()
     pool = await get_pool(config)
 
-    status = pool.status()
-    _write_status(status)
-    _print_status(status)
+    # pool now maintains .autoservice/cc_pool_status.json itself (every 5s);
+    # we just print the initial snapshot and wait for Ctrl+C.
+    _print_status(pool.status())
 
     print("\n[cc-pool] 池已启动，按 Ctrl+C 关闭")
     try:
         while True:
-            await asyncio.sleep(5)
-            status = pool.status()
-            _write_status(status)
+            await asyncio.sleep(3600)
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
         from autoservice.cc_pool import shutdown_pool
         await shutdown_pool()
-        _clear_status()
         print("\n[cc-pool] 池已关闭")
 
 
@@ -78,7 +94,6 @@ def cmd_stop():
 async def _async_stop():
     from autoservice.cc_pool import shutdown_pool
     await shutdown_pool()
-    _clear_status()
     print("[cc-pool] 池已关闭")
 
 
@@ -160,21 +175,6 @@ def _print_status(data: dict):
         for b in bindings:
             print(f"  {b['key']:<25} {b['instance_id']:<10} {b['access_count']:<10} {b['idle_seconds']:<10}")
     print(f"{'─' * 50}\n")
-
-
-def _write_status(status: dict):
-    """写入状态文件供 CLI 读取。"""
-    status_file = Path.cwd() / ".autoservice" / "cc_pool_status.json"
-    status_file.parent.mkdir(parents=True, exist_ok=True)
-    status["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    status_file.write_text(json.dumps(status, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def _clear_status():
-    """清除状态文件。"""
-    status_file = Path.cwd() / ".autoservice" / "cc_pool_status.json"
-    if status_file.exists():
-        status_file.unlink()
 
 
 def main():

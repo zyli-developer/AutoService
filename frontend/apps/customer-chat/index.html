@@ -3,10 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="color-scheme" content="light only" />
     <title>AutoService · Customer Chat</title>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      /* Read persisted sheet state so first paint applies mobile peek/full class */
+      (function () {
+        try {
+          var s = localStorage.getItem('as-cust-sheet');
+          document.body.classList.add(s === 'full' ? 'sheet-full' : 'sheet-peek');
+        } catch (e) {
+          document.body.classList.add('sheet-peek');
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

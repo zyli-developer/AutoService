@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { WSClient, type Envelope, type ServerHelloPayload } from '@autoservice/ws-client';
-import { useOperatorStore, type Conversation } from '../store/operatorStore';
+import { useOperatorStore, type Conversation, type CopilotMessage } from '../store/operatorStore';
 
 // 允许测试时注入 fake client
 type WSClientConstructor = new (opts: ConstructorParameters<typeof WSClient>[0]) => WSClient;
@@ -23,6 +23,8 @@ export function handleEventFrame(
   frame: Envelope,
   addConversation: (conv: Conversation) => void,
   updateConversation: (id: string, patch: Partial<Conversation>) => void,
+  addCopilotMessage?: (convId: string, msg: CopilotMessage) => void,
+  selfOperatorId?: string | null,
 ) {
   const { event } = frame.payload as EventPayload;
   if (!event?.conversation_id) return;
@@ -45,8 +47,21 @@ export function handleEventFrame(
       break;
     }
     case 'mode.changed': {
-      const to = event.data.to as Conversation['mode'];
-      updateConversation(convId, { mode: to, lastActivityTs: ts });
+      const to = (event.data.to as Conversation['mode'] | undefined)
+        ?? (event.data.new_mode as Conversation['mode']);
+      const takeoverId = event.data.takeover_operator_id as string | null | undefined;
+      const patch: Partial<Conversation> = {
+        mode: to,
+        takeoverOperatorId: takeoverId ?? null,
+        lastActivityTs: ts,
+      };
+      if (to !== 'takeover') {
+        // Clear armed timer fields when leaving takeover mode
+        (patch as any).takeoverArmedAt = undefined;
+        (patch as any).takeoverIdleMs = undefined;
+        (patch as any).takeoverWarningMs = undefined;
+      }
+      updateConversation(convId, patch);
       break;
     }
     case 'conversation.closed':
@@ -54,7 +69,8 @@ export function handleEventFrame(
       updateConversation(convId, { state: 'closed', lastActivityTs: ts });
       break;
     case 'message.sent': {
-      const sender = event.data.sender_role === 'customer' ? 'customer' as const : 'agent' as const;
+      const _src = (event.data.source as string) ?? '';
+      const sender = (_src.startsWith('cust') || _src === 'customer') ? 'customer' as const : 'agent' as const;
       const text = (event.data.text ?? event.data.content ?? '') as string;
       updateConversation(convId, {
         lastMessage: text,
@@ -62,12 +78,38 @@ export function handleEventFrame(
         lastActivityTs: ts,
         state: 'active',
       });
+      // SIDE messages (e.g. [分流] from triage) are persisted via
+      // engine.send_message but never wrapped in a `message` frame for squad
+      // broadcast — they reach operators only via this event path. Add to
+      // copilot here so they appear in the chat stream. Non-SIDE messages
+      // also flow as `message` frames; addCopilotMessage dedups by id, so
+      // this is a no-op for them.
+      //
+      // Skip own echoes: the sender WS is excluded from `_broadcast_to_squad`
+      // for `message` frames, so for our own operator_message this event is
+      // the first frame carrying a server-assigned id. Our optimistic insert
+      // (IMInput.tsx) already has the message under a client UUID, so adding
+      // here would duplicate it — and mis-tag as 'agent' because the
+      // substring heuristic above doesn't know operator ids.
+      const messageId = event.data.message_id as string | undefined;
+      if (addCopilotMessage && messageId && text && _src !== selfOperatorId) {
+        addCopilotMessage(convId, {
+          id: messageId,
+          text,
+          sender,
+          ts,
+          visibility: event.data.visibility as 'public' | 'side' | 'system' | undefined,
+        });
+      }
       break;
     }
   }
 }
 
-export function useOperatorWS(url: string): { send: (frame: Envelope) => void } {
+export function useOperatorWS(url: string): {
+  send: (frame: Envelope) => void;
+  fetchHistory: (conversationId: string) => void;
+} {
   const isLoggedIn = useOperatorStore((s) => s.isLoggedIn);
   const operatorId = useOperatorStore((s) => s.operatorId);
   const squads = useOperatorStore((s) => s.squads);
@@ -77,17 +119,21 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
   const addConversation = useOperatorStore((s) => s.addConversation);
   const updateConversation = useOperatorStore((s) => s.updateConversation);
   const addCopilotMessage = useOperatorStore((s) => s.addCopilotMessage);
+  const updateCopilotMessage = useOperatorStore((s) => s.updateCopilotMessage);
 
   const clientRef = useRef<WSClient | null>(null);
 
   useEffect(() => {
-    if (!isLoggedIn || !operatorId) return;
+    // Skip when not logged in, or when the caller hasn't provided a URL yet
+    // (e.g. no tenant context — WorkspacePage renders NoTenantFallback instead).
+    if (!isLoggedIn || !operatorId || !url) return;
 
     setWsStatus('connecting');
 
     const client = new WSClientImpl({
       url,
       clientApp: 'operator-console',
+      operatorId: operatorId || undefined,
       heartbeatMs: 20_000,
       onOpen: (hello: ServerHelloPayload) => {
         setSessionId(hello.session_id);
@@ -97,6 +143,38 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
         const currentSquads = useOperatorStore.getState().squads;
         currentSquads.forEach((squadId) => {
           client.send('subscribe' as any, { scope: { squad_id: squadId } }).catch(() => {});
+        });
+
+        // Seed active conversation list so the operator sees existing
+        // conversations on (re)login without waiting for live events.
+        // Uses Vite proxy (/api -> localhost:8000) so the fetch is same-origin.
+        currentSquads.forEach((squadId) => {
+          const url = `/api/conversations/active?squad_id=${encodeURIComponent(squadId)}`;
+          fetch(url)
+            .then((r) => (r.ok ? r.json() : { conversations: [] }))
+            .then((data: { conversations?: Array<Record<string, unknown>> }) => {
+              const items = data.conversations ?? [];
+              const store = useOperatorStore.getState();
+              for (const c of items) {
+                const id = c.id as string;
+                if (!id || store.conversations[id]) continue;
+                store.addSquad(String(c.squad_id || squadId));
+                store.addConversation({
+                  id,
+                  squadId: String(c.squad_id || squadId),
+                  customerId: String(c.customer_id || 'customer'),
+                  mode: (c.mode as Conversation['mode']) ?? 'auto',
+                  state: (c.state as Conversation['state']) ?? 'active',
+                  lastMessage: String(c.last_message || ''),
+                  lastMessageSender: (c.last_sender as Conversation['lastMessageSender']) ?? '',
+                  lastActivityTs: String(c.last_activity_ts || new Date().toISOString()),
+                  takeoverOperatorId: (c.takeover_operator_id as string | null) ?? null,
+                });
+              }
+            })
+            .catch(() => {
+              /* ignore — live events will backfill */
+            });
         });
       },
       onClose: () => {
@@ -110,15 +188,26 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
           const msgs = (p.messages as Record<string, unknown>[]) ?? [];
           if (convId && msgs.length > 0) {
             for (const msg of msgs) {
+              // Prefer source_display.role (authoritative, set by backend against
+              // conversation participants). Fall back to substring heuristic on
+              // msg.source so a downlevel server still replays something sane.
+              const srcDisplay = msg.source_display as Record<string, unknown> | undefined;
+              const role = (srcDisplay?.role as string) ?? '';
               const src = (msg.source as string) ?? '';
-              const sender = (src.includes('customer') || src.startsWith('cust')) ? 'customer' as const
-                : src.includes('operator') ? 'operator' as const
-                : 'agent' as const;
+              const sender: 'customer' | 'operator' | 'agent' =
+                role === 'customer' || role === 'operator' || role === 'agent'
+                  ? role
+                  : (src.includes('customer') || src.startsWith('cust'))
+                    ? 'customer'
+                    : src.includes('operator')
+                      ? 'operator'
+                      : 'agent';
               addCopilotMessage(convId, {
                 id: (msg.id as string) ?? crypto.randomUUID(),
                 text: (msg.content as string) ?? '',
                 sender,
                 ts: (msg.timestamp as string) ?? new Date().toISOString(),
+                visibility: msg.visibility as 'public' | 'side' | 'system' | undefined,
               });
             }
           }
@@ -160,47 +249,100 @@ export function useOperatorWS(url: string): { send: (frame: Envelope) => void } 
                 unreadCount: 1,
               });
             } else {
-              updateConversation(convId, {
+              const existing = state.conversations[convId];
+              const patch: Partial<typeof existing> = {
                 lastMessage: content,
                 lastActivityTs: ts,
-                unreadCount: (state.conversations[convId].unreadCount ?? 0) + 1,
-              });
+                unreadCount: (existing.unreadCount ?? 0) + 1,
+              };
+              // Backfill customerId on the first real customer message. A conv
+              // can be created with a placeholder customerId by three paths:
+              //   - conversation.created event with empty data.customer_id ('')
+              //   - active-conversations bulk fetch on WS open (literal 'customer')
+              //   - addConversation in this same handler when the first frame
+              //     was agent-sourced (literal 'customer')
+              // All three resolve once a customer-sourced frame arrives — its
+              // srcDisplay.id is the authoritative customer id.
+              const isPlaceholderCustomerId = !existing.customerId || existing.customerId === 'customer';
+              if (role === 'customer' && isPlaceholderCustomerId && srcDisplay?.id) {
+                patch.customerId = srcDisplay.id as string;
+              }
+              updateConversation(convId, patch);
             }
 
-            // Add to copilot if this conversation is open
-            if (state.activeCopilotConvId === convId) {
-              const sender = role === 'customer' ? 'customer' as const
-                : role === 'operator' ? 'operator' as const
-                : 'agent' as const;
-              addCopilotMessage(convId, {
-                id: (msg?.id as string) ?? crypto.randomUUID(),
-                text: content,
-                sender,
-                ts,
+            // Add to copilot store unconditionally — render layer filters by
+            // activeCopilotConvId. Gating here lost SIDE/placeholder/streaming
+            // frames that arrived before the operator clicked the card.
+            const sender = role === 'customer' ? 'customer' as const
+              : role === 'operator' ? 'operator' as const
+              : 'agent' as const;
+            addCopilotMessage(convId, {
+              id: (msg?.id as string) ?? crypto.randomUUID(),
+              text: content,
+              sender,
+              ts,
+              visibility: msg?.visibility as 'public' | 'side' | 'system' | undefined,
+            });
+          }
+        }
+
+        if (frame.type === 'message_edited') {
+          const p = frame.payload as Record<string, unknown>;
+          const convId = p.conversation_id as string | undefined;
+          const msg = p.message as Record<string, unknown> | undefined;
+          const messageId = (msg?.id as string) ?? (p.message_id as string);
+          const newContent = (msg?.content as string) ?? (p.new_content as string);
+          const ts = (msg?.timestamp as string) ?? new Date().toISOString();
+          if (convId && messageId && newContent !== undefined) {
+            updateCopilotMessage(convId, messageId, { text: newContent });
+            if (useOperatorStore.getState().conversations[convId]) {
+              updateConversation(convId, {
+                lastMessage: newContent,
+                lastActivityTs: ts,
               });
             }
           }
         }
 
-        if (frame.type === 'event') {
-          handleEventFrame(frame, addConversation, updateConversation);
+        if (frame.type === 'takeover_timer_armed') {
+          const p = frame.payload as {
+            conversation_id: string;
+            armed_at: string;
+            idle_timeout_ms: number;
+            warning_ms: number;
+          };
+          useOperatorStore.getState().setTakeoverArmed(p.conversation_id, {
+            armedAt: p.armed_at,
+            idleMs: p.idle_timeout_ms,
+            warningMs: p.warning_ms,
+          });
+          return;
+        }
 
-          const evtPayload = frame.payload as EventPayload;
-          const evt = evtPayload?.event;
-          if (evt?.type === 'message.sent' && evt.conversation_id) {
-            const state = useOperatorStore.getState();
-            if (state.activeCopilotConvId === evt.conversation_id) {
-              const sender = evt.data.sender_role === 'customer' ? 'customer' as const
-                : evt.data.sender_role === 'operator' ? 'operator' as const
-                : 'agent' as const;
-              addCopilotMessage(evt.conversation_id, {
-                id: evt.id,
-                text: (evt.data.text ?? evt.data.content ?? '') as string,
-                sender,
-                ts: evt.timestamp || new Date().toISOString(),
-              });
-            }
-          }
+        if (frame.type === 'takeover_warning') {
+          const p = frame.payload as {
+            conversation_id: string; remaining_ms: number; reason: 'idle';
+          };
+          useOperatorStore.getState().setTakeoverWarning(p.conversation_id, {
+            remainingMs: p.remaining_ms,
+            reason: p.reason,
+            warningFrameId: frame.id,
+            armedAt: new Date().toISOString(),
+          });
+          return;
+        }
+
+        if (frame.type === 'takeover_warning_cancelled') {
+          const p = frame.payload as { conversation_id: string };
+          useOperatorStore.getState().clearTakeoverWarning(p.conversation_id);
+          return;
+        }
+
+        if (frame.type === 'event') {
+          // event frames carry conversation metadata + message.sent fan-out.
+          // SIDE messages (triage/system) only reach operators via this path,
+          // so handleEventFrame must thread addCopilotMessage to insert them.
+          handleEventFrame(frame, addConversation, updateConversation, addCopilotMessage, operatorId);
         }
       },
     });

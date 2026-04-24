@@ -45,6 +45,45 @@ log = logging.getLogger("socialware.pool")
 
 
 # ---------------------------------------------------------------------------
+# Metrics (M3 T2S.3 — contract docs/contracts/m3/e3-triage.md §1.2)
+# ---------------------------------------------------------------------------
+
+# Wait-time histogram bucket upper bounds (milliseconds).  Final bucket is
+# "infinity" — any wait ≥ 5000ms falls into '5000+'.
+WAIT_TIME_BUCKETS_MS: tuple[tuple[int, str], ...] = (
+    (100, "0-100"),
+    (500, "100-500"),
+    (1000, "500-1000"),
+    (5000, "1000-5000"),
+    (10**12, "5000+"),
+)
+
+
+def _bucket_for_wait_ms(wait_ms: float) -> str:
+    for upper, label in WAIT_TIME_BUCKETS_MS:
+        if wait_ms < upper:
+            return label
+    return "5000+"  # safety; shouldn't hit (last bucket is sentinel)
+
+
+@dataclass(frozen=True)
+class PoolMetrics:
+    """Snapshot of pool observability state.
+
+    Consumed by autoservice.sla_aggregator (T2S.4) for pool_wait_ms SLA.
+    Also surfaced on admin-portal observability pages.
+    """
+
+    available_count: int
+    busy_count: int
+    queue_length: int  # concurrent awaiters blocked on get()
+    wait_time_histogram_ms: dict[str, int]  # bucket → count
+    total_checkouts: int
+    total_timeouts: int
+    emitted_at_ms: int
+
+
+# ---------------------------------------------------------------------------
 # Protocol
 # ---------------------------------------------------------------------------
 
@@ -168,6 +207,13 @@ class AsyncPool(Generic[T]):
         # Sticky session support
         self._sticky_bindings: dict[str, StickyBinding[T]] = {}
         self._sticky_lock = asyncio.Lock()
+        # T2S.3 metrics
+        self._queue_length = 0  # concurrent checkout() awaiters blocked
+        self._wait_histogram: dict[str, int] = {
+            label: 0 for (_u, label) in WAIT_TIME_BUCKETS_MS
+        }
+        self._total_checkouts = 0
+        self._total_timeouts = 0
 
     @property
     def size(self) -> int:
@@ -184,6 +230,36 @@ class AsyncPool(Generic[T]):
     def available_count(self) -> int:
         """Number of instances available for checkout."""
         return self._available.qsize()
+
+    @property
+    def busy_count(self) -> int:
+        """Instances currently checked out (size - available).  T2S.3."""
+        return max(0, self.size - self.available_count)
+
+    @property
+    def queue_length(self) -> int:
+        """Number of concurrent checkout() coroutines blocked on get().
+
+        Tracked explicitly (asyncio.Queue doesn't expose waiter count).
+        Reset to 0 on each awaiter entry/exit.
+        """
+        return self._queue_length
+
+    def metrics(self) -> PoolMetrics:
+        """Current observability snapshot (T2S.3).
+
+        Cheap O(1) — reads counters, no IO.  Safe to call from hot paths.
+        Wait-time histogram is a cumulative count since pool start.
+        """
+        return PoolMetrics(
+            available_count=self.available_count,
+            busy_count=self.busy_count,
+            queue_length=self._queue_length,
+            wait_time_histogram_ms=dict(self._wait_histogram),
+            total_checkouts=self._total_checkouts,
+            total_timeouts=self._total_timeouts,
+            emitted_at_ms=int(time.time() * 1000),
+        )
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -267,10 +343,17 @@ class AsyncPool(Generic[T]):
 
         timeout = timeout if timeout is not None else self._config.checkout_timeout
 
+        # T2S.3: measure wait time for the full checkout() call
+        _t_checkout_start = time.monotonic()
+        self._total_checkouts += 1
+
         # Try to get an available instance (non-blocking)
         try:
             instance = self._available.get_nowait()
             if instance.is_healthy and not instance.needs_recycling(self._config):
+                self._record_wait_ms(
+                    (time.monotonic() - _t_checkout_start) * 1000
+                )
                 self._log.debug("Checked out instance %s (from queue)", instance.id)
                 return instance
             await self._destroy_instance(instance)
@@ -281,26 +364,44 @@ class AsyncPool(Generic[T]):
         async with self._lock:
             if self.size < self._config.max_size:
                 instance = await self._create_instance()
+                self._record_wait_ms(
+                    (time.monotonic() - _t_checkout_start) * 1000
+                )
                 self._log.debug("Checked out instance %s (on-demand)", instance.id)
                 return instance
 
-        # At max_size — wait for one to be returned
+        # At max_size — wait for one to be returned (increment queue_length)
         self._log.debug(
             "Pool exhausted (%d/%d), waiting...", self.size, self._config.max_size,
         )
+        self._queue_length += 1
         try:
             instance = await asyncio.wait_for(self._available.get(), timeout=timeout)
             if instance.is_healthy and not instance.needs_recycling(self._config):
+                self._record_wait_ms(
+                    (time.monotonic() - _t_checkout_start) * 1000
+                )
                 self._log.debug("Checked out instance %s (after wait)", instance.id)
                 return instance
             await self._destroy_instance(instance)
             async with self._lock:
-                return await self._create_instance()
+                new = await self._create_instance()
+                self._record_wait_ms(
+                    (time.monotonic() - _t_checkout_start) * 1000
+                )
+                return new
         except asyncio.TimeoutError:
+            self._total_timeouts += 1
             raise TimeoutError(
                 f"No instance available within {timeout}s "
                 f"(pool size: {self.size}/{self._config.max_size})"
             )
+        finally:
+            self._queue_length -= 1
+
+    def _record_wait_ms(self, wait_ms: float) -> None:
+        """Increment the histogram bucket for the given wait duration."""
+        self._wait_histogram[_bucket_for_wait_ms(wait_ms)] += 1
 
     async def checkin(self, instance: PooledInstance[T]) -> None:
         """Return an instance to the pool."""
