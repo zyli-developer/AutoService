@@ -10,6 +10,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
+      '/asr': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
+      '/tts': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
     },
   },
   preview: { port: 5173 },
