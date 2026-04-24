@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { MarkdownText } from '@autoservice/ui-components';
 import { postJSON } from '../api';
 import type { ChatBlock } from './chat/InlineWidget';
 import { InlineWidget } from './chat/InlineWidget';
@@ -94,13 +95,13 @@ export function ManagementChat() {
                     <span className="im-msg-author">{t('admin.dream.user_label')}</span>
                     <span className="im-msg-time">{new Date(msg.ts).toLocaleTimeString(i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                  <div className="im-msg-text">
-                    {msg.content.startsWith('/') ? (
+                  {msg.content.startsWith('/') ? (
+                    <div className="im-msg-text">
                       <span className="im-cmd">{msg.content}</span>
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <MarkdownText className="im-msg-text">{msg.content}</MarkdownText>
+                  )}
                 </div>
               </div>
             );
@@ -117,7 +118,7 @@ export function ManagementChat() {
                     <span className="im-msg-time">{new Date(msg.ts).toLocaleTimeString(i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   {msg.content && (
-                    <div className="im-msg-text" style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                    <MarkdownText className="im-msg-text">{msg.content}</MarkdownText>
                   )}
                   {msg.blocks?.map((b, i) => (
                     <InlineWidget key={i} block={b} />

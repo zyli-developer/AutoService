@@ -1090,3 +1090,64 @@
 
 /* Night mode override removed — OneSyn is light-only by default */
 .web-canvas.night::before { display: none; }
+
+/* ==============================
+   Markdown body (chat bubbles)
+   Shared by customer-chat / operator-console / admin-portal via
+   <MarkdownText> from @autoservice/ui-components.
+   Bubble-specific overrides (e.g. dark backgrounds inverting link colors)
+   live in each app's CSS by combining with their own bubble class.
+   ============================== */
+.md-text > :first-child { margin-top: 0; }
+.md-text > :last-child { margin-bottom: 0; }
+.md-text p { margin: 6px 0; }
+.md-text ol,
+.md-text ul { margin: 6px 0; padding-left: 22px; }
+.md-text li { margin: 2px 0; }
+.md-text li > p { margin: 0; }
+.md-text strong { font-weight: 600; }
+.md-text em { font-style: italic; }
+.md-text h1,
+.md-text h2,
+.md-text h3,
+.md-text h4 { font-size: 14px; font-weight: 600; margin: 8px 0 4px; }
+.md-text hr { border: 0; border-top: 1px solid var(--color-border); margin: 8px 0; }
+.md-text blockquote {
+  margin: 6px 0;
+  padding: 2px 10px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.md-text code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.md-text pre {
+  margin: 6px 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.md-text pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+}
+.md-text a {
+  color: var(--indigo-500);
+  text-decoration: underline;
+}
+.md-text table {
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+.md-text th,
+.md-text td {
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  text-align: left;
+}

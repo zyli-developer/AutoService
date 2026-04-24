@@ -84,7 +84,11 @@ def _setup(cws, ows, operator_id="op42"):
 
 
 def _customer_start_conv(cws):
-    cws.send_json(_frame("customer_message", {"source": "cust1", "content": "hi"}))
+    # Content must NOT match any greeting/thanks/bye keyword in
+    # classify_intent.yaml — those trigger a direct-reply `message` frame
+    # from triage, which would race the operator-message assertions in
+    # these takeover tests.
+    cws.send_json(_frame("customer_message", {"source": "cust1", "content": "一个测试消息"}))
     while True:
         f = cws.receive_json()
         if f["type"] == "message_confirm":

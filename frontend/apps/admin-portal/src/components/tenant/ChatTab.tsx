@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { MarkdownText } from '@autoservice/ui-components';
 
 interface ChatEntry {
   id: string;
@@ -153,10 +154,10 @@ export function ChatTab({
                     : entry.role === 'error'
                       ? 'var(--vermillion-50)'
                       : 'var(--color-bg-surface-tinted)',
-                whiteSpace: 'pre-wrap',
+                whiteSpace: entry.role === 'error' ? 'pre-wrap' : undefined,
               }}
             >
-              {entry.text}
+              {entry.role === 'error' ? entry.text : <MarkdownText>{entry.text}</MarkdownText>}
             </div>
           ))
         )}

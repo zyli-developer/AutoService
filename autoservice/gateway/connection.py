@@ -54,9 +54,17 @@ def build_server_hello(
     *,
     viewer_role: str,
     session_id: str,
+    brand_name: str | None = None,
 ) -> dict[str, Any]:
-    """Build the server_hello payload per T0.2 §3.1."""
-    return {
+    """Build the server_hello payload per T0.2 §3.1.
+
+    ``brand_name`` is an additive field surfaced so the customer-chat
+    widget can render tenant-scoped branding in its header/avatars
+    without an extra HTTP round-trip.  Only included in the payload when
+    a non-empty value is supplied — keeps parity with operator/admin
+    roles that don't need it.
+    """
+    payload: dict[str, Any] = {
         "session_id": session_id,
         "protocol_version": 1,
         "server_time": now_iso_ms(),
@@ -64,3 +72,6 @@ def build_server_hello(
         "accepted_subscriptions": [],
         "server_capabilities": SERVER_CAPABILITIES,
     }
+    if brand_name:
+        payload["brand_name"] = brand_name
+    return payload

@@ -1,0 +1,98 @@
+# Soothe Placeholder Template Bank
+# Consumed by autoservice/gateway/soothe_picker.py
+# Spec: docs/superpowers/specs/2026-04-23-soothe-placeholder-design.md
+#
+# Lookup: (intent × lang) → 3-step fallback:
+#   1. (intent, lang)       exact
+#   2. ("*", lang)          same-language wildcard
+#   3. defaults.fallback    language-level fallback (required)
+#
+# Authoring rules (contract-enforced):
+#   - Each line ≤ 30 characters
+#   - lang must be 'zh' or 'en'
+#   - intent must exist in classify_intent.yaml (or be '*')
+# Authoring rules (code-review-enforced):
+#   - No specific promises (numbers, deadlines)
+#   - No product/competitor names
+#   - Chinese full-width punctuation; English half-width
+#   - End with '…' to signal continuation
+
+version: 1
+
+defaults:
+  fallback:
+    zh:
+      - "好的，我帮您看看…"
+      - "收到，正在为您处理…"
+      - "稍等，我先确认一下…"
+    en:
+      - "Got it, let me take a look…"
+      - "Sure, one moment…"
+      - "Working on it now…"
+
+templates:
+  # ── complaint (customer, slow) ────────────────────────
+  - id: complaint_zh
+    intent: complaint
+    lang: zh
+    lines:
+      - "非常抱歉给您添麻烦，我这就核实…"
+      - "理解您的着急，我马上查原因…"
+      - "很抱歉让您不愉快，先看一下状态…"
+
+  - id: complaint_en
+    intent: complaint
+    lang: en
+    lines:
+      - "So sorry — checking that now…"
+      - "That's frustrating, hang on…"
+      - "Apologies — on it now…"
+
+  # ── product_inquiry (customer, slow) ──────────────────
+  - id: product_inquiry_zh
+    intent: product_inquiry
+    lang: zh
+    lines:
+      - "好的，我帮您看一下具体功能…"
+      - "这个我先确认一下细节…"
+      - "让我帮您梳理一下支持情况…"
+
+  - id: product_inquiry_en
+    intent: product_inquiry
+    lang: en
+    lines:
+      - "Sure, looking that up…"
+      - "One sec, checking the details…"
+      - "Checking what we support…"
+
+  # ── purchase_intent (lead, slow) ──────────────────────
+  - id: purchase_intent_zh
+    intent: purchase_intent
+    lang: zh
+    lines:
+      - "好的，我帮您整理一下方案…"
+      - "了解您的需求，正在核对…"
+      - "稍等，让我给您拉一份报价…"
+
+  - id: purchase_intent_en
+    intent: purchase_intent
+    lang: en
+    lines:
+      - "Sure, putting that together…"
+      - "Noted — pulling the options…"
+      - "Pulling pricing for you…"
+
+  # ── general_question (customer, fast) ─────────────────
+  - id: general_question_zh
+    intent: general_question
+    lang: zh
+    lines:
+      - "好的，让我想想…"
+      - "嗯，我看一下…"
+
+  - id: general_question_en
+    intent: general_question
+    lang: en
+    lines:
+      - "Let me think…"
+      - "One moment…"

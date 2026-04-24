@@ -49,6 +49,19 @@ export function ChatModal({
   const { t } = useTranslation();
   const isAgentTyping = useChatStore((s) => s.isAgentTyping);
   const csatRequest = useChatStore((s) => s.csatRequest);
+  const brandName = useChatStore((s) => s.brandName);
+  // Tenant brand from server_hello → title + avatar.  Absent brand falls
+  // back to the generic i18n label so we never render "AutoService 客服"
+  // as if it were a merchant name (see backend _try_resolve_brand_name).
+  const title = brandName
+    ? t('customer.chat.title_brand', { brand: brandName })
+    : t('customer.chat.title_generic');
+  // Avatar is a single-glyph badge (`店` / `M`).  When we have a brand,
+  // use its first character so it reflects the merchant; otherwise keep
+  // the i18n default.
+  const avatarLabel = brandName
+    ? Array.from(brandName)[0] ?? t('customer.chat.avatar.merchant')
+    : t('customer.chat.avatar.merchant');
   const bodyRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   useAutoScroll(bodyRef as React.RefObject<HTMLElement>, [messages.length]);
@@ -68,10 +81,10 @@ export function ChatModal({
       />
 
       <div className="web-modal-header">
-        <div className="w-hd-av">{t('customer.chat.avatar.merchant')}</div>
+        <div className="w-hd-av">{avatarLabel}</div>
         <div className="w-hd-info">
           <div className="web-modal-title" data-testid="modal-title">
-            {t('customer.chat.title_brand')}
+            {title}
           </div>
           <div className="w-hd-sub">
             <span className="w-hd-dot" />

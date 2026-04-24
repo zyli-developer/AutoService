@@ -88,6 +88,46 @@ def test_local_admin_query_rejected(master_client):
         assert reply["payload"]["details"]["reason"] == "unknown_tenant"
 
 
+def test_server_hello_includes_brand_name_from_sandbox(tmp_path, monkeypatch):
+    """server_hello for customer role carries brand_name (sandbox fallback).
+
+    Wizard writes brand_name to .autoservice/sandbox/<tid>/config.json.  The
+    widget consumes it out of the handshake so it doesn't need a second HTTP
+    fetch.  Same resolver chain as /api/session/mode.
+    """
+    _write_local_cfg(tmp_path, "deployment_mode: master\n")
+    d = tmp_path / ".autoservice" / "sandbox" / "acme"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "config.json").write_text(
+        json.dumps({"tenant_id": "acme", "brand_name": "Acme Co"}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(bootstrap, "PROJECT_ROOT", tmp_path)
+    client = TestClient(create_app())
+
+    with client.websocket_connect("/ws/customer?tenant=acme") as ws:
+        ws.send_json(_hello())
+        reply = ws.receive_json()
+        assert reply["type"] == "server_hello"
+        assert reply["payload"]["brand_name"] == "Acme Co"
+
+
+def test_server_hello_omits_brand_name_when_tenant_has_none(master_client):
+    """Tenant exists but config.json has no brand_name → key absent.
+
+    The frontend treats missing brand_name as "fall back to i18n default",
+    so we don't ship the platform name — rendering ``"AutoService 客服"``
+    where the merchant's brand should go would look like a bug.
+    """
+    with master_client.websocket_connect("/ws/customer?tenant=mystore") as ws:
+        ws.send_json(_hello())
+        reply = ws.receive_json()
+        assert reply["type"] == "server_hello"
+        # mystore sandbox seeded without brand_name → key must be absent.
+        assert "brand_name" not in reply["payload"]
+
+
 def test_tenant_mode_mismatch_rejected(tmp_path, monkeypatch):
     """Tenant-mode deployment: query tenant ≠ self → 1008 (snooping defense)."""
     _write_local_cfg(tmp_path, "deployment_mode: tenant\ntenant_id: mystore\n")

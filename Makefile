@@ -1,4 +1,4 @@
-.PHONY: setup run-channel run-web run-gateway run-server start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
+.PHONY: setup seed-cinnox run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
 
 # --- Setup ---
 # Mode-aware setup delegated to scripts/setup.sh (T7S.4, spec §3.5):
@@ -9,18 +9,28 @@
 setup:
 	@bash scripts/setup.sh
 
+# Seed the cinnox tenant sandbox (config.json + souls + kb.db + chunks).
+# Idempotent — safe to re-run; wipes + reseeds its own source_ids only.
+# Run after `make setup` on a fresh deployment, before `make start`.
+# Pass FAST=1 to skip the ~1-2 min OneSyn PDF/XLSX ingest (glossary + demo chunks only).
+seed-cinnox:
+	@uv run python scripts/seed_cinnox_tenant.py $(if $(FAST),--skip-file-ingest)
+
 # --- Run ---
 run-channel:
 	uv run python3 channels/feishu/channel.py
 
 run-web:
 	@mkdir -p .autoservice/logs
-	AUTH_DEV_MODE=1 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
+	AUTH_DEV_MODE=1 PLACEHOLDER_ENABLED=0 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
 # Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
+# Conversation persistence is on by default (writes to
+# .autoservice/database/conversations.db). Set CONV_PERSIST=0 to disable,
+# CONV_DB_PATH=<path> to relocate. Reset with scripts/reset_conversations.py.
 run-gateway:
 	@mkdir -p .autoservice/logs
-	uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
+	PLACEHOLDER_ENABLED=0 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
 
 run-server:
 	uv run python3 channels/feishu/channel_server.py
@@ -47,6 +57,11 @@ start: stop
 	@echo ""
 	@echo "  logs: .autoservice/logs/{gateway,customer,operator,admin}.log"
 	@echo "  stop: make stop"
+
+# Same as `start` but with AUTH_DEV_MODE=1 so admin portal dev-login works
+# without SMTP. Do NOT use in production — see CLAUDE.md "Dev Auth Bypass".
+dev-start: export AUTH_DEV_MODE=1
+dev-start: start
 
 stop:
 	@if [ -d .autoservice/run ]; then \

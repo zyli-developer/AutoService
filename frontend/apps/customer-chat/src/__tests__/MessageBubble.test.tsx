@@ -111,3 +111,43 @@ describe('TC-027~030: streaming / justEdited states', () => {
     expect(useChatStore.getState().messages[0].justEdited).toBe(false);
   });
 });
+
+describe('MessageBubble brand substitution', () => {
+  afterEach(() => {
+    useChatStore.setState(initialState);
+  });
+
+  function agentMsg(): ChatMessage {
+    return {
+      id: 'agent-1',
+      source: 'agent-bot',
+      sourceRole: 'agent',
+      content: 'hello',
+      visibility: 'public',
+      timestamp: '2026-04-22T09:00:00.000Z',
+      sequenceNumber: 1,
+      status: 'sent',
+    };
+  }
+
+  it('agent bubble uses brandName from store for sender label + avatar', () => {
+    // Test setup uses en locale; the zh-CN string would be "CINNOX 客服".
+    useChatStore.setState({ brandName: 'CINNOX' });
+    render(<MessageBubble message={agentMsg()} />);
+    expect(screen.getByText('CINNOX Support')).toBeInTheDocument();
+    // Avatar = first character of brand.
+    const avatar = document.querySelector('.w-msg-av.agent');
+    expect(avatar?.textContent).toBe('C');
+  });
+
+  it('agent bubble falls back to generic label when brandName is null', () => {
+    useChatStore.setState({ brandName: null });
+    render(<MessageBubble message={agentMsg()} />);
+    // Generic label, no "undefined" or placeholder tokens leaking through.
+    expect(screen.getByText('AI Support')).toBeInTheDocument();
+    expect(screen.queryByText(/\{\{brand\}\}/)).toBeNull();
+    // Avatar keeps the i18n default single-glyph fallback.
+    const avatar = document.querySelector('.w-msg-av.agent');
+    expect(avatar?.textContent).toBe('M');
+  });
+});

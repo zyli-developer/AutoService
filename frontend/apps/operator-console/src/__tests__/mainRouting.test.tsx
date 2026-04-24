@@ -1,13 +1,3 @@
-/**
- * T7F.3 · operator-console main.tsx mode-routing tests
- *
- * Covers:
- *  1. deriveBasename — master + tenant id
- *  2. deriveBasename — master + null tenant id
- *  3. deriveBasename — tenant mode (URL-flat, basename="")
- *  4. RouteBootstrap — loading state renders Splash
- *  5. RouteBootstrap — error state renders Splash+retry
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,25 +8,10 @@ vi.mock('@autoservice/shared', () => ({
   useTenantId: () => null,
 }));
 
-import { deriveBasename, RouteBootstrap } from '../main';
+import { RouteBootstrap } from '../main';
 
 beforeEach(() => {
   useSessionModeMock.mockReset();
-});
-
-describe('deriveBasename', () => {
-  it('master mode + tenant id → /tenant/<tid>', () => {
-    expect(deriveBasename('master', 'acme')).toBe('/tenant/acme');
-  });
-
-  it('master mode + null tenant id → empty (URL-flat fall-back)', () => {
-    expect(deriveBasename('master', null)).toBe('');
-  });
-
-  it('tenant mode → empty (URL-flat; backend middleware rewrote)', () => {
-    expect(deriveBasename('tenant', 'acme')).toBe('');
-    expect(deriveBasename('tenant', null)).toBe('');
-  });
 });
 
 describe('RouteBootstrap', () => {

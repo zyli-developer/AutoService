@@ -38,6 +38,33 @@ export function deriveCardStatus(conv: Conversation): CardStatus {
   return 'idle';
 }
 
+/**
+ * Snapshot of the backend cc_pool capacity, driving the "system busy"
+ * banner. Polled every 3 s from /api/cc_pool/runtime. When `started` is
+ * false (fresh boot, POOL_MODE=0 tests, pool crashed), UI hides the
+ * banner — we have no capacity signal and showing a 0/0 badge is noise.
+ *
+ * See docs/plans backend β-proposal: UI shows actual AI-reply pressure,
+ * not a hardcoded per-operator cap.
+ */
+export interface PoolStatus {
+  started: boolean;
+  maxSize: number;
+  checkedOut: number;
+  sticky: number;
+  available: number;
+  total: number;
+}
+
+export const INITIAL_POOL_STATUS: PoolStatus = {
+  started: false,
+  maxSize: 0,
+  checkedOut: 0,
+  sticky: 0,
+  available: 0,
+  total: 0,
+};
+
 export interface CopilotMessage {
   id: string;
   text: string;
@@ -57,6 +84,7 @@ export interface OperatorState {
   subscriptions: Record<string, string>;
   conversations: Record<string, Conversation>;
   concurrencyLimit: number;
+  poolStatus: PoolStatus;
   unreadCounts: Record<string, number>;
   activeCopilotConvId: string | null;
   copilotMessages: Record<string, CopilotMessage[]>;
@@ -72,6 +100,7 @@ export interface OperatorState {
   updateConversation: (id: string, patch: Partial<Conversation>) => void;
   removeConversation: (id: string) => void;
   setConcurrencyLimit: (n: number) => void;
+  setPoolStatus: (s: PoolStatus) => void;
   incrementUnread: (squadId: string) => void;
   clearUnread: (squadId: string) => void;
   openCopilot: (convId: string) => void;
@@ -94,6 +123,7 @@ export const initialState = {
   subscriptions: {},
   conversations: {} as Record<string, Conversation>,
   concurrencyLimit: 5,
+  poolStatus: INITIAL_POOL_STATUS,
   unreadCounts: {} as Record<string, number>,
   activeCopilotConvId: null,
   copilotMessages: {} as Record<string, CopilotMessage[]>,
@@ -148,6 +178,8 @@ export const useOperatorStore = create<OperatorState>((set) => ({
 
   setConcurrencyLimit: (n) => set({ concurrencyLimit: n }),
 
+  setPoolStatus: (poolStatus) => set({ poolStatus }),
+
   incrementUnread: (squadId) =>
     set((state) => ({
       unreadCounts: {
@@ -161,9 +193,8 @@ export const useOperatorStore = create<OperatorState>((set) => ({
       unreadCounts: { ...state.unreadCounts, [squadId]: 0 },
     })),
 
-  openCopilot: (convId) => set((state) => ({
+  openCopilot: (convId) => set(() => ({
     activeCopilotConvId: convId,
-    copilotMessages: { ...state.copilotMessages, [convId]: [] },
   })),
 
   closeCopilot: () => set({ activeCopilotConvId: null }),
