@@ -4,6 +4,7 @@ import { useTenantId } from '@autoservice/shared';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
 import { useCCPoolStatus } from '../hooks/useCCPoolStatus';
+import { resolveWsBase } from '../lib/wsBase';
 import { IMTitlebar } from './IMTitlebar';
 import { IMSidebar } from './IMSidebar';
 import { ConversationFeed } from './ConversationFeed';
@@ -16,8 +17,9 @@ import { PoolBusyWarning } from './PoolBusyWarning';
  * Exported so tests (and future shared utilities) can assert the template.
  * See docs/superpowers/specs/2026-04-20-tenant-sandbox-design.md §5.2.
  */
-export function buildOperatorWsUrl(tenantId: string, hostname = window.location.hostname): string {
-  return `ws://${hostname}:8000/ws/operator?tenant=${encodeURIComponent(tenantId)}`;
+// Previously: `ws://${hostname}:8000/ws/operator?tenant=${encodeURIComponent(tenantId)}`
+export function buildOperatorWsUrl(tenantId: string): string {
+  return `${resolveWsBase()}/ws/operator?tenant=${encodeURIComponent(tenantId)}`;
 }
 
 function ChatEmpty() {
