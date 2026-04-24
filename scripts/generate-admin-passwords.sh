@@ -17,7 +17,11 @@ fi
 command -v yq >/dev/null 2>&1 || { echo "ERROR: brew install yq" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "ERROR: brew install jq" >&2; exit 3; }
 
-mapfile -t emails < <(yq e '.auth.admin_emails[]' "$CFG")
+# Portable across bash 3.2 (macOS default) — no mapfile.
+emails=()
+while IFS= read -r line; do
+  emails+=("$line")
+done < <(yq e '.auth.admin_emails[]' "$CFG")
 [[ ${#emails[@]} -gt 0 ]] || { echo "No admin_emails in $CFG"; exit 4; }
 
 if [[ ! -f "$PWFILE" ]]; then
