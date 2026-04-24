@@ -407,6 +407,13 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             name=f"ws_{role}",
         )
 
+    # Voice routes — E2E-adapter ASR + TTS, see channels/web/voice/.
+    # Migrated from cc-openclaw/voice_gateway/ on 2026-04-24.
+    from channels.web.voice.asr_route import asr_endpoint as _asr_endpoint
+    from channels.web.voice.tts_route import tts_endpoint as _tts_endpoint
+    app.add_api_websocket_route("/asr", _asr_endpoint, name="ws_asr")
+    app.add_api_websocket_route("/tts", _tts_endpoint, name="ws_tts")
+
     @app.on_event("startup")
     async def _bootstrap_internal_tenants() -> None:
         """M2 spec §2.7/§2.8 — ensure _master or _local_admin exists per mode."""
