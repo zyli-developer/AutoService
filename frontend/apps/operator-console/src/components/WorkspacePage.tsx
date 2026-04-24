@@ -3,11 +3,13 @@ import { useTranslation } from '@autoservice/i18n';
 import { useTenantId } from '@autoservice/shared';
 import { useOperatorStore } from '../store/operatorStore';
 import { useOperatorWS } from '../hooks/useOperatorWS';
+import { useCCPoolStatus } from '../hooks/useCCPoolStatus';
 import { IMTitlebar } from './IMTitlebar';
 import { IMSidebar } from './IMSidebar';
 import { ConversationFeed } from './ConversationFeed';
 import { CopilotView } from './CopilotView';
 import { NoTenantFallback } from './NoTenantFallback';
+import { PoolBusyWarning } from './PoolBusyWarning';
 
 /**
  * Build the operator WS URL for a given tenant.
@@ -16,32 +18,6 @@ import { NoTenantFallback } from './NoTenantFallback';
  */
 export function buildOperatorWsUrl(tenantId: string, hostname = window.location.hostname): string {
   return `ws://${hostname}:8000/ws/operator?tenant=${encodeURIComponent(tenantId)}`;
-}
-
-/* ── ConcurrencyWarning ── */
-function ConcurrencyWarning() {
-  const { t } = useTranslation();
-  const count = useOperatorStore(
-    (s) => Object.keys(s.conversations).length,
-  );
-  const limit = useOperatorStore((s) => s.concurrencyLimit);
-  if (count < limit - 1) return null;
-  const atLimit = count >= limit;
-  return (
-    <div
-      data-testid="concurrency-warning"
-      className={`op-notif ${atLimit ? 'danger' : 'warn'}`}
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9v4M12 17h.01" />
-      </svg>
-      <span>
-        {atLimit
-          ? t('operator.concurrency.at_limit', { limit })
-          : t('operator.concurrency.approaching', { count, limit })}
-      </span>
-    </div>
-  );
 }
 
 function ChatEmpty() {
@@ -154,6 +130,12 @@ export function WorkspacePage() {
 
   const { send, fetchHistory } = useOperatorWS(wsUrl);
 
+  // Polls /api/cc_pool/runtime every 3 s → drives <PoolBusyWarning>.
+  // Mounted here so it runs exactly once (WorkspacePage is a singleton in
+  // the app tree). Safe to run before the tenant guard below — the hook
+  // returns void and fires no requests until useEffect commits.
+  useCCPoolStatus();
+
   if (!tenantId) {
     return <NoTenantFallback />;
   }
@@ -182,7 +164,7 @@ export function WorkspacePage() {
   return (
     <div className="im-w" data-testid="workspace-page">
       <IMTitlebar onHamburger={() => setNavOpen(true)} />
-      <ConcurrencyWarning />
+      <PoolBusyWarning />
       {wsStatus !== 'open' && wsStatus !== 'idle' && (
         <div
           data-testid="connection-banner"

@@ -1114,6 +1114,62 @@ async def dream_runs_list(tenant_id: str, limit: int = 20) -> dict[str, Any]:
 # Canary
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# cc_pool runtime status — drives the operator console's "system busy" badge
+# so the number shown in the UI reflects actual AI-reply capacity instead of
+# a hardcoded 5. Reads the snapshot file the status-writer loop maintains
+# (see ``cc_pool._status_writer_loop``); does NOT force-initialize the pool
+# so it's safe to call before ``get_pool()`` has ever run (POOL_MODE=0 tests,
+# cold startup, etc.).
+# ---------------------------------------------------------------------------
+
+_CC_POOL_STATUS_FILE: Path = (
+    Path(__file__).resolve().parent.parent
+    / ".autoservice"
+    / "cc_pool_status.json"
+)
+
+
+@api_router.get("/cc_pool/runtime")
+async def cc_pool_runtime() -> dict[str, Any]:
+    """Return cc_pool capacity snapshot for operator-console UI polling.
+
+    The operator-console polls this (3 s cadence) to render the "system
+    busy" indicator. Fields mirror the snapshot written by
+    :func:`autoservice.cc_pool._status_writer_loop`; worst-case staleness
+    is ``STATUS_WRITE_INTERVAL`` seconds (default 5 s) — acceptable for a
+    visual badge.
+
+    Returns ``started=False`` with zeros when the snapshot is missing or
+    malformed rather than erroring, so a dev frontend pointed at a backend
+    where the pool never started still renders a consistent empty state.
+    """
+    empty = {
+        "started": False,
+        "max_size": 0,
+        "checked_out": 0,
+        "sticky": 0,
+        "available": 0,
+        "total": 0,
+    }
+    try:
+        raw = _CC_POOL_STATUS_FILE.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return empty
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return empty
+    return {
+        "started": bool(data.get("started", False)),
+        "max_size": int(data.get("max_size", 0) or 0),
+        "checked_out": int(data.get("checked_out", 0) or 0),
+        "sticky": int(data.get("sticky", 0) or 0),
+        "available": int(data.get("available", 0) or 0),
+        "total": int(data.get("total", 0) or 0),
+    }
+
+
 @api_router.get("/canary/status")
 async def canary_status() -> dict[str, Any]:
     """Return canary router status + monitor check."""
