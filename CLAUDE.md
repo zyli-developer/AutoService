@@ -111,6 +111,7 @@ the active product roadmap.
 | KB pre-fetch (`_build_customer_prompt`)           | ✅                                             | ❌                          |
 | Cross-role history reseed                         | ✅ `_build_reseeded_prompt`                    | ❌                          |
 | Per-role model tier (fast/slow/dream)             | ✅ flows through cc_pool                       | ⚠️ only customer pool's `slow_model` is reachable |
+| Native voice (ASR + TTS)                          | ✅ `/asr` + `/tts` on `web_gateway`, Doubao E2E-adapter (PR #85) | ❌ no voice surface        |
 
 The Feishu channel still works for single-tenant customer chat with M1
 semantics. If/when Feishu re-enters scope, the alignment work is roughly
