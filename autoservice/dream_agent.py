@@ -326,7 +326,26 @@ def kb_search(
     if kb_path is None:
         return []
 
-    fts_query = _tokenize_fts_query(query)
+    # Bilingual expansion: append English canonical forms for any
+    # matched CJK country names / Chinese business terms / telecom
+    # acronyms in the query. See ``autoservice.query_expansion`` for
+    # rationale and mapping tables. Single-entry hook here (rather
+    # than at every kb_search call site) so all three callers —
+    # ``_build_customer_prompt``, the ``kb_search`` MCP tool, and the
+    # Dream agent loop — automatically benefit.
+    #
+    # Lazy import to avoid a module-load cycle through
+    # autoservice.triage_dispatch (which imports dream_agent) and to
+    # keep the dream_agent import graph unchanged for consumers that
+    # don't touch query expansion (tests that stub kb_search, etc.).
+    try:
+        from autoservice.query_expansion import expand_query
+        expanded = expand_query(query)
+    except Exception:
+        log.exception("Query expansion failed, falling back to raw query")
+        expanded = query
+
+    fts_query = _tokenize_fts_query(expanded)
     if not fts_query.strip():
         return []
 
@@ -805,6 +824,15 @@ class _ToolOutcome:
         self.proposals_delta = proposals_delta
 
 
+#: MCP server name prefix for the dream tools wired in
+#: :mod:`autoservice.dream_tools_mcp`. The claude_agent_sdk surfaces MCP
+#: tool invocations with the ``mcp__<server_name>__<tool_name>`` naming
+#: convention, which is opaque to ``_execute_tool_call`` unless we strip
+#: it here. Keeping this as a module-level constant so tests can reach
+#: it without re-importing the MCP module.
+_MCP_TOOL_PREFIX = "mcp__autoservice_dream_tools__"
+
+
 def _execute_tool_call(
     tool_name: str,
     tool_input: dict,
@@ -824,7 +852,28 @@ def _execute_tool_call(
     Errors from the tool layer (e.g. invalid ``risk_level``) are turned
     into ``is_error=True`` tool_result blocks rather than propagating —
     the LLM can observe and retry or self-correct within the turn cap.
+
+    MCP-backed tools (names prefixed with :data:`_MCP_TOOL_PREFIX`) have
+    already been executed by the in-process MCP server before we see the
+    ToolUseBlock. This function detects those, strips the prefix, and
+    returns a counter-only outcome (no DB re-write) so metrics stay
+    correct without double-executing. The accompanying ``tool_result``
+    fed to the LLM is a neutral acknowledgement — the real result text
+    was delivered by the MCP server's own tool_result round-trip that
+    the SDK handled internally.
     """
+    mcp_backed = False
+    if tool_name.startswith(_MCP_TOOL_PREFIX):
+        tool_name = tool_name[len(_MCP_TOOL_PREFIX):]
+        mcp_backed = True
+
+    if mcp_backed:
+        proposals_delta = 1 if tool_name == "emit_proposal" else 0
+        return _ToolOutcome(
+            json.dumps({"status": "acknowledged", "via": "mcp"}),
+            proposals_delta=proposals_delta,
+        )
+
     try:
         if tool_name == "kb_search":
             query = str(tool_input.get("query", "") or "")
@@ -1097,6 +1146,7 @@ async def run_dream(
     *,
     sandbox_root: Path | None = None,
     llm_send: Callable[..., Any] | None = None,
+    run_id: str | None = None,
 ) -> DreamRunResult:
     """Run the Dream agent once for *tenant_id*.
 
@@ -1150,7 +1200,17 @@ async def run_dream(
         once the run row has been opened.
     """
     t0 = time.monotonic()
-    run_id = dream_runs.start_run(runs_db, tenant_id)
+    # Reuse the caller's pre-opened row when provided (HTTP trigger
+    # path), otherwise open our own (scheduler-triggered runs).  The
+    # ``owns_run_id`` flag controls whether this function emits the
+    # terminal ``end_run`` — HTTP-owned rows are closed by the caller
+    # so we only update counters.  See run_platform_dream for the same
+    # pattern on the master side.
+    if run_id is None:
+        run_id = dream_runs.start_run(runs_db, tenant_id)
+        owns_run_id = True
+    else:
+        owns_run_id = False
     status = "failed"
     tool_calls = 0
     proposals_emitted = 0
@@ -1217,6 +1277,8 @@ async def run_dream(
 
     # Final persistence — always write one terminal row so observers can
     # distinguish crashed runs from silently-orphaned 'running' rows.
+    # When ``owns_run_id`` is False the HTTP caller performs end_run; we
+    # still record counters so token / tool_call metrics are on the row.
     try:
         dream_runs.update_run(
             runs_db,
@@ -1226,14 +1288,15 @@ async def run_dream(
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
-        dream_runs.end_run(
-            runs_db,
-            run_id,
-            status=status,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            error=error_msg,
-        )
+        if owns_run_id:
+            dream_runs.end_run(
+                runs_db,
+                run_id,
+                status=status,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                error=error_msg,
+            )
     except Exception as exc:  # noqa: BLE001 — last-ditch logging
         logger.exception("Failed to finalise dream_runs row %s: %s", run_id, exc)
 

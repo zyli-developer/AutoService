@@ -24,6 +24,7 @@ export function handleEventFrame(
   addConversation: (conv: Conversation) => void,
   updateConversation: (id: string, patch: Partial<Conversation>) => void,
   addCopilotMessage?: (convId: string, msg: CopilotMessage) => void,
+  selfOperatorId?: string | null,
 ) {
   const { event } = frame.payload as EventPayload;
   if (!event?.conversation_id) return;
@@ -83,8 +84,15 @@ export function handleEventFrame(
       // copilot here so they appear in the chat stream. Non-SIDE messages
       // also flow as `message` frames; addCopilotMessage dedups by id, so
       // this is a no-op for them.
+      //
+      // Skip own echoes: the sender WS is excluded from `_broadcast_to_squad`
+      // for `message` frames, so for our own operator_message this event is
+      // the first frame carrying a server-assigned id. Our optimistic insert
+      // (IMInput.tsx) already has the message under a client UUID, so adding
+      // here would duplicate it — and mis-tag as 'agent' because the
+      // substring heuristic above doesn't know operator ids.
       const messageId = event.data.message_id as string | undefined;
-      if (addCopilotMessage && messageId && text) {
+      if (addCopilotMessage && messageId && text && _src !== selfOperatorId) {
         addCopilotMessage(convId, {
           id: messageId,
           text,
@@ -334,7 +342,7 @@ export function useOperatorWS(url: string): {
           // event frames carry conversation metadata + message.sent fan-out.
           // SIDE messages (triage/system) only reach operators via this path,
           // so handleEventFrame must thread addCopilotMessage to insert them.
-          handleEventFrame(frame, addConversation, updateConversation, addCopilotMessage);
+          handleEventFrame(frame, addConversation, updateConversation, addCopilotMessage, operatorId);
         }
       },
     });

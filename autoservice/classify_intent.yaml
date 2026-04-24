@@ -3,23 +3,70 @@
 # 5 类意图 + 4 阶段 timeout + 路由目标
 
 intents:
-  product_inquiry:
-    description: "产品/服务咨询、功能问题、使用方法"
-    keywords: ["怎么用", "使用", "功能", "支持", "how to", "feature", "support", "user guide"]
-    route_to: customer
-    model_tier: slow    # 需要知识库检索
-    priority: normal
-
+  # Intent 在 dict 中的顺序兼具 tie-break 优先级：当两个 intent 的关键词
+  # 命中数相等时，先定义的 intent 胜出（FastClassifier.classify 使用严格
+  # >，首个达到 best_score 的 intent 锁定结果）。complaint 排 product_
+  # inquiry 前是故意的 —— 像 "PSTN 断了多久了"、"紧急!IVR 流程不工作了"
+  # 这类既有故障关键词又有开放问法的消息，应该优先走 complaint（高优先
+  # 级）而不是 product_inquiry。
   complaint:
-    description: "投诉、不满、问题报告、退款"
-    keywords: ["投诉", "不满", "退款", "refund", "complaint", "故障", "坏了", "crash", "broken", "refuse"]
+    description: "投诉、不满、问题报告、退款、工单升级"
+    # 覆盖面：
+    #   - 显式投诉："投诉 / 不满 / 退款 / refund / complaint"
+    #   - 故障通用："故障 / 坏了 / crash / broken / refuse"
+    #   - 故障具体："断了 / 连不上 / 打不通 / 无法使用 / 没反应 / down / outage"
+    #   - 紧急升级："tk- / p1 / p2 / 紧急 / 立即 / urgent" （工单升级关键词，
+    #     匹配 "TK-1234 P1 升级" / "紧急故障" 等典型表达）
+    keywords: [
+      "投诉", "不满", "退款", "refund", "complaint",
+      "故障", "坏了", "crash", "broken", "refuse",
+      "断了", "连不上", "打不通", "无法使用", "没反应", "down", "outage",
+      "tk-", "p1", "p2", "紧急", "立即", "urgent"
+    ]
     route_to: customer
     model_tier: slow    # 需要理解上下文 + 安抚
     priority: high      # 投诉优先处理
 
+  product_inquiry:
+    description: "产品/服务咨询、功能问题、使用方法、价格/套餐信息咨询"
+    # 覆盖面：
+    #   - 使用类："怎么用 / 使用 / how to / user guide"
+    #   - 功能类："功能 / 支持 / feature / support"
+    #   - 开放问法："多久 / 如何 / 怎样 / 哪些 / 区别 / 对比 / 流程 / 步骤"
+    #   - 资料类："文档 / 教程 / doc / manual"
+    #   - 价格/套餐**信息咨询**（非购买意向，只是了解）：
+    #     "价格 / 多少钱 / 费用 / 收费 / pricing / price / cost /
+    #      套餐 / plan / 报价 / quote"
+    #     这些词从 purchase_intent 搬过来，因为"问价格 ≠ 想买"——客户
+    #     了解产品信息是 customer 角色 + KB 的职责范围。真购买意向靠
+    #     下面 purchase_intent 的明确动作词识别。
+    keywords: [
+      "怎么用", "使用", "功能", "支持",
+      "how to", "feature", "support", "user guide",
+      "多久", "如何", "怎样", "哪些", "区别", "对比", "流程", "步骤",
+      "文档", "教程", "doc", "manual",
+      "价格", "多少钱", "费用", "收费", "pricing", "price", "cost",
+      "套餐", "plan", "报价", "quote"
+    ]
+    route_to: customer
+    model_tier: slow    # 需要知识库检索
+    priority: normal
+
   purchase_intent:
-    description: "购买意向、报价、合作、试用"
-    keywords: ["买", "购买", "价格", "报价", "合作", "试用", "buy", "pricing", "demo", "trial", "quote", "采购", "订购"]
+    description: "明确购买意向：购买动作、评估试用、商务合作"
+    # 覆盖面：
+    #   - 购买动作："买 / 购买 / 采购 / 订购 / 订阅 / buy / subscribe"
+    #   - 评估动作："试用 / demo / trial"
+    #   - 商务阶段："合作"
+    # 故意不收："价格 / 套餐 / 多少钱" 等——那些是信息问询，客户了解
+    # 产品阶段就在问，还没有购买意向。路由到 lead 会让客服体验割裂（
+    # 用户只想知道价格，被拉去做 lead qualification 询问四要素，
+    # 会觉得被推销）。让 customer 角色 + KB 直接答，等客户真说"我想买"/
+    # "给我开通"/"试用申请" 再路由 lead。
+    keywords: [
+      "买", "购买", "采购", "订购", "订阅", "buy", "subscribe", "subscription",
+      "试用", "demo", "trial", "合作"
+    ]
     route_to: lead
     model_tier: slow    # 需要理解需求
     priority: high      # 商机优先

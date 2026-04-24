@@ -23,6 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from autoservice.conversation_engine import ConversationEngine, LocalEngine
+from autoservice.conversation_engine.sqlite_store import (
+    DEFAULT_DB_PATH as _CONV_DB_DEFAULT_PATH,
+    ConversationStore,
+)
 from autoservice.gateway.connection import (
     build_frame,
     build_server_hello,
@@ -42,6 +46,13 @@ from autoservice.gateway.tenant_resolver import resolve_customer_tenant
 from autoservice.takeover_config import TakeoverConfig, load_takeover_config
 
 logger = logging.getLogger("autoservice.gateway")
+# Promote to INFO so per-request timing / reply-pipeline progress surfaces in
+# gateway.log. Default root is WARNING and this logger ships no handler, so
+# logger.info() calls from message_router (Agent reply: starting / timing /
+# pushed) were silently dropped. Propagates up to uvicorn's root handler.
+logger.setLevel(logging.INFO)
+if not logger.handlers and not logging.getLogger().handlers:
+    logger.addHandler(logging.StreamHandler())
 
 _CORS_ORIGINS = [
     f"http://localhost:{p}" for p in range(5173, 5180)
@@ -212,7 +223,30 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             takeover_cfg = _TAKEOVER_CONFIG_OVERRIDE
         else:
             takeover_cfg = load_takeover_config(Path(".autoservice/config.local.yaml"))
-        engine = LocalEngine(config={"takeover": takeover_cfg})
+        # Conversation persistence — ON by default so `make run-gateway`
+        # keeps operator-visible history across restarts. Pytest runs are
+        # detected via `pytest in sys.modules` and default to OFF so the
+        # many tests that call `create_app()` don't write to the real
+        # .autoservice/database/conversations.db. Explicit env wins in all
+        # cases: set CONV_PERSIST=1/0 to force either way, CONV_DB_PATH to
+        # relocate the file.
+        import sys
+        persist_default = "0" if "pytest" in sys.modules else "1"
+        store: ConversationStore | None = None
+        if os.environ.get("CONV_PERSIST", persist_default) == "1":
+            db_path = Path(
+                os.environ.get("CONV_DB_PATH", str(_CONV_DB_DEFAULT_PATH))
+            )
+            try:
+                store = ConversationStore(db_path=db_path)
+                logger.info("[conv-store] persistence enabled at %s", db_path)
+            except Exception:
+                logger.exception(
+                    "[conv-store] failed to open %s — falling back to in-memory",
+                    db_path,
+                )
+                store = None
+        engine = LocalEngine(config={"takeover": takeover_cfg}, store=store)
     else:
         # Engine provided externally — extract its takeover config if available
         takeover_cfg = getattr(engine, "_takeover_config", None)
@@ -406,6 +440,87 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             _make_endpoint(role),
             name=f"ws_{role}",
         )
+
+    @app.on_event("startup")
+    async def _dump_runtime_config() -> None:
+        """Print every env-driven runtime flag + key cc_pool settings at
+        startup so operators can see at a glance what the current
+        process is configured with. Grouped for readability; unset
+        values shown as ``<unset>`` with the effective default the
+        code falls back to.
+
+        Docs: docs/environment-config.md for full semantics of each entry.
+        """
+        import os
+
+        def _e(name: str, fallback_default: str | None = None) -> str:
+            v = os.environ.get(name)
+            if v is None:
+                return f"<unset -> {fallback_default}>" if fallback_default else "<unset>"
+            return v
+
+        # Layer 1: runtime feature flags
+        flags = [
+            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "1")),
+            ("TRIAGE_AGENT_ENABLED",       _e("TRIAGE_AGENT_ENABLED", "0")),
+            ("TRIAGE_AGENT_TIMEOUT_S",     _e("TRIAGE_AGENT_TIMEOUT_S", "15.0")),
+            ("AUTH_DEV_MODE",              _e("AUTH_DEV_MODE", "(disabled)")),
+            ("DREAM_DEV_STUB",             _e("DREAM_DEV_STUB", "(disabled)")),
+            ("DREAM_SCHEDULER_DISABLED",   _e("DREAM_SCHEDULER_DISABLED", "(enabled)")),
+            ("POOL_MODE",                  _e("POOL_MODE", "1")),
+        ]
+        # Layer 2: web / URL config
+        web = [
+            ("DEMO_PORT",                  _e("DEMO_PORT", "8000")),
+            ("WEB_SCHEME",                 _e("WEB_SCHEME", "http")),
+            ("WEB_HOST",                   _e("WEB_HOST", "localhost")),
+            ("IDLE_TIMEOUT_MINUTES",       _e("IDLE_TIMEOUT_MINUTES", "15")),
+        ]
+        # Layer 3: budgets + external APIs
+        cost = [
+            ("COMPRESSION_DAILY_BUDGET_CENTS", _e("COMPRESSION_DAILY_BUDGET_CENTS", "1000")),
+            ("ANTHROPIC_API_KEY",          "<set>" if os.environ.get("ANTHROPIC_API_KEY") else "<unset>"),
+        ]
+        # Layer 4: cc_pool config (loaded from config.local.yaml + env overrides)
+        try:
+            from autoservice.cc_pool import load_pool_config
+            cfg = load_pool_config()
+            pool = [
+                ("min_size",                cfg.min_size),
+                ("max_size",                cfg.max_size),
+                ("warmup_count",            cfg.warmup_count),
+                ("max_queries_per_instance", cfg.max_queries_per_instance),
+                ("permission_mode",         cfg.permission_mode),
+                ("model",                   cfg.model or "<unset>"),
+                ("fast_model",              cfg.fast_model or "<unset>"),
+                ("slow_model",              cfg.slow_model or "<unset>"),
+                ("dream_model",             cfg.dream_model or "<unset>"),
+                ("include_partial_messages", cfg.include_partial_messages),
+                ("warmup_tenant_id",        cfg.warmup_tenant_id or "<unset>"),
+                ("warmup_roles",            cfg.warmup_roles),
+            ]
+        except Exception:
+            logger.warning("cc_pool config load failed during startup dump", exc_info=True)
+            pool = []
+
+        sep = "=" * 72
+        logger.info(sep)
+        logger.info("=== Runtime configuration snapshot ===")
+        logger.info("[env flags]")
+        for k, v in flags:
+            logger.info("  %-32s = %s", k, v)
+        logger.info("[web / urls]")
+        for k, v in web:
+            logger.info("  %-32s = %s", k, v)
+        logger.info("[cost / api keys]")
+        for k, v in cost:
+            logger.info("  %-32s = %s", k, v)
+        if pool:
+            logger.info("[cc_pool (config.local.yaml + CC_POOL_* env)]")
+            for k, v in pool:
+                logger.info("  %-32s = %s", k, v)
+        logger.info(sep)
+        logger.info("Docs: docs/environment-config.md  for full semantics.")
 
     @app.on_event("startup")
     async def _bootstrap_internal_tenants() -> None:

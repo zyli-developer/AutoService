@@ -106,6 +106,62 @@ describe('WS event dispatch', () => {
     expect(useOperatorStore.getState().conversations['conv-001'].state).toBe('closed');
   });
 
+  it('own operator_message echo does not duplicate optimistic insert', () => {
+    seedConversation({ state: 'active' });
+    const convId = 'conv-001';
+    const clientId = 'client-uuid-1';
+    const serverId = 'server-uuid-1';
+    const opId = 'op-42';
+
+    // 1. IMInput-style optimistic insert (client UUID, sender='operator').
+    useOperatorStore.getState().addCopilotMessage(convId, {
+      id: clientId,
+      text: '你好',
+      sender: 'operator',
+      ts: '2026-04-23T16:31:27.187Z',
+      visibility: 'side',
+    });
+
+    // 2. EventBus echo of my own send comes back with server id + source=opId.
+    handleEventFrame(
+      makeEventFrame('message.sent', convId, {
+        message_id: serverId,
+        source: opId,
+        content: '你好',
+        visibility: 'side',
+      }),
+      useOperatorStore.getState().addConversation,
+      useOperatorStore.getState().updateConversation,
+      useOperatorStore.getState().addCopilotMessage,
+      opId,
+    );
+
+    const msgs = useOperatorStore.getState().copilotMessages[convId] ?? [];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].id).toBe(clientId);
+    expect(msgs[0].sender).toBe('operator');
+  });
+
+  it('other operator message.sent still inserted when selfOperatorId differs', () => {
+    seedConversation({ state: 'active' });
+    const convId = 'conv-001';
+    handleEventFrame(
+      makeEventFrame('message.sent', convId, {
+        message_id: 'srv-2',
+        source: 'op-other',
+        content: '别人发的',
+        visibility: 'side',
+      }),
+      useOperatorStore.getState().addConversation,
+      useOperatorStore.getState().updateConversation,
+      useOperatorStore.getState().addCopilotMessage,
+      'op-42',
+    );
+    const msgs = useOperatorStore.getState().copilotMessages[convId] ?? [];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].id).toBe('srv-2');
+  });
+
   it('TC-13: multiple sequential events accumulate correctly', () => {
     dispatch(makeEventFrame('conversation.created', 'conv-x', {
       squad_id: 'sq-B',

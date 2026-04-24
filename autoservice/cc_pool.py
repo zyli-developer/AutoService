@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -294,6 +294,23 @@ class PoolConfig(_BasePoolConfig):
     cli_path: str | None = None
     # Enable partial/delta streaming events for progressive UI updates.
     include_partial_messages: bool = False
+    #: When set, the customer pool's warmup factory pre-creates tenant-pinned
+    #: instances (with that tenant's soul + KB tool) and stamps them so the
+    #: first customer message doesn't trigger destroy+rebuild in
+    #: ``_recycle_instance_for_tenant``. Also triggers eager creation of the
+    #: sub-pools listed in ``warmup_roles`` for this tenant at ``start()``,
+    #: so the first dispatch to those roles doesn't pay the cold-spawn tax.
+    #: Leave ``None`` for multi-tenant deploys where no single tenant
+    #: dominates.
+    warmup_tenant_id: str | None = None
+    #: Role sub-pools to eager-open at ``start()`` time when
+    #: ``warmup_tenant_id`` is set. Default ``["triage"]`` preserves the
+    #: prior behavior (only triage warmed). Add ``"lead"`` in
+    #: ``config.local.yaml`` to eliminate the ~3 s cold-start on the
+    #: first lead-routed customer message (observable in gateway.log
+    #: as ``Starting pool (min=0, max=2) ... Warmed instance
+    #: cc-lead-001`` showing up on first purchase-intent-routed turn).
+    warmup_roles: list[str] = field(default_factory=lambda: ["triage"])
 
 
 def load_pool_config(cwd: str | None = None) -> PoolConfig:
@@ -330,7 +347,8 @@ def load_pool_config(cwd: str | None = None) -> PoolConfig:
     _FLOAT_FIELDS = {"max_lifetime_seconds", "health_check_interval", "checkout_timeout",
                       "sticky_idle_timeout"}
     _STR_FIELDS = {"cwd", "permission_mode", "model", "cli_path",
-                    "fast_model", "slow_model", "dream_model"}
+                    "fast_model", "slow_model", "dream_model",
+                    "warmup_tenant_id"}
 
     for field_name in _INT_FIELDS | _FLOAT_FIELDS | _STR_FIELDS:
         env_key = f"CC_POOL_{field_name.upper()}"
@@ -530,6 +548,25 @@ async def create_cc_client(
         kb_server = build_kb_mcp_server(tenant_id)
         mcp_servers = {**(mcp_servers or {}), "autoservice_kb": kb_server}
 
+    # Dream-role clients get the dream tools (emit_proposal / kb_search /
+    # list_souls) as REAL MCP tools. Without this the CLI subprocess only
+    # sees the tool names as text in the prompt preamble and the model
+    # truthfully reports "tool not available" — no proposals ever land.
+    # Callers (tests, diag scripts) can override by passing a server under
+    # the same ``autoservice_dream_tools`` key in ``mcp_servers`` — we
+    # respect that and skip auto-wire.
+    if (
+        role == "dream"
+        and tenant_id
+        and (mcp_servers is None or "autoservice_dream_tools" not in mcp_servers)
+    ):
+        from autoservice.dream_tools_mcp import build_dream_tools_mcp_server
+        dream_server = build_dream_tools_mcp_server(tenant_id)
+        mcp_servers = {
+            **(mcp_servers or {}),
+            "autoservice_dream_tools": dream_server,
+        }
+
     options = ClaudeAgentOptions(
         cwd=cwd,
         setting_sources=None,
@@ -617,6 +654,12 @@ class CCPool(AsyncPool[CCClient]):
         # sub-pool factories (lead/translate/triage/dream) to consult.
         # Mutating ``cfg.model`` here would clobber slow_model/fast_model/
         # dream_model resolution for those roles.
+        #
+        # ``warmup_tenant_id`` (when set) pre-pins warmup instances to one
+        # tenant's soul + KB tool so the first real customer message skips
+        # the destroy+rebuild path in ``_recycle_instance_for_tenant``. Left
+        # ``None`` → legacy behavior (neutral warmup, recycle on first use).
+        warmup_tid = cfg.warmup_tenant_id
         super().__init__(
             config=cfg,
             factory=lambda: create_cc_client(
@@ -624,8 +667,8 @@ class CCPool(AsyncPool[CCClient]):
                 mcp_servers=mcp_servers,
                 system_prompt=system_prompt,
                 role="customer",
-                tenant_id=None,
-                enable_kb_tool=False,
+                tenant_id=warmup_tid,
+                enable_kb_tool=(warmup_tid is not None),
             ),
             instance_prefix="cc",
             logger=log,
@@ -647,6 +690,54 @@ class CCPool(AsyncPool[CCClient]):
         #: sticky release (matches the old demo's `_sdk_ensure` policy,
         #: avoids model thrashing mid-conversation). Cleared on release.
         self._upgraded_sticky: set[str] = set()
+
+    async def _create_instance(self):  # type: ignore[override]
+        """Wrap the base create, then stamp ``_pool_tenant_id`` so
+        ``_recycle_instance_for_tenant`` treats warmup / on-demand
+        instances as already tenant-pinned when ``warmup_tenant_id`` is
+        set. Without this stamp the recycle helper sees ``_UNSET`` and
+        throws away the just-created subprocess on first use.
+        """
+        instance = await super()._create_instance()
+        warmup_tid = self._config.warmup_tenant_id  # type: ignore[attr-defined]
+        if warmup_tid is not None:
+            instance._pool_tenant_id = warmup_tid  # type: ignore[attr-defined]
+        return instance
+
+    async def start(self) -> None:  # type: ignore[override]
+        """Start the pool, then (when ``warmup_tenant_id`` is set) pre-open
+        each sub-pool listed in ``warmup_roles`` with one warm instance
+        so the first dispatch to that role doesn't pay the ~3 s cold-spawn
+        cost. Default ``warmup_roles=["triage"]`` preserves prior behavior;
+        add ``"lead"`` in ``config.local.yaml`` when lead-routed messages
+        are on the hot path.
+
+        Pre-warm failures are logged per-role and swallowed — the main
+        pool still serves traffic; individual role hops just pay the
+        legacy cold-start on their first call.
+        """
+        await super().start()
+        warmup_tid = self._config.warmup_tenant_id  # type: ignore[attr-defined]
+        if warmup_tid is None:
+            return
+        roles = self._config.warmup_roles  # type: ignore[attr-defined]
+        for role in roles:
+            try:
+                async with self._role_pool_lock:
+                    key = (role, warmup_tid)
+                    if key not in self._role_pools:
+                        sub_pool = await self._create_role_pool(role, warmup_tid)
+                        self._role_pools[key] = sub_pool
+                        self._role_pool_last_used[key] = time.monotonic()
+                        if self._reaper_task is None or self._reaper_task.done():
+                            self._reaper_task = asyncio.create_task(
+                                self._reaper_loop(), name="cc-pool-role-reaper",
+                            )
+            except Exception:
+                log.exception(
+                    "pre-warm %s sub-pool failed for tenant=%s — first "
+                    "%s call will cold-spawn", role, warmup_tid, role,
+                )
 
     async def acquire_sticky(
         self, key: str, *, tenant_id: str | None = None,
@@ -950,8 +1041,17 @@ class CCPool(AsyncPool[CCClient]):
         # tier knobs supplied programmatically). It carries the unmutated
         # ``model`` field; tier resolution picks the right one for *role*.
         base = self._config
+        # warmup_count=1 so the first acquire against a freshly-opened
+        # sub-pool doesn't cold-spawn the subprocess inline — critical for
+        # triage, whose call site has a 2 s ``_TRIAGE_AGENT_TIMEOUT`` that
+        # was silently timing out on every first-use. Lead/translate get
+        # the same treatment for consistency (small pool, max_size==size
+        # caps the cost at one extra subprocess per role-tenant pair). The
+        # lazy-open path still exists (CCPool.start only pre-opens the
+        # known ``warmup_tenant_id`` triage sub-pool); this change just
+        # makes that lazy open useful instead of just reserving a slot.
         sub_cfg = replace(
-            base, min_size=0, max_size=size, warmup_count=0,
+            base, min_size=0, max_size=size, warmup_count=1,
             model=_resolve_model_for_role(base, role),
         )
 
@@ -1334,21 +1434,39 @@ async def _make_tenant_instance(
     """
     cfg = pool._config  # noqa: SLF001
     if role == "dream":
+        # Pass ``role`` + ``tenant_id`` even though we also supply an
+        # explicit ``system_prompt``: create_cc_client uses the prompt
+        # verbatim (role-based soul lookup is short-circuited at line
+        # ``if system_prompt is None and role is not None``), but needs
+        # the role/tenant to wire the ``autoservice_dream_tools`` MCP
+        # server. Without this, emit_proposal / kb_search / list_souls
+        # are prompt-text-only and the model reports "tool not available".
         client = await create_cc_client(
-            cfg, system_prompt=_load_dream_soul(tenant_id),
+            cfg,
+            role="dream",
+            tenant_id=tenant_id,
+            system_prompt=_load_dream_soul(tenant_id),
         )
-        # T5S.14: the legacy dream-pool factory bypasses the ``role=``
-        # kwarg on create_cc_client (it supplies the system_prompt
-        # directly), so the dream-role flag must be stamped here too.
+        # Defensive: create_cc_client already stamps ``_dream_role`` when
+        # role=="dream", but we keep the explicit assignment as a belt-
+        # and-suspenders guard for any future refactor that drops the
+        # stamp.
         client._dream_role = True  # type: ignore[attr-defined]
     else:
         # customer + any future role: let create_cc_client resolve soul
         # via role + tenant_id.
+        #
+        # KB tool eligibility: customer + lead both need ``kb_search``
+        # since lead qualifies against product / price / package details
+        # that live in tenant KB. triage / translate / direct remain
+        # tool-free (they don't touch tenant-specific content).
         client = await create_cc_client(
             cfg,
             role=role,
             tenant_id=tenant_id,
-            enable_kb_tool=(role == "customer" and tenant_id is not None),
+            enable_kb_tool=(
+                role in ("customer", "lead") and tenant_id is not None
+            ),
         )
     pool._instance_counter += 1  # noqa: SLF001
     instance_id = (

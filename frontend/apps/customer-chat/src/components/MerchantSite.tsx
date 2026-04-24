@@ -14,7 +14,6 @@ export function MerchantSite() {
         <a className="m-link">{t('customer.merchant.nav.contact')}</a>
         <div className="m-nav-right">
           <span className="m-cart">{t('customer.merchant.cart')}</span>
-          <a className="m-login">{t('customer.merchant.login')}</a>
           <LanguageSwitcher
             style={{
               padding: '2px 8px',

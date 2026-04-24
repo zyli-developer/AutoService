@@ -101,6 +101,8 @@
   "operator.main.waiting_for_customer": "Waiting for a customer...",
   "operator.concurrency.at_limit": "Concurrency limit reached ({{limit}}); cannot accept more",
   "operator.concurrency.approaching": "Near concurrency limit ({{count}}/{{limit}})",
+  "operator.pool.at_capacity": "System busy ({{limit}}/{{limit}} AI slots in use); new messages may queue",
+  "operator.pool.approaching_capacity": "System approaching capacity ({{count}}/{{limit}} AI slots in use)",
   "operator.hijack.take": "Take over",
   "operator.hijack.release": "Release to AI",
   "operator.hijack.back_to_list": "Back to list",

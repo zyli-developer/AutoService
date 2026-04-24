@@ -60,3 +60,8 @@ e2e-evidence/**/*.zip
 docs/videos/**/*.mp4
 docs/videos/**/*.webm
 docs/videos/**/*.mov
+
+# CINNOX KB source assets (large PDFs/XLSX). Mirrored from sibling autoservice
+# checkout via cp; excluded from git to keep repo lean. sources.json stays
+# tracked under skills/knowledge-base/references/.
+docs/resource/

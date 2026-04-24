@@ -9,7 +9,9 @@ based on intent classification and confidence scoring.
 
 import asyncio
 import logging
+import os
 import re
+import time
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -17,6 +19,65 @@ from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 log = logging.getLogger("triage.router")
+# ``triage.router`` propagates to root (WARNING by default), so INFO calls
+# get dropped. Route the one-shot timing breakdown through the gateway
+# logger so it lands in gateway.log next to ``Agent reply timing`` for
+# correlation. See ``web_gateway.py::logger.setLevel(INFO)``.
+_timing_log = logging.getLogger("autoservice.gateway.triage")
+
+
+def _triage_agent_enabled() -> bool:
+    """Gate the haiku-backed triage agent fallback.
+
+    When ``TRIAGE_AGENT_ENABLED`` is ``"0"`` / ``"false"`` / ``"no"`` (case-
+    insensitive), ``ModelRouter.route_message`` skips the ``await
+    _invoke_triage_agent`` branch entirely and uses the FastClassifier
+    result directly even when confidence is below the medium threshold.
+
+    Default: **enabled** (``True``). The agent provides semantic
+    classification for messages that don't hit any FastClassifier
+    keywords, and crucially decides the model tier (fast vs slow) for
+    those ambiguous messages — which FastClassifier's ``general_question``
+    fallback can't do meaningfully. The flag exists so deployments that
+    care more about latency than tier accuracy can force-skip the
+    ``_TRIAGE_AGENT_TIMEOUT`` cost.
+
+    Read each time so tests can ``monkeypatch.setenv`` without reloading
+    the module. The env var is evaluated per call — hot toggle is fine.
+    """
+    raw = os.getenv("TRIAGE_AGENT_ENABLED", "1").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _triage_agent_timeout_s() -> float:
+    """Budget (seconds) for the full triage agent round-trip.
+
+    Default 8 s — covers haiku TTFT + short classification output +
+    Claude Agent SDK stdio bridge overhead on a warm pool. Measured
+    locally at ~4-6 s depending on network to Anthropic; 8 s leaves
+    headroom for the slow tail without blowing up perceived latency
+    when the agent eventually gets invoked on a keyword-miss message.
+
+    Override via ``TRIAGE_AGENT_TIMEOUT_S`` env var (e.g. ``"12"`` for
+    slower links). Invalid values log a warning and fall back to the
+    default. Read each call so the value can be adjusted without a
+    restart — though the server still caches the class attribute
+    ``ModelRouter._TRIAGE_AGENT_TIMEOUT`` as the documented default for
+    tests that monkey-patch it directly (e.g. the E2E suite pins 0.05 s
+    to exercise the timeout path deterministically).
+    """
+    raw = os.getenv("TRIAGE_AGENT_TIMEOUT_S")
+    if raw is None:
+        return ModelRouter._TRIAGE_AGENT_TIMEOUT
+    try:
+        return float(raw)
+    except ValueError:
+        log.warning(
+            "Invalid TRIAGE_AGENT_TIMEOUT_S=%r (not a float) — "
+            "using default %s",
+            raw, ModelRouter._TRIAGE_AGENT_TIMEOUT,
+        )
+        return ModelRouter._TRIAGE_AGENT_TIMEOUT
 
 
 _TRIAGE_OUTPUT_RE = re.compile(
@@ -84,11 +145,62 @@ def _is_pure_social(message: str, keywords: list[str]) -> bool:
 
 
 def _parse_triage_output(raw: str) -> dict | None:
-    """Parse a triage agent [分流] line. Returns dict or None on hard failure."""
+    """Parse a triage agent [分流] line. Returns dict or None on hard failure.
+
+    Normalizes common Chinese-LLM formatting drift before regex match:
+
+    * Full-width colon (``：``) → ``:``
+    * Full-width pipe (``｜``) → ``|``
+    * Markdown emphasis (``**`` / ``__``) stripped
+    * Chinese square brackets (``【】``) → ``[]``
+
+    Also tolerates two specific model-output patterns observed in
+    production:
+
+    1. **Full-width punctuation** — haiku on Chinese-heavy prompts
+       routinely emits full-width ``：`` / ``｜`` which the strict ASCII
+       regex silently rejects. First seen 2026-04-23 on a 5 s
+       successful triage call that still landed on ``source=fallback``.
+    2. **Self-repetition** — haiku sometimes emits the same ``[分流]``
+       block twice without a separator between them, making the
+       line-anchored regex (``\\s*$``) miss both copies. Fixed by
+       splitting the normalized string with a look-ahead at ``[分流]``
+       so each block is tried independently. Observed 2026-04-23 on
+       ``"nihao 啊"`` — agent produced the correct greeting classification
+       twice, but both were dropped before this fix.
+    """
     if not raw:
         return None
-    for line in raw.splitlines():
-        m = _TRIAGE_OUTPUT_RE.match(line.strip())
+    normalized_full = (
+        raw
+        .replace("：", ":")
+        .replace("｜", "|")
+        .replace("**", "")
+        .replace("__", "")
+        .replace("【", "[")
+        .replace("】", "]")
+    )
+    # Candidate strategy (order matters — first match wins):
+    #   1. Each [分流] block as its own segment (covers duplicated-
+    #      output case). Lookahead split keeps the marker on the right
+    #      side of each cut, so every non-empty segment starts with
+    #      [分流] and the main regex's end-anchor (\s*$) can match at
+    #      the segment boundary.
+    #   2. Each original line (preserves pre-fix behavior when the
+    #      model outputs a clean single-line [分流] — no regression
+    #      for the 2026-04-22 baseline format).
+    candidates: list[str] = []
+    for seg in re.split(r"(?=\[分流\])", normalized_full):
+        seg = seg.strip()
+        if seg:
+            candidates.append(seg)
+    for line in normalized_full.splitlines():
+        line = line.strip()
+        if line:
+            candidates.append(line)
+
+    for normalized in candidates:
+        m = _TRIAGE_OUTPUT_RE.match(normalized)
         if m:
             try:
                 conf = float(m.group("confidence"))
@@ -443,6 +555,20 @@ class ModelRouter:
                 tier=fast.model_tier.value,
             )
 
+        # Fast classifier is uncertain. Either call the haiku triage agent
+        # for a semantic second opinion (legacy), or skip it and trust the
+        # fast result (default as of 2026-04-23 — see ``_triage_agent_enabled``
+        # docstring for the 2 s timeout rationale). When skipped, we reuse
+        # the same ``_triage_fallback`` shape the timeout/exception branches
+        # of ``_invoke_triage_agent`` would produce, so downstream
+        # (triage_dispatch SIDE message, conv metadata, tests) keeps the
+        # same envelope.
+        if not _triage_agent_enabled():
+            return self._triage_fallback(
+                message, fast, lang if lang != "unknown" else None,
+                previous_role,
+            )
+
         return await self._invoke_triage_agent(
             message=message,
             tenant_id=tenant_id,
@@ -451,26 +577,70 @@ class ModelRouter:
             previous_role=previous_role,
         )
 
-    _TRIAGE_AGENT_TIMEOUT = 2.0
+    # 15 s default budget for the full triage agent round-trip. Escalated
+    # 2 s → 4 s → 8 s → 15 s over 2026-04-23 as successive timeouts
+    # revealed haiku's real latency distribution on the observed network:
+    # one-shot measurements 5 s / 8 s / 8 s on warm pool instances, with
+    # the 8 s attempt precisely hitting the previous ceiling. 15 s
+    # clearly covers the tail; override per-deploy with the
+    # ``TRIAGE_AGENT_TIMEOUT_S`` env var (see ``_triage_agent_timeout_s``
+    # helper) without touching code.
+    #
+    # Cost: when the agent is invoked (low-confidence messages, ~10%
+    # after keyword expansion), customer reply is delayed by up to 15 s.
+    # The 90% fastpath case pays nothing either way.
+    #
+    # Tests monkey-patch this attribute directly (e.g. 0.05 s in the
+    # E2E triage suite to exercise timeout-fallback deterministically),
+    # so it's kept as a class attribute rather than inlined into the
+    # helper.
+    _TRIAGE_AGENT_TIMEOUT = 15.0
     _POOL_ACQUIRE_TIMEOUT = 0.5
 
     async def _triage_agent_one_shot(self, message: str, tenant_id: str | None) -> str:
-        """One-shot triage agent call returning the raw [分流] line."""
+        """One-shot triage agent call returning the raw [分流] line.
+
+        Emits a ``triage one-shot`` INFO log with a per-stage timing
+        breakdown (acquire / send / ttft / drain / total) + instance id.
+        Lets ops tell apart "pool couldn't hand us an instance" from
+        "haiku's network round-trip blew the budget" from "drain kept
+        growing because this warm instance accumulated session history" —
+        all three surface identically as the outer ``asyncio.TimeoutError``
+        today.
+        """
         from autoservice.cc_pool import get_pool
         pool = await get_pool()
         prompt = self._render_triage_prompt(message)
+        t0 = time.perf_counter()
         async with pool.acquire(role="triage", tenant_id=tenant_id,
                                  timeout=self._POOL_ACQUIRE_TIMEOUT) as inst:
+            t_acq = time.perf_counter()
             await inst.client.query(prompt, session_id=f"triage-{id(inst)}")
+            t_send = time.perf_counter()
+            t_first: float | None = None
             parts: list[str] = []
             from claude_agent_sdk.types import AssistantMessage, ResultMessage
             async for msg in inst.client.receive_response():
+                if t_first is None:
+                    t_first = time.perf_counter()
                 if isinstance(msg, AssistantMessage) and msg.content:
                     for b in msg.content:
                         if hasattr(b, "text"):
                             parts.append(b.text)
                 elif isinstance(msg, ResultMessage) and msg.result:
                     parts.append(msg.result)
+            t_done = time.perf_counter()
+            # t_first may still be None if the stream produced zero
+            # messages (shouldn't happen in practice but guard it so the
+            # log line never crashes).
+            ttft = (t_first - t_send) if t_first is not None else (t_done - t_send)
+            drain = (t_done - t_first) if t_first is not None else 0.0
+            _timing_log.info(
+                "triage one-shot acquire=%.3fs send=%.3fs ttft=%.3fs "
+                "drain=%.3fs total=%.3fs inst=%s prompt_chars=%d reply_chars=%d",
+                t_acq - t0, t_send - t_acq, ttft, drain, t_done - t0,
+                id(inst), len(prompt), sum(len(p) for p in parts),
+            )
             return "".join(parts).strip()
 
     def _render_triage_prompt(self, message: str) -> str:
@@ -510,13 +680,23 @@ class ModelRouter:
     ) -> TriageDecision:
         # asyncio.CancelledError is a BaseException (not Exception) and will
         # propagate naturally through this try/except block — intentional.
+        #
+        # ``_triage_agent_timeout_s`` reads ``TRIAGE_AGENT_TIMEOUT_S`` env
+        # var each call (falls back to the class attribute). Tests that
+        # monkey-patch ``ModelRouter._TRIAGE_AGENT_TIMEOUT`` directly
+        # still win because the helper defaults to the class attribute
+        # when the env var is unset.
+        timeout_s = _triage_agent_timeout_s()
         try:
             raw = await asyncio.wait_for(
                 self._triage_agent_one_shot(message, tenant_id),
-                timeout=self._TRIAGE_AGENT_TIMEOUT,
+                timeout=timeout_s,
             )
         except asyncio.TimeoutError:
-            log.warning("triage agent timed out for tenant=%s", tenant_id)
+            log.warning(
+                "triage agent timed out for tenant=%s (budget=%.1fs)",
+                tenant_id, timeout_s,
+            )
             return self._triage_fallback(
                 message, fast_result, detected_language, previous_role,
             )
@@ -527,6 +707,18 @@ class ModelRouter:
             )
         parsed = _parse_triage_output(raw)
         if parsed is None:
+            # Silent fall-through was a debug black hole — haiku ran
+            # successfully (no timeout, no exception), but the output
+            # didn't match _TRIAGE_OUTPUT_RE and operators saw "源:
+            # fallback" with no explanation. Log the raw output so
+            # prompt / parser drift becomes diagnosable. Truncate at
+            # 300 chars to keep log lines bounded even if the model
+            # goes off-script with a paragraph.
+            log.warning(
+                "triage agent output didn't parse for tenant=%s; "
+                "raw=%r — using fast fallback",
+                tenant_id, (raw or "")[:300],
+            )
             return self._triage_fallback(
                 message, fast_result, detected_language, previous_role,
             )

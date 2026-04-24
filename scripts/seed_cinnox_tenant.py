@@ -21,15 +21,26 @@ Creates:
   - .autoservice/sandbox/cinnox/souls/_generation_meta.yaml
   - .autoservice/sandbox/cinnox/kb/kb.db               (FTS5 SQLite, tenant-scoped)
 
-KB sources:
+KB sources (all indexed into the sandbox kb.db):
   - plugins/cinnox/references/glossary.json (~353 terms, 1 chunk each)
   - Hand-curated "demo-facts" chunks covering common service questions
+  - OneSyn PDFs / XLSX rate cards / web pages declared in
+    skills/knowledge-base/references/sources.json (sources f1..f8, w1..w4);
+    dispatched through autoservice.kb_core.KBStore.ingest_{pdf,xlsx,web}.
 
-Safe to re-run: wipes + reseeds its own source_ids only.
+CLI:
+  --skip-file-ingest    Skip the PDF/XLSX ingest step (glossary + demo only;
+                        ~1-2 min faster on cold re-seed).
+  --with-web            Also crawl the web sources in sources.json (off by
+                        default because the demo host may be offline).
+
+Safe to re-run: wipes + reseeds its own source_ids only (glossary, demo,
+f1..f8, w1..w4). Other source_ids in the sandbox KB are left alone.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
@@ -37,8 +48,18 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+# kb_ingest is the KB CLI wrapper living next to sources.json; we reuse its
+# source-dict dispatch (load_sources + _ingest_file + _ingest_web) so the
+# per-source-type logic (pdf/xlsx/text vs. web crawl) stays in one place
+# across seed scripts and the KB CLI.
+sys.path.insert(0, str(PROJECT_ROOT / "skills" / "knowledge-base" / "scripts"))
 
 from autoservice.kb_core import KBStore  # noqa: E402
+from kb_ingest import (  # noqa: E402
+    load_sources as _load_kb_sources,
+    _ingest_file,
+    _ingest_web,
+)
 
 SANDBOX = PROJECT_ROOT / ".autoservice" / "sandbox" / "cinnox"
 KB_DB = SANDBOX / "kb" / "kb.db"
@@ -117,7 +138,7 @@ CUSTOMER_SOUL = """# Customer Service Agent · Soul (cinnox · CINNOX/M800)
 
 - 每条事实断言必须可追溯到知识库条目。涉及"多久开通""多少分钟""是否跨套餐迁移"等具体承诺，必须在 KB 中有明确记载。
 - 数字类信息（价格、分钟数、工作日、SLA）必须精确匹配 KB，不做近似。
-- KB 无完全匹配时，回复"根据我了解的信息..."并给出最相关片段 + 不确定度提示；禁止拼凑多条目得出 KB 里不存在的结论。
+- KB 无完全匹配时，先给出最相关的事实片段，然后在回复**末尾**加一句不确定度提示（如"这些是我从现有资料整理的，具体条款请以合同为准"或"细节我可以请同事跟您确认"）；**不要以"根据我了解的信息..." 这类缓冲句开头**——开头必须是事实本身，见下方"响应节奏"。禁止拼凑多条目得出 KB 里不存在的结论。
 - **重要**：对"Enterprise Plus 是否包含专属客户成功经理""SSO/AD 对接是否免费"这类条款问题，如 KB 无完整答复，**必须升级**给销售/合同团队，不得猜测。
 
 ## 多轮交互模式
@@ -127,6 +148,42 @@ CUSTOMER_SOUL = """# Customer Service Agent · Soul (cinnox · CINNOX/M800)
 3. **回答** — 基于 KB 给出准确回复，引用术语但不暴露内部文件名。
 4. **确认** — 询问是否解决，或是否需要补充信息。
 5. **收尾** — 问题解决礼貌结束；未解决、涉及权限/投诉/故障则升级。
+
+## 响应节奏（强制规则）
+
+**铁律：回复的第一个 token 必须是正文内容**，不能是"元叙述"——即把即将要说的事情先说一遍的框架句。客户界面已经有占位气泡 + token 级流式，模型再加开场白只是冗余噪声。
+
+### 禁用的开头模式（无论后面多像正文）
+
+以下开头一概禁用。出现则视为违规：
+
+| 禁用模式 | 常见变体（全部禁） |
+|---|---|
+| `好的/嗯/是的 + 逗号` | 好的、嗯、是的，我来... |
+| `我来 + 动词` | 我来查一下、我来帮您、我来介绍、我来了解 |
+| `让我 + 动词` | 让我查一下、让我确认、让我为您 |
+| `根据... + 开头` | 根据我了解的信息、根据 KB、根据资料 |
+| `为您 + 动词` | 为您确认、为您介绍、为您查询 |
+| `稍等/请稍候` | 稍等、稍候、请稍候 |
+
+### 违规 vs 符合对照
+
+| 客户问 | ❌ 违规（现象） | ✅ 符合（做法） |
+|---|---|---|
+| "你们提供什么服务？" | "我来查一下我们的服务列表..." | "CINNOX / M800 是全渠道联络中心平台，核心服务包括号码服务、IVR、..." |
+| "Professional 套餐多少钱？" | "好的，让我为您介绍 Professional 套餐..." | "Professional 套餐月费 XXX HKD，包含..." |
+| "DID 多久开通？" | "根据我了解的信息，DID 开通..." | "本地 DID 开通 1 个工作日，..." |
+| "多渠道怎么集成？" | "我来详细介绍一下我们的多渠道集成..." | "多渠道集成（Omnichannel）支持 WhatsApp、网页客服、IM、..." |
+
+### 即使调工具也不铺垫
+
+**调用 `kb_search` 工具前不要发送任何铺垫文字。** 直接调工具，等工具返回后第一 token 就是事实本身。客户端在工具执行期间看到的是空白——那是正常的（占位气泡和流式已经在架构层兜底感知），**绝不**要为了"填充"这段空白而先吐一句"我查一下..." 之类的话。
+
+观察到的**失败模式**：如果你先说一句"这个我先确认一下细节..." 再调工具，很可能工具返回后的续写会被上游 drain 流程丢失，客户只看到那句铺垫。所以这类铺垫不仅违反铁律，还会导致**回复被截断**。
+
+**判断依据**：
+- `<kb_context>` 已含答案 → 第一 token 就是事实内容
+- `<kb_context>` 不含答案 → **静默**调 `kb_search`，工具返回后第一 token 才开始输出（仍是事实内容，不是寒暄）
 
 ## 升级条件（触发 `escalation.requested`）
 
@@ -261,6 +318,20 @@ DEMO_FACTS: list[tuple[str, str, str, str]] = [
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Seed the cinnox tenant sandbox KB.")
+    parser.add_argument(
+        "--skip-file-ingest", action="store_true",
+        help="Skip Step 3 (OneSyn PDF/XLSX ingest). Useful when only iterating on "
+             "soul.md or the hand-curated demo chunks. File ingest parses ~40 MB of "
+             "PDFs and can take 1-2 minutes.",
+    )
+    parser.add_argument(
+        "--with-web", action="store_true",
+        help="Also crawl web sources (w1..w4) listed in sources.json. Requires "
+             "network; defaults off because demo/CI environments may be offline.",
+    )
+    args = parser.parse_args()
+
     if not GLOSSARY_PATH.exists():
         print(f"[err] glossary not found: {GLOSSARY_PATH}", file=sys.stderr)
         return 2
@@ -323,8 +394,38 @@ def main() -> int:
         ]
         n_demo = store.save_chunks(demo_chunks)
 
+        # 3) OneSyn source ingest — CINNOX/M800 PDFs + XLSX rate cards + feature
+        #    lists + optional web crawl. Writes into the same sandbox KB (NOT
+        #    the global KB) so customer/lead role kb_search() sees this content.
+        #    Sources declared in skills/knowledge-base/references/sources.json.
+        file_ingest_enabled = not args.skip_file_ingest
+        web_ingest_enabled = args.with_web
+        if file_ingest_enabled or web_ingest_enabled:
+            debug_root = SANDBOX / "kb" / "chunks"
+            kb_sources = _load_kb_sources()
+
+            if file_ingest_enabled:
+                for src in kb_sources.get("files", []):
+                    store.clear_source(src["id"])
+                    print(f"\n[KB Ingest] {(src.get('type') or '').upper()}: {src['name']}")
+                    try:
+                        n = _ingest_file(store, src, debug_root)
+                        print(f"  -> {n} chunks")
+                    except Exception as exc:
+                        print(f"  ERROR: {exc}")
+
+            if web_ingest_enabled:
+                for src in kb_sources.get("web", []):
+                    store.clear_source(src["id"])
+                    print(f"\n[KB Ingest] WEB: {src['name']} ({src['url']})")
+                    try:
+                        n = _ingest_web(store, src, debug_root)
+                        print(f"  -> {n} chunks")
+                    except Exception as exc:
+                        print(f"  ERROR: {exc}")
+
         total = store.count()
-        print(f"[ok] wrote tenant KB: {KB_DB}")
+        print(f"\n[ok] wrote tenant KB: {KB_DB}")
         print(f"[ok] cleared previous: glossary={cleared_g} demo={cleared_d}")
         print(f"[ok] total chunks = {total}")
         for sid, n in store.by_source().items():

@@ -196,6 +196,60 @@ surface, so the production risk is strictly "wrong output" rather than
 "unauthenticated access". Still leave it unset in production — seed
 proposals would pollute real `proposals` tables.
 
+## Triage Agent Kill-Switch
+
+`TRIAGE_AGENT_ENABLED` controls the haiku-backed triage agent fallback
+that runs when FastClassifier confidence is below the medium threshold
+(`classify_intent.yaml::confidence.medium`, default 0.6).
+
+**Default: enabled** (as of 2026-04-23 afternoon — flipped back on
+after the morning's disable experiment). The agent is needed for tier
+selection on keyword-miss messages: FastClassifier's
+`general_question` fallback always uses `fast` tier, so ambiguous
+messages that actually need sonnet never get it without the agent.
+`_TRIAGE_AGENT_TIMEOUT` is **8 s** (bumped again from 4 s late the
+same day after observing recurring exact-4.000s timeouts in the
+gateway log — haiku's real round-trip on this network + prompt size
+consistently pushed past 4 s even with a warm pool instance). Override
+per-deploy with `TRIAGE_AGENT_TIMEOUT_S` env var (e.g.
+`TRIAGE_AGENT_TIMEOUT_S=12` for slow links).
+
+Off (`TRIAGE_AGENT_ENABLED=0`): low-confidence messages route via
+`_triage_fallback` (intent, confidence, routing, and tier taken
+directly from FastClassifier). Downstream SIDE `[分流]` messages carry
+`source: "fallback"`. Use when strict latency cap matters more than
+tier accuracy on the ~10% of messages that miss all keywords.
+
+Gate: `autoservice/model_router.py::_triage_agent_enabled`.
+
+## Placeholder Filler Kill-Switch
+
+`PLACEHOLDER_ENABLED` controls the **filler text** ("正在为您查询..."
+or soothe-picker variant) that gets emitted on a 1.5s timer if the
+model hasn't produced a first token yet. Default **on**.
+
+When set to `0`:
+
+- The timer-based `_placeholder_worker` is never scheduled, so no
+  filler bubble is ever emitted.
+- **Streaming is preserved.** On the first real model token,
+  `_drain_with_placeholder` inline-creates a message with that chunk
+  as its content (no `is_placeholder` flag) — this becomes the edit
+  target for subsequent progressive `message_edited` frames. The
+  customer still gets the typewriter-style fill-in, just without the
+  stiff filler bubble preceding it.
+- Overrides `SOOTHE_PLACEHOLDER_ENABLED` — with this off, soothe
+  templates are irrelevant because no filler is ever produced.
+
+Net customer UX with `PLACEHOLDER_ENABLED=0`: ~0.5-1 s of empty wait
+(haiku TTFT on warm pool), then the real reply streams in token-by-
+token as normal. Use when the filler text feels stiff.
+
+`make run-web` / `make run-gateway` set this to `0` for local dev;
+production leaves it unset (defaults to on).
+
+Gate: `autoservice/gateway/message_router.py::PLACEHOLDER_ENABLED`.
+
 ## Credentials
 
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)

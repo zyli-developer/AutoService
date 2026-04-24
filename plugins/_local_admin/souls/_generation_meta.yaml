@@ -1,0 +1,25 @@
+mode: template_fallback
+roles:
+  customer:
+    kb_hit_count: 0
+    mode: fallback
+    warnings: []
+  dream:
+    kb_hit_count: 0
+    mode: fallback
+    warnings:
+    - No template found at agents/dream/soul.md
+  lead:
+    kb_hit_count: 0
+    mode: fallback
+    warnings: []
+  translate:
+    kb_hit_count: 0
+    mode: fallback
+    warnings: []
+  triage:
+    kb_hit_count: 0
+    mode: fallback
+    warnings: []
+tenant_id: _local_admin
+total_kb_hits: 0

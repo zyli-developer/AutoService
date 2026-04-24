@@ -99,6 +99,8 @@ async def run_platform_dream(
     proposals_conn: sqlite3.Connection,
     runs_conn: sqlite3.Connection,
     max_tool_turns: int = 10,
+    *,
+    run_id: str | None = None,
 ) -> list[str]:
     """Run the master-side dream via a real LLM tool-loop.
 
@@ -119,6 +121,12 @@ async def run_platform_dream(
         proposals_conn: SQLite connection for ``proposals`` table.
         runs_conn: SQLite connection for ``dream_runs`` table.
         max_tool_turns: Hard upper bound on LLM tool rounds per run.
+        run_id: Optional pre-opened ``dream_runs`` row id. When supplied
+            (the HTTP ``/api/dream/trigger`` path threads its pre-opened
+            trigger-row through here), we reuse it instead of opening a
+            second row. When ``None`` (scheduler-triggered runs) we open
+            one ourselves. This keeps "one trigger = one row" regardless
+            of who called us.
 
     Returns:
         List of emitted proposal IDs (empty when the LLM decides
@@ -155,7 +163,15 @@ async def run_platform_dream(
         ).fetchall()
     }
 
-    run_id = dream_runs.start_run(runs_conn, bootstrap.MASTER_TENANT_ID)
+    # Reuse the caller's pre-opened trigger-row when provided; otherwise
+    # open our own (scheduler path).  Tracking ``owns_run_id`` so the
+    # finaliser only emits ``end_run`` when we started it — the HTTP
+    # path owns the end_run call for its own pre-opened row.
+    if run_id is None:
+        run_id = dream_runs.start_run(runs_conn, bootstrap.MASTER_TENANT_ID)
+        owns_run_id = True
+    else:
+        owns_run_id = False
     status = "failed"
     tool_calls = 0
     proposals_emitted = 0
@@ -193,6 +209,9 @@ async def run_platform_dream(
         status = "failed"
 
     try:
+        # Always record tokens / tool_calls / proposals_emitted on the
+        # row — even when the HTTP caller owns the end_run, they don't
+        # know these counters and would otherwise leave them at zero.
         dream_runs.update_run(
             runs_conn, run_id,
             tool_calls=tool_calls,
@@ -200,13 +219,17 @@ async def run_platform_dream(
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
-        dream_runs.end_run(
-            runs_conn, run_id,
-            status=status,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            error=error_msg,
-        )
+        if owns_run_id:
+            # Scheduler path — we opened the row, we close it.  HTTP path
+            # (owns_run_id=False) leaves end_run to api_routes._run_and_mark
+            # so there's exactly one end_run per row.
+            dream_runs.end_run(
+                runs_conn, run_id,
+                status=status,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                error=error_msg,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "[master_dream] failed to finalise run row %s: %s", run_id, exc,
