@@ -34,6 +34,7 @@ from autoservice.gateway.connection import (
 )
 from autoservice.gateway.envelope import ACCEPTED_VERSIONS, parse_envelope
 from autoservice import operator_routes, operators
+from autoservice import password_login as _password_login
 from autoservice.gateway.errors import (
     ERR_AUTH,
     ERR_VALIDATION,
@@ -391,6 +392,12 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     app.include_router(onboard_router)
     app.include_router(api_router)
     _set_engine(app.state.engine)
+
+    # Path to the per-email password file; same convention as auth.db etc.
+    _PASSWORDS_FILE = Path(__file__).resolve().parent.parent / ".autoservice" / "passwords.json"
+    app.include_router(
+        _password_login.build_router(passwords_path=str(_PASSWORDS_FILE))
+    )
 
     # Wire SLA alert push to admin WebSocket connections (T6E.7)
     try:

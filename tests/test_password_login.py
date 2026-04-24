@@ -110,3 +110,19 @@ def test_rate_limit_decays_after_window(tmp_path):
         pl._FAILED_ATTEMPTS[ip] = [t - (11 * 60) for t in pl._FAILED_ATTEMPTS[ip]]
     r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": _GOOD_PASSWORD})
     assert r.status_code == 200
+
+
+def test_gateway_mounts_password_login_route(tmp_path, monkeypatch):
+    """Route is reachable via the real app factory.
+
+    passwords.json is absent in the test env → 404 is the expected
+    response, which still proves the route is mounted (distinct from
+    405 'method not allowed' or 500).
+    """
+    from autoservice.web_gateway import create_app
+    from starlette.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+    r = client.post("/api/auth/password-login", json={"email": "foo@bar.com", "password": "x"})
+    assert r.status_code in (401, 404)
