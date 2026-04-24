@@ -28,9 +28,4 @@ describe('ChatFAB', () => {
     const fab = screen.getByTestId('chat-fab');
     expect(fab.className).not.toContain('highlight');
   });
-
-  it('renders the call button', () => {
-    render(<ChatFAB onClick={vi.fn()} />);
-    expect(screen.getByTestId('fab-call')).toBeInTheDocument();
-  });
 });

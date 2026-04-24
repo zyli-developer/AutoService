@@ -1,10 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useTenantId } from '@autoservice/shared';
+import { useTranslation } from '@autoservice/i18n';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
 import { ChatFAB } from './components/ChatFAB';
 import { ChatModal } from './components/ChatModal';
+import { useVoiceCall } from './voice/useVoiceCall';
 
 // Unique customer ID per browser tab (persisted in sessionStorage)
 function getCustomerId(): string {
@@ -38,6 +40,29 @@ function resolveWsBase(): string {
   // if a caller renders <App/> outside jsdom — we return an obviously-fake
   // origin so any accidental connect fails loudly.
   return 'ws://invalid.local';
+}
+
+/** Resolve voice gateway WS URL.
+ *
+ * Priority:
+ *   1. `VITE_VOICE_GATEWAY_URL` env var (e.g. `http://localhost:8089`)
+ *   2. Same-origin fallback (`wss://` on HTTPS, `ws://` on HTTP)
+ *
+ * Returns the URL with the given path appended (e.g. `/asr` or `/tts`).
+ */
+function resolveVoiceWsUrl(path: '/asr' | '/tts'): string {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  const base = env?.VITE_VOICE_GATEWAY_URL;
+  if (base) {
+    // Convert http(s):// to ws(s):// if needed
+    const wsBase = base.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://');
+    return `${wsBase.replace(/\/$/, '')}${path}`;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}${path}`;
+  }
+  return `ws://invalid.local${path}`;
 }
 
 type SheetState = 'peek' | 'full';
@@ -104,6 +129,7 @@ function ChatApp({ tenantId }: { tenantId: string }) {
   );
   const { send } = useWebSocket(wsUrl, 'customer-chat');
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(() => {
     // Auto-open on mobile viewports so the bottom sheet is always visible
     if (typeof window !== 'undefined' && window.matchMedia) {
@@ -114,6 +140,74 @@ function ChatApp({ tenantId }: { tenantId: string }) {
   const [sheet, setSheet] = useState<SheetState>(getInitialSheet);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customerId = useMemo(getCustomerId, []);
+
+  // ---------------- Voice wiring ----------------
+  const asrUrl = useMemo(() => resolveVoiceWsUrl('/asr'), []);
+  const ttsUrl = useMemo(() => resolveVoiceWsUrl('/tts'), []);
+  const comfortPool = useMemo(
+    () => [
+      t('voice.comfort.1'),
+      t('voice.comfort.2'),
+      t('voice.comfort.3'),
+      t('voice.comfort.4'),
+    ],
+    [t],
+  );
+
+  // Shared id between the optimistic-bubble insert (onUserMessage) and the
+  // WS send (onSendTextToChat) so message_confirm can dedupe correctly.
+  const pendingAsrClientMsgIdRef = useRef<string | null>(null);
+
+  const voice = useVoiceCall({
+    asrUrl,
+    ttsUrl,
+    comfortPool,
+    onUserMessage: (text: string) => {
+      const clientMsgId = crypto.randomUUID();
+      pendingAsrClientMsgIdRef.current = clientMsgId;
+      useChatStore.getState().addMessage({
+        id: clientMsgId,
+        clientMsgId,
+        source: 'customer',
+        sourceRole: 'customer',
+        content: text,
+        visibility: 'public',
+        timestamp: new Date().toISOString(),
+        sequenceNumber: 0,
+        status: 'sending',
+      });
+    },
+    onSendTextToChat: (text: string) => {
+      const clientMsgId = pendingAsrClientMsgIdRef.current ?? crypto.randomUUID();
+      pendingAsrClientMsgIdRef.current = null;
+      const convId = useChatStore.getState().conversationId;
+      void send('customer_message', {
+        content: text,
+        source: customerId,
+        client_msg_id: clientMsgId,
+        ...(convId ? { conversation_id: convId } : {}),
+      });
+    },
+  });
+
+  // When a new agent/bot message lands in the store AND voice is active,
+  // forward the content to the voice controller so it can TTS the reply.
+  const lastBotSignature = useRef<string | null>(null);
+  useEffect(() => {
+    if (voice.state === 'idle' || voice.state === 'error') return;
+    // Find the most recent agent/operator message in the message list
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.sourceRole === 'agent' || m.sourceRole === 'operator') {
+        const signature = `${m.id}:${m.content}`;
+        if (signature !== lastBotSignature.current && m.content && !m.isStreaming) {
+          lastBotSignature.current = signature;
+          voice.onCcReply(m.content);
+        }
+        break; // only care about the latest bot message
+      }
+    }
+  }, [messages, voice]);
 
   // Auto-open/close when viewport crosses the mobile breakpoint
   useEffect(() => {
@@ -208,15 +302,23 @@ function ChatApp({ tenantId }: { tenantId: string }) {
           onSend={handleSend}
           onClose={() => setIsOpen(false)}
           onCsatSubmit={handleCsatSubmit}
-          disabled={connectionStatus !== 'open'}
+          disabled={connectionStatus !== 'open' || voice.state !== 'idle'}
           connectionStatus={connectionStatus}
           isReplaying={isReplaying}
           replayCount={replayCount}
           sheet={sheet}
           onToggleSheet={toggleSheet}
+          voiceState={voice.state}
+          voiceErrorReason={voice.errorReason}
+          onVoiceStart={voice.start}
+          onVoiceHangup={voice.hangup}
+          onVoiceRetry={voice.retry}
         />
       ) : null}
-      <ChatFAB onClick={() => setIsOpen(true)} highlight={!isOpen} />
+      <ChatFAB
+        onClick={() => setIsOpen(true)}
+        highlight={!isOpen}
+      />
     </div>
   );
 }

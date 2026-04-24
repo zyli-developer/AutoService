@@ -18,6 +18,19 @@ from typing import Any
 
 from pathlib import Path
 
+# Load project-root .env so voice creds (DOUBAO_APP_ID / DOUBAO_ACCESS_TOKEN,
+# etc.) are present in os.environ before any `create_app()` route wiring runs.
+# Same pattern as channels/web/app.py; lets `make run-gateway` work with a
+# gitignored .env file instead of requiring callers to shell-export the vars.
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+if _ENV_FILE.exists():
+    with open(_ENV_FILE, encoding="utf-8") as _envf:
+        for _line in _envf:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -440,6 +453,13 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             _make_endpoint(role),
             name=f"ws_{role}",
         )
+
+    # Voice routes — E2E-adapter ASR + TTS, see channels/web/voice/.
+    # Migrated from cc-openclaw/voice_gateway/ on 2026-04-24.
+    from channels.web.voice.asr_route import asr_endpoint as _asr_endpoint
+    from channels.web.voice.tts_route import tts_endpoint as _tts_endpoint
+    app.add_api_websocket_route("/asr", _asr_endpoint, name="ws_asr")
+    app.add_api_websocket_route("/tts", _tts_endpoint, name="ws_tts")
 
     @app.on_event("startup")
     async def _dump_runtime_config() -> None:
