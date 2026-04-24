@@ -54,9 +54,12 @@ logger.setLevel(logging.INFO)
 if not logger.handlers and not logging.getLogger().handlers:
     logger.addHandler(logging.StreamHandler())
 
-_CORS_ORIGINS = [
-    f"http://localhost:{p}" for p in range(5173, 5180)
-]
+_CORS_ORIGINS = [f"http://localhost:{p}" for p in range(5173, 5180)]
+_extra_origins = os.environ.get("CORS_EXTRA_ORIGINS", "").strip()
+if _extra_origins:
+    _CORS_ORIGINS.extend(
+        o.strip() for o in _extra_origins.split(",") if o.strip()
+    )
 
 _CLOSE_CODE_VERSION = 4040
 
