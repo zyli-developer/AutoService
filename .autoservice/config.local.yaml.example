@@ -65,6 +65,12 @@ cc_pool:
   # 多租户部署留空（None）→ 沿用惰性创建 + 首用重建的旧行为。
   # warmup_tenant_id: cinnox
 
+  # ─── 预热哪些 role 子池（省首次 ~3s 冷启动） ────────
+  # 默认 ["triage"]。把 "lead" 加进来避免客户问"购买/价格/合作/试用"
+  # 这类线索意图时，lead 子池首次触发要冷启动 ~3s。
+  # "translate" 不走热路径，不建议加（除非你做多语种 demo）。
+  warmup_roles: ["triage", "lead"]
+
 # ─── Takeover（接管/释放）配置 ─────────────────────────
 # Operator /hijack 后如何自动释放回 AI
 takeover:
