@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  base: process.env.VITE_MOUNT_PATH ?? '/',
   server: {
     port: 5175,
     host: true,
