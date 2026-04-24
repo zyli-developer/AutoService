@@ -23,6 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from autoservice.conversation_engine import ConversationEngine, LocalEngine
+from autoservice.conversation_engine.sqlite_store import (
+    DEFAULT_DB_PATH as _CONV_DB_DEFAULT_PATH,
+    ConversationStore,
+)
 from autoservice.gateway.connection import (
     build_frame,
     build_server_hello,
@@ -219,7 +223,30 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             takeover_cfg = _TAKEOVER_CONFIG_OVERRIDE
         else:
             takeover_cfg = load_takeover_config(Path(".autoservice/config.local.yaml"))
-        engine = LocalEngine(config={"takeover": takeover_cfg})
+        # Conversation persistence — ON by default so `make run-gateway`
+        # keeps operator-visible history across restarts. Pytest runs are
+        # detected via `pytest in sys.modules` and default to OFF so the
+        # many tests that call `create_app()` don't write to the real
+        # .autoservice/database/conversations.db. Explicit env wins in all
+        # cases: set CONV_PERSIST=1/0 to force either way, CONV_DB_PATH to
+        # relocate the file.
+        import sys
+        persist_default = "0" if "pytest" in sys.modules else "1"
+        store: ConversationStore | None = None
+        if os.environ.get("CONV_PERSIST", persist_default) == "1":
+            db_path = Path(
+                os.environ.get("CONV_DB_PATH", str(_CONV_DB_DEFAULT_PATH))
+            )
+            try:
+                store = ConversationStore(db_path=db_path)
+                logger.info("[conv-store] persistence enabled at %s", db_path)
+            except Exception:
+                logger.exception(
+                    "[conv-store] failed to open %s — falling back to in-memory",
+                    db_path,
+                )
+                store = None
+        engine = LocalEngine(config={"takeover": takeover_cfg}, store=store)
     else:
         # Engine provided externally — extract its takeover config if available
         takeover_cfg = getattr(engine, "_takeover_config", None)

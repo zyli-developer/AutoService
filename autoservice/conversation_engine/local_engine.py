@@ -2,8 +2,13 @@
 
 T1A.1: Mode/Gate/lifecycle/participants/messages.
 T1A.2: Timer scheduling (set_timer/cancel_timer/on_expire actions).
-T1A.3: EventBus — in-process pub/sub + SQLite async persistence + plugin hook dispatch.
+T1A.3: EventBus — in-process pub/sub + plugin hook dispatch.
 T2A.1: handle_command — unified command dispatch with permission matrix.
+
+Persistence (post-2026-04-24): if a ``ConversationStore`` is passed to the
+constructor, every mutation is mirrored to SQLite and state is reloaded on
+startup.  Timers and asyncio subscribers are intentionally NOT persisted —
+see ``sqlite_store.py`` docstring for the reasoning.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from autoservice.conversation_engine.errors import (
 log = logging.getLogger(__name__)
 from autoservice.conversation_engine.events import EventType
 from autoservice.conversation_engine.protocol import PluginHook
+from autoservice.conversation_engine.sqlite_store import ConversationStore
 from autoservice.conversation_engine.types import (
     Conversation,
     ConversationMode,
@@ -118,7 +124,12 @@ class LocalEngine:
     since_sequence replay, plugin hook dispatch with Q8c isolation).
     """
 
-    def __init__(self, config: Mapping[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        config: Mapping[str, Any] | None = None,
+        *,
+        store: ConversationStore | None = None,
+    ) -> None:
         self._config = dict(config or {})
         # Takeover config (loaded from app or defaults)
         from autoservice.takeover_config import DEFAULT_TAKEOVER_CONFIG, TakeoverConfig
@@ -130,6 +141,8 @@ class LocalEngine:
         self._takeover_warning_cb = None
         self._takeover_cancel_cb = None
         self._takeover_armed_cb = None
+        # Persistence (optional; None = in-memory only, matches legacy behaviour)
+        self._store = store
         # Core storage
         self._conversations: dict[str, Conversation] = {}
         self._participants: dict[str, list[Participant]] = {}  # conv_id → [Participant]
@@ -147,6 +160,77 @@ class LocalEngine:
         self._takeover_tasks: dict[str, dict[str, Any]] = {}
         # Plugin hooks with Q8c isolation (T1A.3)
         self._hooks: list[PluginHook] = []
+
+        if self._store is not None:
+            loaded = self._store.load_all()
+            self._conversations.update(loaded.conversations)
+            self._participants.update(loaded.participants)
+            self._messages.update(loaded.messages)
+            self._events.update(loaded.events)
+            self._seq.update(loaded.next_msg_seq)
+            self._event_seq.update(loaded.next_event_seq)
+
+    # ---- persistence helpers (no-op when self._store is None) ----
+
+    def _persist_conv(self, conv: Conversation) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.upsert_conversation(conv)
+        except Exception:
+            log.exception("persist conversation %s failed", conv.id)
+
+    def _persist_participants(self, conv_id: str) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.replace_participants(
+                conv_id, self._participants.get(conv_id, []),
+            )
+        except Exception:
+            log.exception("persist participants for %s failed", conv_id)
+
+    def _persist_message(self, msg: Message) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.insert_message(msg)
+            self._store.save_sequences(
+                msg.conversation_id,
+                self._seq.get(msg.conversation_id, 0),
+                self._event_seq.get(msg.conversation_id, 0),
+            )
+        except Exception:
+            log.exception("persist message %s failed", msg.id)
+
+    def _persist_message_update(self, msg: Message) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.update_message(msg)
+        except Exception:
+            log.exception("persist message update %s failed", msg.id)
+
+    def _persist_message_delete(self, conv_id: str, msg_id: str) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.delete_message(conv_id, msg_id)
+        except Exception:
+            log.exception("persist message delete %s/%s failed", conv_id, msg_id)
+
+    def _persist_event(self, ev: Event) -> None:
+        if self._store is None:
+            return
+        try:
+            self._store.insert_event(ev)
+            self._store.save_sequences(
+                ev.conversation_id,
+                self._seq.get(ev.conversation_id, 0),
+                self._event_seq.get(ev.conversation_id, 0),
+            )
+        except Exception:
+            log.exception("persist event %s failed", ev.id)
 
     # ---- internal helpers ----
 
@@ -180,6 +264,7 @@ class LocalEngine:
         old = self._get_conv(conv_id)
         new = dataclasses.replace(old, updated_at=_now(), **kwargs)
         self._conversations[conv_id] = new
+        self._persist_conv(new)
         return new
 
     # ---------- Triage state (spec §3.1) ----------
@@ -243,6 +328,7 @@ class LocalEngine:
             sequence_number=self._next_event_seq(conv_id),
         )
         self._events.setdefault(conv_id, []).append(ev)
+        self._persist_event(ev)
         for sub in list(self._subscribers):
             if sub.matches(ev, self._get_conv_metadata):
                 sub.queue.put_nowait(ev)
@@ -343,6 +429,9 @@ class LocalEngine:
         self._participants[conv_id] = []
         self._messages[conv_id] = []
         self._events[conv_id] = []
+        # Persist the fresh conversation row BEFORE emitting events, since
+        # FK constraints on events/messages require the parent row to exist.
+        self._persist_conv(conv)
         await self._emit_and_dispatch_hooks(
             EventType.CONVERSATION_CREATED, conv_id, {"channel": channel},
             "on_conversation_created", conv,
@@ -445,6 +534,7 @@ class LocalEngine:
             conversation_id,
             participants=tuple(parts),
         )
+        self._persist_participants(conversation_id)
         await self._emit_and_dispatch_hooks(
             EventType.PARTICIPANT_JOINED, conversation_id, {
                 "participant_id": participant.id, "role": participant.role.value,
@@ -467,6 +557,7 @@ class LocalEngine:
         if len(parts) == original_len:
             return  # idempotent
         self._update_conv(conversation_id, participants=tuple(parts))
+        self._persist_participants(conversation_id)
         self._emit(EventType.PARTICIPANT_LEFT, conversation_id, {
             "participant_id": participant_id,
         })
@@ -555,6 +646,7 @@ class LocalEngine:
             metadata=dict(metadata) if metadata else {},
         )
         self._messages[conversation_id].append(msg)
+        self._persist_message(msg)
         await self._emit_and_dispatch_hooks(
             EventType.MESSAGE_SENT, conversation_id, {
                 "message_id": msg.id, "visibility": final_vis.value,
@@ -598,6 +690,7 @@ class LocalEngine:
             edit_of=old.id,
         )
         msgs[idx] = edited
+        self._persist_message_update(edited)
         self._emit(EventType.MESSAGE_EDITED, conversation_id, {
             "message_id": message_id, "edited_by": edited_by,
         })
@@ -615,6 +708,7 @@ class LocalEngine:
         original_len = len(msgs)
         msgs[:] = [m for m in msgs if m.id != message_id]
         if len(msgs) < original_len:
+            self._persist_message_delete(conversation_id, message_id)
             self._emit(EventType.MESSAGE_DELETED, conversation_id, {
                 "message_id": message_id, "deleted_by": deleted_by,
             })
@@ -892,6 +986,7 @@ class LocalEngine:
                     sequence_number=self._next_seq(conversation_id),
                 )
                 self._messages.setdefault(conversation_id, []).append(msg)
+                self._persist_message(msg)
                 self._emit(EventType.MESSAGE_SENT, conversation_id, {
                     "message_id": msg.id, "visibility": "system",
                 })

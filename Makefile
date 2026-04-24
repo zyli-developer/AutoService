@@ -18,12 +18,12 @@ run-web:
 	AUTH_DEV_MODE=1 PLACEHOLDER_ENABLED=0 uv run uvicorn channels.web.app:app --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/web.log
 
 # Phase 6+ WS gateway (/ws/customer, /ws/operator, /ws/admin)
-# CONV_PERSIST=1 enables SQLite-backed conversation persistence
-# (.autoservice/database/conversations.db) — without it, restart wipes
-# operator-visible history. See autoservice/conversation_engine/sqlite_store.py.
+# Conversation persistence is on by default (writes to
+# .autoservice/database/conversations.db). Set CONV_PERSIST=0 to disable,
+# CONV_DB_PATH=<path> to relocate. Reset with scripts/reset_conversations.py.
 run-gateway:
 	@mkdir -p .autoservice/logs
-	PLACEHOLDER_ENABLED=0 CONV_PERSIST=1 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
+	PLACEHOLDER_ENABLED=0 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port $${DEMO_PORT:-8000} --log-level info 2>&1 | tee -a .autoservice/logs/gateway.log
 
 run-server:
 	uv run python3 channels/feishu/channel_server.py
