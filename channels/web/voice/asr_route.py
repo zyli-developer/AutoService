@@ -33,7 +33,7 @@ async def asr_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     log.info("[/asr] browser connected")
 
-    asr = ASRClient()
+    asr: ASRClient | None = None
     try:
         first = await ws.receive_text()
         try:
@@ -45,6 +45,7 @@ async def asr_endpoint(ws: WebSocket) -> None:
             await ws.send_json({"type": "error", "message": "first frame must be type=start"})
             return
 
+        asr = ASRClient()
         await asr.connect()
 
         reader_task = asyncio.create_task(_forward_asr_events(asr, ws))
@@ -60,6 +61,14 @@ async def asr_endpoint(ws: WebSocket) -> None:
                 await t
             except (asyncio.CancelledError, Exception):
                 pass
+        for t in done:
+            exc = t.exception()
+            if exc is not None and not isinstance(exc, asyncio.CancelledError):
+                log.exception("[/asr] task failed", exc_info=exc)
+                try:
+                    await ws.send_json({"type": "error", "message": str(exc)})
+                except Exception:
+                    pass
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -69,10 +78,11 @@ async def asr_endpoint(ws: WebSocket) -> None:
         except Exception:
             pass
     finally:
-        try:
-            await asr.close()
-        except Exception:
-            pass
+        if asr is not None:
+            try:
+                await asr.close()
+            except Exception:
+                pass
         if ws.client_state != WebSocketState.DISCONNECTED:
             try:
                 await ws.close()
