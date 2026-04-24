@@ -3,43 +3,36 @@
 **Linked design:** `2026-04-23-customer-chat-native-voice-design.md`
 **Linked implementation plan:** `2026-04-23-customer-chat-native-voice.md`
 **Branch:** `feat/customer-chat-voice-fab`
-**Scope:** manual acceptance tests that can't be automated in Vitest — real mic, real cc-openclaw backend, real mobile browsers.
+**Scope:** manual acceptance tests that can't be automated in Vitest — real mic, real AutoService gateway, real mobile browsers.
+
+**Architecture note (2026-04-24):** Voice ASR+TTS used to run in a separate
+cc-openclaw `voice_gateway` process on port 8089. As of PR #1 on
+zyli-developer/AutoService (stacked on PR #81), they run in-process on
+AutoService's FastAPI app — same port as chat. The cc-openclaw gateway is
+no longer required for local dev or prod.
 
 ---
 
 ## Setup
 
-### 1. Start cc-openclaw voice gateway
+1. Ensure `DOUBAO_APP_ID` and `DOUBAO_ACCESS_TOKEN` are present in env
+   (shell export or `.autoservice/config.local.yaml`).
+2. Start AutoService gateway (serves /ws/customer + /asr + /tts on the same port):
+   ```
+   make run-gateway
+   ```
+3. Start customer-chat frontend:
+   ```
+   pnpm --filter customer-chat dev
+   ```
+4. `VITE_VOICE_GATEWAY_URL` is **no longer needed** — remove it from
+   `frontend/apps/customer-chat/.env.local` unless you are deliberately
+   pointing voice at a different host.
 
-```bash
-cd D:/workspace/zhidaoyuan/cc-openclaw
-ALLOWED_ORIGINS="http://localhost:5173" \
-VOLCENGINE_API_KEY=<your dev key> \
-GATEWAY_PORT=8089 \
-python voice_gateway/server.py
-```
+Expect: `http://localhost:5173` serves the customer-chat SPA; the vite dev
+server proxies `/asr` and `/tts` to the AutoService gateway on port 8000.
 
-Expect: `Starting voice gateway on :8089` in logs. No errors.
-
-### 2. Start AutoService customer-chat dev server
-
-Terminal B:
-```bash
-cd D:/workspace/zhidaoyuan/AutoService
-VITE_VOICE_GATEWAY_URL=http://localhost:8089 make run-web
-```
-
-Or directly:
-```bash
-cd frontend/apps/customer-chat
-# Write env into .env.local (inline `VAR=value pnpm dev` is flaky on Windows bash)
-echo "VITE_VOICE_GATEWAY_URL=http://localhost:8089" > .env.local
-pnpm dev
-```
-
-Expect: `http://localhost:5173` serves the customer-chat SPA.
-
-### 3. Open the chat
+### Open the chat
 
 Browser: `http://localhost:5173/tenant/<your-test-tenant>/chat`
 
@@ -79,10 +72,14 @@ Chat widget should render in the bottom-right. On mobile viewports it opens auto
 5. Expect: the full bot text is still in the chat stream (not truncated visually).
 
 ### TC-DESKTOP-04 — Gateway down (asr unreachable)
-1. Stop the voice_gateway server.
+1. Stop the AutoService gateway (the `make run-gateway` process).
 2. Click 🎤.
 3. Expect: status bar shows `语音服务连接失败` (red) with **重试** button.
-4. Start server again → click **重试** → flow recovers.
+4. Start gateway again (`make run-gateway`) → click **重试** → flow recovers.
+
+**Troubleshooting:** If voice fails, check that `DOUBAO_APP_ID` /
+`DOUBAO_ACCESS_TOKEN` are present and that `make run-gateway` logs show
+`[/asr] browser connected` when the mic button is clicked.
 
 ### TC-DESKTOP-05 — Network drop mid-call
 1. Start call; during `listening` state, disable WiFi or use browser DevTools → Network → Offline.
