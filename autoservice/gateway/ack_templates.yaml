@@ -1,0 +1,14 @@
+# Pre-triage acknowledgement lines per language.
+# Spec: docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md §5
+zh:
+  - "好的，让我帮你看看 👋"
+  - "收到，请稍等"
+  - "马上为你查询..."
+  - "好的，正在处理"
+  - "嗯，让我想想"
+en:
+  - "Sure, let me check that for you 👋"
+  - "Got it, one moment..."
+  - "On it!"
+  - "Let me look into this..."
+  - "Hmm, give me a second"
