@@ -1147,6 +1147,204 @@ async def _drain_with_placeholder(
     return reply_text, placeholder_msg
 
 
+async def _drain_into_bubbles(
+    iterator: Any,
+    *,
+    engine: ConversationEngine,
+    conv_id: str,
+    target_role: str,
+    ws: "WebSocket",
+    detected_language: str | None = None,
+    intent: str | None = None,
+    perf_out: dict | None = None,
+) -> str:
+    """Drain the CC SDK stream into multiple bubbles split on paragraph
+    boundaries. Each segment is persisted as its own ``Message`` row and
+    pushed as its own ``message`` frame; within-bubble token growth uses
+    the existing ``message_edited`` typewriter mechanism.
+
+    Spec: docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md §6, §9.
+
+    Returns the full reply text. Engine/ws errors are logged + swallowed
+    per-bubble; the function never raises on a transport error.
+    """
+    from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+    from autoservice.gateway.paragraph_splitter import (
+        ParagraphSplitter, DEFAULT_MIN_SEGMENT_CHARS,
+    )
+
+    multi_bubble = os.getenv("MULTI_BUBBLE_ENABLED", "1") == "1"
+    # When multi_bubble is off, instantiate a splitter that never fires
+    # boundaries (max_segments=1 guarantees no mid-stream emissions).
+    if multi_bubble:
+        splitter = ParagraphSplitter()
+    else:
+        splitter = ParagraphSplitter(
+            min_segment_chars=DEFAULT_MIN_SEGMENT_CHARS, max_segments=1,
+        )
+
+    full_text = ""
+    saw_stream_text = False
+
+    current_msg: Any = None
+    segment_index: int = 0
+    last_push_time: float = 0.0
+    last_push_len: int = 0
+    streaming_edited_by = f"agent:{target_role}"
+
+    async def _persist_open_segment(text: str) -> Any:
+        nonlocal segment_index
+        try:
+            msg = await engine.send_message(
+                conv_id, source="agent", content=text,
+                metadata={"is_segment": True, "segment_index": segment_index},
+            )
+            segment_index += 1
+            frame = _message_frame(msg)
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                logger.warning("Bubble open ws push failed conv=%s", conv_id)
+            try:
+                await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+            except Exception:
+                logger.debug("Bubble open broadcast failed conv=%s", conv_id)
+            return msg
+        except Exception:
+            logger.exception("Bubble open persist failed conv=%s", conv_id)
+            return None
+
+    async def _push_streaming_edit(msg: Any, text: str) -> None:
+        if msg is None:
+            return
+        frame = build_frame(
+            "message_edited",
+            {
+                "conversation_id": conv_id,
+                "message_id": msg.id,
+                "new_content": text,
+                "edited_by": streaming_edited_by,
+                "sequence_number": msg.sequence_number,
+            },
+        )
+        try:
+            await ws.send_json(frame)
+        except Exception:
+            logger.debug("Streaming edit ws push failed conv=%s", conv_id)
+        try:
+            await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+        except Exception:
+            logger.debug("Streaming edit broadcast failed conv=%s", conv_id)
+
+    async def _finalize_segment(msg: Any, final_text: str) -> None:
+        if msg is None:
+            return
+        try:
+            await engine.edit_message(
+                conv_id, msg.id, new_content=final_text,
+                edited_by=streaming_edited_by,
+            )
+        except Exception:
+            logger.exception("Bubble finalize edit_message failed conv=%s", conv_id)
+        await _push_streaming_edit(msg, final_text)
+
+    async def _emit_chunk(chunk: str) -> None:
+        """Process one text chunk: feed splitter, manage current bubble.
+
+        State is driven entirely off ``splitter.pending`` — never maintain
+        a parallel buffer because suppression silently mutates pending in
+        ways the caller can't predict. See spec §9.2.
+        """
+        nonlocal full_text, current_msg, last_push_time, last_push_len
+        full_text += chunk
+        emitted = splitter.feed(chunk)
+        pending = splitter.pending  # post-suppression buffer
+
+        # Persist-on-first-token-of-segment: open a row only after pending
+        # crosses MIN.
+        if current_msg is None:
+            if len(pending.strip()) >= splitter._min:
+                current_msg = await _persist_open_segment(pending)
+                last_push_len = len(pending)
+                last_push_time = asyncio.get_running_loop().time()
+        else:
+            # Throttled typewriter pushes (no engine writes here).
+            now = asyncio.get_running_loop().time()
+            if (
+                len(pending) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
+                and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S
+            ):
+                await _push_streaming_edit(current_msg, pending)
+                last_push_time = now
+                last_push_len = len(pending)
+
+        # Boundaries fired: finalize current bubble and start fresh.
+        for finalized_text in emitted:
+            if current_msg is not None:
+                await _finalize_segment(current_msg, finalized_text)
+            current_msg = None
+            last_push_len = 0
+
+    try:
+        async for item in iterator:
+            if isinstance(item, StreamEvent):
+                event = getattr(item, "event", None) or {}
+                ev_type = event.get("type")
+                if ev_type == "content_block_start":
+                    block = event.get("content_block") or {}
+                    if block.get("type") == "tool_use" and perf_out is not None:
+                        perf_out["tool_use_count"] = perf_out.get("tool_use_count", 0) + 1
+                elif ev_type == "content_block_delta":
+                    delta = event.get("delta") or {}
+                    if delta.get("type") == "text_delta":
+                        chunk = delta.get("text") or ""
+                        if chunk:
+                            if perf_out is not None and "first_token_t" not in perf_out:
+                                perf_out["first_token_t"] = _time.perf_counter()
+                            if perf_out is not None and "first_text_t" not in perf_out:
+                                perf_out["first_text_t"] = _time.perf_counter()
+                            saw_stream_text = True
+                            await _emit_chunk(chunk)
+            elif isinstance(item, AssistantMessage) and item.content:
+                has_text = False
+                has_tool = False
+                for block in item.content:
+                    btype = getattr(block, "type", None)
+                    if btype == "tool_use" or hasattr(block, "input"):
+                        has_tool = True
+                    elif hasattr(block, "text"):
+                        has_text = True
+                if has_tool and perf_out is not None and not saw_stream_text:
+                    perf_out["tool_use_count"] = perf_out.get("tool_use_count", 0) + 1
+                if perf_out is not None and "first_token_t" not in perf_out:
+                    perf_out["first_token_t"] = _time.perf_counter()
+                if has_text and perf_out is not None and "first_text_t" not in perf_out:
+                    perf_out["first_text_t"] = _time.perf_counter()
+                if not saw_stream_text:
+                    for block in item.content:
+                        if hasattr(block, "text"):
+                            await _emit_chunk(block.text)
+            elif isinstance(item, ResultMessage) and item.result:
+                if perf_out is not None and "first_token_t" not in perf_out:
+                    perf_out["first_token_t"] = _time.perf_counter()
+                if perf_out is not None and "first_text_t" not in perf_out:
+                    perf_out["first_text_t"] = _time.perf_counter()
+                if not saw_stream_text:
+                    await _emit_chunk(item.result)
+    finally:
+        # Flush whatever is still in splitter.pending as the final segment.
+        final_tail = splitter.flush()
+        if final_tail:
+            if current_msg is None:
+                # Whole turn was below MIN until end; persist now as the
+                # one and only bubble.
+                await _persist_open_segment(final_tail)
+            else:
+                await _finalize_segment(current_msg, final_tail)
+
+    return full_text
+
+
 async def _send_direct_reply(
     engine: ConversationEngine,
     ws: "WebSocket",
