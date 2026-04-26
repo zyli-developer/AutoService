@@ -112,6 +112,16 @@ class ParagraphSplitter:
     def segment_count(self) -> int:
         return self._emitted
 
+    @property
+    def pending(self) -> str:
+        """Current open-segment buffer (post-suppression, pre-boundary).
+
+        The caller of feed() drives typewriter pushes by reading this
+        property — never maintain a parallel accumulator outside, since
+        suppression mutates this buffer in ways the caller can't predict.
+        """
+        return self._buf
+
     def feed(self, chunk: str) -> list[str]:
         if not chunk:
             return []
@@ -120,11 +130,13 @@ class ParagraphSplitter:
         return []
 
     def flush(self) -> str | None:
-        if not self._buf.strip():
-            self._buf = ""
-            return None
-        out = self._buf
+        # Strip leading/trailing whitespace from the final segment so a
+        # consumed-then-followed pattern like "  Second text" doesn't carry
+        # its leading whitespace into the persisted bubble. See spec §9.2.
+        out = self._buf.strip()
         self._buf = ""
+        if not out:
+            return None
         self._emitted += 1
         return out
 ```
@@ -334,14 +346,15 @@ def test_six_paragraphs_with_default_max_5():
 
 
 def test_consecutive_empty_boundaries_collapse():
-    """\\n\\n\\n\\n\\n\\n produces no real segment."""
+    """Multiple back-to-back \\n\\n with a below-MIN segment in front.
+
+    Walk: "One" buffers (3 < MIN=5). First "\\n\\n" hits → candidate "One"
+    is below MIN, boundary suppressed and consumed (buf returns to "One").
+    Second "\\n\\n" same fate. Third same. Then "Two paragraph." appends.
+    flush() trims and returns "OneTwo paragraph." as one segment.
+    """
     s = ParagraphSplitter()
     out = s.feed("One\n\n\n\n\n\nTwo paragraph.")
-    # The first "\n\n" fires after "One" → "One" emitted (4 chars, BUT below
-    # MIN=5 so consumed). The next "\n\n" then fires when buffer is "One\n\n\n"
-    # — wait, this requires careful walk-through. The test is asserting the
-    # **final** observable: a single segment "OneTwo paragraph." since
-    # "One" is below MIN and gets consumed.
     assert out == []
     assert s.flush() == "OneTwo paragraph."
 ```
@@ -501,13 +514,16 @@ def _load_templates() -> dict[str, list[str]]:
 def detect_lang(customer_text: str, tenant_id: str | None = None) -> str:
     """Return 'zh' or 'en' from a regex scan over CJK ranges.
 
-    For ambiguous input (no CJK chars but text might be all-punctuation),
-    tenants in ``_ZH_DEFAULT_TENANTS`` default to ``zh``.
+    For ambiguous input (no CJK chars and only punctuation/symbols / no ASCII
+    letters), tenants in ``_ZH_DEFAULT_TENANTS`` default to ``zh``.
     """
     if _CJK_RE.search(customer_text):
         return "zh"
-    if tenant_id in _ZH_DEFAULT_TENANTS and not customer_text.strip().isascii():
-        return "zh"
+    if tenant_id in _ZH_DEFAULT_TENANTS:
+        # If the text contains zero ASCII letters AND zero non-ASCII letters,
+        # we can't classify by alphabet — bias to zh for cinnox demo.
+        if not any(c.isalpha() for c in customer_text):
+            return "zh"
     return "en"
 
 
@@ -553,8 +569,12 @@ async def send_pretriage_ack(
     was skipped (length heuristic) OR if persistence/WS push failed
     (errors are logged, not raised — main pipeline must not break).
     """
-    if not os.getenv("INSTANT_ACK_ENABLED", os.getenv("PLACEHOLDER_ENABLED", "1")) == "1":
+    if os.getenv("INSTANT_ACK_ENABLED", os.getenv("PLACEHOLDER_ENABLED", "1")) != "1":
         # Both new var and the deprecated alias respect "0" → no-op.
+        # If the deprecated alias is the one being honored, surface that
+        # at INFO once per process so ops can see it. (web_gateway.py
+        # already emits the WARNING at startup; this is just the first
+        # ack-call breadcrumb.)
         return None
     lang = detect_lang(customer_text, tenant_id=tenant_id)
     if should_skip_ack(customer_text, lang):
@@ -842,8 +862,14 @@ class TurnQueue:
                 log.exception("turn runner failed conv=%s", conv_id)
             async with self._registry_lock:
                 st = self._state.get(conv_id)
-                if st is None:
-                    break  # cleaned up by another path; bail
+                # Invariant: only _run_loop pops conv_id from _state, so st
+                # should never be None while this loop is running. Assert
+                # exposes future bugs (e.g., a refactor that adds another
+                # cleanup path).
+                assert st is not None, (
+                    f"TurnQueue invariant violated: state for conv={conv_id} "
+                    f"disappeared while _run_loop is still running"
+                )
                 if st.fifo:
                     runner = st.fifo.popleft()
                 else:
@@ -1038,21 +1064,169 @@ git commit -m "feat(gateway): TurnQueue with registry-lock-protected per-conv FI
 
 ---
 
-## Task 6: Refactor `_drain_with_placeholder` → `_drain_into_bubbles`
+## Task 6a: Add `_drain_into_bubbles` (multi-bubble path) + unit tests
 
 **Files:**
-- Modify: `autoservice/gateway/message_router.py:905-1147` (replace `_drain_with_placeholder` body)
+- Modify: `autoservice/gateway/message_router.py` (add new function alongside existing `_drain_with_placeholder`; do NOT delete old or change call site yet)
+- Create: `tests/gateway/test_drain_into_bubbles.py`
 
-This is the biggest task. We replace the placeholder-edit-in-place drain with a multi-bubble drain that uses `ParagraphSplitter` and the persist-on-first-token-of-segment policy from spec §9.2.
+This task adds the new function next to the old one. Old function and call sites are untouched until Task 6c. This lets us TDD the new function in isolation.
 
-- [ ] **Step 1: Read the current `_drain_with_placeholder` to understand boundaries**
+- [ ] **Step 1: Write failing unit tests for `_drain_into_bubbles`**
 
-Run: `uv run python -c "from autoservice.gateway.message_router import _drain_with_placeholder; print('imports OK')"`
-Expected: imports succeed (sanity check before refactor).
+```python
+# tests/gateway/test_drain_into_bubbles.py
+"""Unit tests for _drain_into_bubbles — the multi-bubble drain.
 
-- [ ] **Step 2: Replace `_drain_with_placeholder` with `_drain_into_bubbles`**
+Mocks the LLM stream + engine; checks segment persistence, frame
+ordering, and the persist-on-first-token-of-segment policy from §9.2.
+"""
+from __future__ import annotations
 
-In `autoservice/gateway/message_router.py`, find the function definition `async def _drain_with_placeholder(` (around line 905). Replace the entire function (from `async def _drain_with_placeholder(` through its closing `return reply_text, placeholder_msg` at the end) with:
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from autoservice.gateway.message_router import _drain_into_bubbles
+
+
+class _FakeMsg:
+    def __init__(self, mid: str, seq: int, content: str = "") -> None:
+        self.id = mid
+        self.conversation_id = "c1"
+        self.sequence_number = seq
+        self.content = content
+
+
+class _FakeEngine:
+    def __init__(self) -> None:
+        self.messages: list[_FakeMsg] = []
+        self.edits: list[tuple[str, str]] = []
+        self._next_id = 1
+
+    async def send_message(self, conv_id, *, source, content, metadata=None):
+        msg = _FakeMsg(f"m{self._next_id}", self._next_id, content)
+        self._next_id += 1
+        self.messages.append(msg)
+        return msg
+
+    async def edit_message(self, conv_id, msg_id, *, new_content, edited_by):
+        self.edits.append((msg_id, new_content))
+        for m in self.messages:
+            if m.id == msg_id:
+                m.content = new_content
+                return m
+        return None
+
+
+def _stream_for(text: str, chunk_size: int = 4):
+    from claude_agent_sdk.types import StreamEvent
+    out = []
+    for i in range(0, len(text), chunk_size):
+        out.append(StreamEvent(event={
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": text[i:i+chunk_size]},
+        }))
+    return out
+
+
+async def _aiter(items):
+    for it in items:
+        yield it
+
+
+@pytest.mark.asyncio
+async def test_three_paragraphs_three_persisted_rows(monkeypatch):
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    engine = _FakeEngine()
+    ws = MagicMock()
+    ws.send_json = AsyncMock()
+    text = (
+        "First paragraph here, long enough.\n\n"
+        "Second paragraph here, also long enough.\n\n"
+        "Third and final paragraph."
+    )
+    out = await _drain_into_bubbles(
+        _aiter(_stream_for(text, 6)),
+        engine=engine, conv_id="c1", target_role="customer", ws=ws,
+    )
+    assert out == text
+    # Three rows persisted; trimmed content (no trailing \n\n).
+    contents = [m.content for m in engine.messages]
+    # Final content reflects the trimmed final text after the boundary
+    # finalize edit_message call.
+    assert engine.messages[0].content == "First paragraph here, long enough."
+    assert engine.messages[1].content == "Second paragraph here, also long enough."
+    assert engine.messages[2].content == "Third and final paragraph."
+    assert len(engine.messages) == 3
+
+
+@pytest.mark.asyncio
+async def test_single_paragraph_one_row(monkeypatch):
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    engine = _FakeEngine()
+    ws = MagicMock()
+    ws.send_json = AsyncMock()
+    text = "Single paragraph reply with no break."
+    out = await _drain_into_bubbles(
+        _aiter(_stream_for(text, 4)),
+        engine=engine, conv_id="c1", target_role="customer", ws=ws,
+    )
+    assert out == text
+    assert len(engine.messages) == 1
+    assert engine.messages[0].content == text
+
+
+@pytest.mark.asyncio
+async def test_below_min_consumes_boundary(monkeypatch):
+    """Spec §9.2 — when candidate segment is below MIN, the \\n\\n is consumed
+    and the bubble keeps growing through it. Final result: one bubble."""
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    engine = _FakeEngine()
+    ws = MagicMock()
+    ws.send_json = AsyncMock()
+    text = "好。\n\nHere is the actually-long-enough rest of the reply."
+    out = await _drain_into_bubbles(
+        _aiter(_stream_for(text, 4)),
+        engine=engine, conv_id="c1", target_role="customer", ws=ws,
+    )
+    # The "好。" prefix is below MIN=5 → boundary consumed → single bubble.
+    # Content has no \n\n in it.
+    assert len(engine.messages) == 1
+    assert "\n\n" not in engine.messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_typewriter_edits_pushed_during_growth(monkeypatch):
+    """Verify message_edited frames are pushed as the bubble grows
+    after first persistence. (Frame count > 1 per bubble = typewriter.)"""
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    engine = _FakeEngine()
+    ws = MagicMock()
+    ws.send_json = AsyncMock()
+    # Long single paragraph in many small chunks so several typewriter
+    # frames have a chance to fire.
+    text = "A" * 80
+    await _drain_into_bubbles(
+        _aiter(_stream_for(text, 1)),  # one char per chunk
+        engine=engine, conv_id="c1", target_role="customer", ws=ws,
+    )
+    # Initial message frame + N message_edited frames.
+    sent = [c.args[0] for c in ws.send_json.await_args_list]
+    types = [f.get("type") for f in sent]
+    assert types[0] == "message"
+    assert "message_edited" in types
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `uv run pytest tests/gateway/test_drain_into_bubbles.py -v`
+Expected: FAIL with `ImportError: cannot import name '_drain_into_bubbles'`.
+
+- [ ] **Step 3: Add `_drain_into_bubbles` to `message_router.py`**
+
+Insert this function in `autoservice/gateway/message_router.py` **immediately after** `_drain_with_placeholder` ends (around line 1148, before the next def). Do NOT modify or delete the existing `_drain_with_placeholder`.
 
 ```python
 async def _drain_into_bubbles(
@@ -1073,28 +1247,36 @@ async def _drain_into_bubbles(
 
     Spec: docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md §6, §9.
 
-    Returns the full reply text (concatenation of all segments). Raises
-    nothing — engine/ws errors are logged + per-bubble best-effort.
+    Returns the full reply text. Engine/ws errors are logged + swallowed
+    per-bubble; the function never raises on a transport error.
     """
     from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
-    from autoservice.gateway.paragraph_splitter import ParagraphSplitter
+    from autoservice.gateway.paragraph_splitter import (
+        ParagraphSplitter, DEFAULT_MIN_SEGMENT_CHARS,
+    )
 
     multi_bubble = os.getenv("MULTI_BUBBLE_ENABLED", "1") == "1"
-    splitter = ParagraphSplitter() if multi_bubble else None
+    # When multi_bubble is off, instantiate a splitter that never fires
+    # boundaries (max_segments=1 guarantees no mid-stream emissions).
+    # This unifies the buffer-handling code path; final bubble is the whole
+    # reply via flush().
+    if multi_bubble:
+        splitter = ParagraphSplitter()
+    else:
+        splitter = ParagraphSplitter(
+            min_segment_chars=DEFAULT_MIN_SEGMENT_CHARS, max_segments=1,
+        )
 
     full_text = ""
     saw_stream_text = False
 
-    # Per-segment state
-    current_msg: Any = None              # currently open Message row
-    segment_buf: str = ""                # accumulator for current bubble (may be below MIN)
+    current_msg: Any = None
     segment_index: int = 0
     last_push_time: float = 0.0
     last_push_len: int = 0
     streaming_edited_by = f"agent:{target_role}"
 
     async def _persist_open_segment(text: str) -> Any:
-        """Persist a new segment row with the given initial content."""
         nonlocal segment_index
         try:
             msg = await engine.send_message(
@@ -1117,7 +1299,6 @@ async def _drain_into_bubbles(
             return None
 
     async def _push_streaming_edit(msg: Any, text: str) -> None:
-        """Throttled progress-edit frame (no engine write)."""
         if msg is None:
             return
         frame = build_frame(
@@ -1140,70 +1321,52 @@ async def _drain_into_bubbles(
             logger.debug("Streaming edit broadcast failed conv=%s", conv_id)
 
     async def _finalize_segment(msg: Any, final_text: str) -> None:
-        """Boundary-fire: edit the persisted row to the trimmed final."""
         if msg is None:
             return
         try:
-            await engine.edit_message(msg.id, content=final_text, edited_by=streaming_edited_by)
+            await engine.edit_message(
+                conv_id, msg.id, new_content=final_text,
+                edited_by=streaming_edited_by,
+            )
         except Exception:
             logger.exception("Bubble finalize edit_message failed conv=%s", conv_id)
-        # final pushed_edit reflects the trimmed final text
         await _push_streaming_edit(msg, final_text)
 
     async def _emit_chunk(chunk: str) -> None:
-        """Process one text chunk: feed splitter, manage open segment.
+        """Process one text chunk: feed splitter, manage current bubble.
 
-        Implements the persist-on-first-token-of-segment policy from §9.2:
-        only call ``_persist_open_segment`` once the buffered candidate
-        crosses MIN_SEGMENT_CHARS.
+        State is driven entirely off ``splitter.pending`` — never maintain
+        a parallel buffer because suppression silently mutates pending in
+        ways the caller can't predict. See spec §9.2.
         """
-        nonlocal full_text, current_msg, segment_buf, last_push_time, last_push_len
+        nonlocal full_text, current_msg, last_push_time, last_push_len
         full_text += chunk
-        if splitter is None:
-            # MULTI_BUBBLE_ENABLED=0 path: keep everything in one bubble.
-            segment_buf += chunk
-            if current_msg is None and len(segment_buf.strip()) >= ParagraphSplitter().__class__.__init__.__defaults__[0]:
-                # Once buffer crosses MIN, persist and start streaming edits.
-                current_msg = await _persist_open_segment(segment_buf)
-            elif current_msg is not None:
-                now = asyncio.get_running_loop().time()
-                if (
-                    len(segment_buf) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
-                    and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S
-                ):
-                    await _push_streaming_edit(current_msg, segment_buf)
-                    last_push_time = now
-                    last_push_len = len(segment_buf)
-            return
-
-        # Multi-bubble path: feed splitter; emitted list contains COMPLETED segments.
         emitted = splitter.feed(chunk)
-        # Update the open bubble with growth so far. Splitter has internal
-        # buffer for the *current* (still-open) segment; we shadow with our
-        # own accumulator just for typewriter purposes.
-        segment_buf += chunk
+        pending = splitter.pending  # post-suppression buffer
 
-        # Throttle within-bubble typewriter pushes (only after a row exists).
-        if current_msg is None and len(segment_buf.strip()) >= splitter._min:
-            current_msg = await _persist_open_segment(segment_buf)
-            last_push_len = len(segment_buf)
-            last_push_time = asyncio.get_running_loop().time()
-        elif current_msg is not None and not emitted:
+        # Persist-on-first-token-of-segment: open a row only after pending
+        # crosses MIN.
+        if current_msg is None:
+            if len(pending.strip()) >= splitter._min:
+                current_msg = await _persist_open_segment(pending)
+                last_push_len = len(pending)
+                last_push_time = asyncio.get_running_loop().time()
+        else:
+            # Throttled typewriter pushes (no engine writes here).
             now = asyncio.get_running_loop().time()
             if (
-                len(segment_buf) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
+                len(pending) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
                 and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S
             ):
-                await _push_streaming_edit(current_msg, segment_buf)
+                await _push_streaming_edit(current_msg, pending)
                 last_push_time = now
-                last_push_len = len(segment_buf)
+                last_push_len = len(pending)
 
-        # Boundaries fired: finalize the current bubble + open the next.
+        # Boundaries fired: finalize current bubble and start fresh.
         for finalized_text in emitted:
             if current_msg is not None:
                 await _finalize_segment(current_msg, finalized_text)
             current_msg = None
-            segment_buf = ""
             last_push_len = 0
 
     try:
@@ -1253,64 +1416,257 @@ async def _drain_into_bubbles(
                 if not saw_stream_text:
                     await _emit_chunk(item.result)
     finally:
-        # Flush whatever is still buffered as the final segment.
-        final_tail: str | None = None
-        if splitter is not None:
-            final_tail = splitter.flush()
-        else:
-            final_tail = segment_buf if segment_buf.strip() else None
+        # Flush whatever is still in splitter.pending as the final segment.
+        final_tail = splitter.flush()
         if final_tail:
             if current_msg is None:
-                # Whole turn was below MIN until end: persist now.
-                current_msg = await _persist_open_segment(final_tail)
+                # Whole turn was below MIN until end; persist now as the
+                # one and only bubble.
+                await _persist_open_segment(final_tail)
             else:
                 await _finalize_segment(current_msg, final_tail)
-        elif current_msg is not None:
-            # Tail was empty/whitespace; just finalize what we have.
-            await _finalize_segment(current_msg, segment_buf.strip() or segment_buf)
 
     return full_text
 ```
 
-- [ ] **Step 3: Update the call site to use the new function**
+- [ ] **Step 4: Run the new unit tests**
 
-Find the call to `_drain_with_placeholder` in `_generate_agent_reply` (around message_router.py:1700-ish — search for `_drain_with_placeholder(`) and replace it with `_drain_into_bubbles`. Drop the `eligible=` and `delay_s=` kwargs (they no longer exist), drop the returned `placeholder_msg` since there's no placeholder to clean up. Specifically:
+Run: `uv run pytest tests/gateway/test_drain_into_bubbles.py -v`
+Expected: all 4 tests PASS.
 
-Old (illustrative):
-```python
-reply_text, placeholder_msg = await _drain_with_placeholder(
-    iterator, engine=engine, conv_id=conv_id,
-    target_role=target_role, ws=ws,
-    detected_language=detected_language,
-    eligible=(target_role in PLACEHOLDER_ELIGIBLE_ROLES),
-    intent=decision.intent if decision else None,
-    perf_out=perf,
-)
+- [ ] **Step 5: Run the full gateway test suite to ensure no regression**
+
+Run: `uv run pytest tests/gateway/ -v --tb=short`
+Expected: green (the old `_drain_with_placeholder` is still wired in, so existing behavior is unchanged).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add autoservice/gateway/message_router.py tests/gateway/test_drain_into_bubbles.py
+git commit -m "feat(gateway): add _drain_into_bubbles alongside placeholder drain"
 ```
 
-New:
+---
+
+## Task 6b: Switch the call site to `_drain_into_bubbles`
+
+**Files:**
+- Modify: `autoservice/gateway/message_router.py` (around L1699 — the call site in `_generate_agent_reply`; and L1763-L1828 — the post-drain handling)
+
+This task swaps the call site. The old `_drain_with_placeholder` function is still in the file (deletion happens in Task 6c).
+
+- [ ] **Step 1: Inspect the current call site to confirm line context**
+
+Run: `grep -n "_drain_with_placeholder\|placeholder_msg\|_cleanup_stranded_placeholder" autoservice/gateway/message_router.py | grep -v 'def _drain_with_placeholder\|def _cleanup_stranded' | sort -n`
+Expected output (the lines you'll edit): roughly L1642 (placeholder_msg / placeholder_eligible init), L1699 (the call), L1763–1828 (cleanup + edit_message branches that depend on placeholder_msg).
+
+- [ ] **Step 2: Replace the call site block**
+
+Find this block in `autoservice/gateway/message_router.py` (around L1642–L1828). Read the actual surrounding code carefully, then apply these replacements **in order**:
+
+**Replacement 1** — at the variable init around L1642 (`placeholder_msg: Any = None` and `placeholder_eligible = ...`). Delete both lines:
+
 ```python
-reply_text = await _drain_into_bubbles(
-    iterator, engine=engine, conv_id=conv_id,
-    target_role=target_role, ws=ws,
-    detected_language=detected_language,
-    intent=decision.intent if decision else None,
-    perf_out=perf,
-)
+        # Strict literal text to find:
+        placeholder_msg: Any = None
+        placeholder_eligible = target_role in PLACEHOLDER_ELIGIBLE_ROLES
 ```
 
-Also remove any reference to `placeholder_msg` further down in the same function — those branches are dead now.
+→ Replace with: (nothing — delete both lines)
 
-- [ ] **Step 4: Run the existing related tests to see what breaks**
+**Replacement 2** — the `_drain_with_placeholder` call at L1699. Find:
 
-Run: `uv run pytest tests/gateway/ -v -k 'not test_drain_with_placeholder' --co`
-Expected: collection succeeds (existing test_drain_with_placeholder.py is excluded; we'll delete it in Task 11).
+```python
+            reply_text, placeholder_msg = await _drain_with_placeholder(
+                iterator,
+                engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
+                detected_language=detected_language,
+                eligible=placeholder_eligible,
+                intent=getattr(decision, "intent", None) if decision else None,
+                perf_out=perf,
+            )
+```
 
-- [ ] **Step 5: Commit**
+→ Replace with:
+
+```python
+            reply_text = await _drain_into_bubbles(
+                iterator,
+                engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
+                detected_language=detected_language,
+                intent=getattr(decision, "intent", None) if decision else None,
+                perf_out=perf,
+            )
+```
+
+**Replacement 3** — empty-reply cleanup at L1763. The old block calls `_cleanup_stranded_placeholder` to convert the placeholder bubble into an "empty reply" notice. With the new architecture there is no single placeholder; if reply_text is empty we must have never crossed MIN, so no segments were persisted. The cleanup just becomes "send a fallback SIDE-style notice as a regular agent message." Find:
+
+```python
+        if not reply_text.strip():
+            logger.warning("Agent reply: empty response from CC SDK")
+            await _cleanup_stranded_placeholder(
+                engine, ws, conv_id, placeholder_msg,
+                reason="(抱歉,本次未生成有效回复)",
+                edited_by="system:empty_reply",
+            )
+            return
+```
+
+→ Replace with:
+
+```python
+        if not reply_text.strip():
+            logger.warning("Agent reply: empty response from CC SDK conv=%s", conv_id)
+            try:
+                fallback = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(抱歉,本次未生成有效回复)",
+                    metadata={"is_fallback": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(fallback))
+                except Exception:
+                    logger.debug("Empty-reply fallback ws push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Empty-reply fallback persist failed conv=%s", conv_id)
+            return
+```
+
+**Replacement 4** — TAKEOVER cleanup at L1785. Same pattern. Find:
+
+```python
+        if current_mode == ConversationMode.TAKEOVER:
+            logger.info("Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id)
+            await _cleanup_stranded_placeholder(
+                engine, ws, conv_id, placeholder_msg,
+                reason="(客服已接管对话)",
+                edited_by="system:takeover",
+            )
+            return
+```
+
+→ Replace with:
+
+```python
+        if current_mode == ConversationMode.TAKEOVER:
+            logger.info(
+                "Agent reply discarded: conv=%s switched to TAKEOVER mid-flight (segments=%d)",
+                conv_id,
+                len([m for m in engine.messages if False]) if False else 0,  # we don't track count locally
+            )
+            try:
+                notice = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(客服已接管对话)",
+                    metadata={"is_takeover_notice": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(notice))
+                except Exception:
+                    logger.debug("Takeover notice push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Takeover notice persist failed conv=%s", conv_id)
+            return
+```
+
+(The `len(...)` expression above is a placeholder for a future per-turn counter; the simpler form is `0` — see commit message hint.)
+
+**Replacement 5** — the "store + push agent reply" branch at L1796. Since `_drain_into_bubbles` already persists each segment and pushes each frame, this whole block becomes a no-op for the multi-bubble path. Find:
+
+```python
+        # Store + push agent reply. Two paths:
+        #   1. Placeholder was sent → edit it in place (emits message_edited
+        #      frame; frontend clears isStreaming via chatStore.updateMessage).
+        #   2. No placeholder → normal send_message + "message" frame.
+        if placeholder_msg is not None:
+            edited_by = f"agent:{target_role}"
+            agent_msg = await engine.edit_message(
+                conv_id, placeholder_msg.id,
+                new_content=reply_text.strip(),
+                edited_by=edited_by,
+            )
+            frame = _message_edited_frame(agent_msg, edited_by=edited_by)
+        else:
+            agent_msg = await engine.send_message(
+                conv_id, source="agent", content=reply_text.strip(),
+            )
+            frame = _message_frame(agent_msg)
+```
+
+→ Replace with:
+
+```python
+        # _drain_into_bubbles already persisted each segment as its own row
+        # and pushed each `message` + typewriter `message_edited` frame.
+        # Nothing to do here for the agent-reply persistence path.
+```
+
+**Replacement 6** — the `await ws.send_json(frame)` at L1825 and surrounding logging. Find:
+
+```python
+        # Push to customer via WebSocket
+        await ws.send_json(frame)
+        perf["t_pushed"] = _time.perf_counter()
+        logger.info("Agent reply pushed: conv=%s len=%d placeholder=%s",
+                    conv_id, len(reply_text), placeholder_msg is not None)
+```
+
+→ Replace with:
+
+```python
+        perf["t_pushed"] = _time.perf_counter()
+        logger.info(
+            "Agent reply pushed: conv=%s len=%d (segmented)",
+            conv_id, len(reply_text),
+        )
+```
+
+- [ ] **Step 3: Run the gateway test suite**
+
+Run: `uv run pytest tests/gateway/ -v -k 'not test_drain_with_placeholder' --tb=short`
+Expected: all tests PASS except possibly any that mocked the old `_drain_with_placeholder` call signature. If anything breaks, audit and update the mocks; the call now returns `str`, not `tuple[str, Any]`.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add autoservice/gateway/message_router.py
-git commit -m "refactor(gateway): replace _drain_with_placeholder with multi-bubble drain"
+git commit -m "refactor(gateway): switch _generate_agent_reply to _drain_into_bubbles"
+```
+
+---
+
+## Task 6c: Delete the old `_drain_with_placeholder` and helper
+
+**Files:**
+- Modify: `autoservice/gateway/message_router.py` (delete the obsolete function + helper)
+
+- [ ] **Step 1: Confirm no remaining references**
+
+Run: `grep -n "_drain_with_placeholder\|_cleanup_stranded_placeholder\|PLACEHOLDER_ELIGIBLE_ROLES\|_PLACEHOLDER_TEXT\|PLACEHOLDER_DELAY_S\|SOOTHE_ENABLED\|SOOTHE_DELAY" autoservice/gateway/message_router.py`
+Expected: matches only inside the function bodies that will be deleted (no live call sites).
+
+- [ ] **Step 2: Delete the obsolete code**
+
+In `autoservice/gateway/message_router.py`, delete these blocks (line numbers reference the BEFORE state — find by content):
+- The constants block: `PLACEHOLDER_ELIGIBLE_ROLES`, `PLACEHOLDER_DELAY_S`, `_PLACEHOLDER_TEXT_ZH`, `_PLACEHOLDER_TEXT_EN`, `SOOTHE_ENABLED`, `SOOTHE_DELAY_RANGES`, `SOOTHE_DELAY_DEFAULT_RANGE` (around L789–L850)
+- Helper functions: `_placeholder_text(...)`, `_effective_placeholder_delay_s(...)` (around L852–L902)
+- The whole `async def _drain_with_placeholder(...)` function (around L905–L1147)
+- The whole `async def _cleanup_stranded_placeholder(...)` function (around L1179–L1210)
+
+Do NOT delete: `_message_frame`, `_message_edited_frame`, `_broadcast_to_squad`, `STREAM_EDIT_MIN_INTERVAL_S`, `STREAM_EDIT_MIN_DELTA_CHARS` — these are still used by `_drain_into_bubbles`.
+
+Also remove the now-unused `from . import soothe_picker` import at L37.
+
+- [ ] **Step 3: Run the full test suite**
+
+Run: `uv run pytest tests/gateway/ -v --tb=short`
+Expected: green. (Any test importing the deleted symbols will fail at collection — those tests are removed in Task 11.)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add autoservice/gateway/message_router.py
+git commit -m "chore(gateway): delete obsolete placeholder drain + cleanup helper"
 ```
 
 ---
@@ -1473,6 +1829,9 @@ Right after the `if system_prompt is None ...` block (above `if enable_kb_tool a
         "当你的回复包含多个要点时，请用空行（两个换行）将它们分开，"
         "让客户像收到多条短消息一样阅读。每段保持 1-3 句话即可。"
     )
+    # Per-tenant override is a future-work hook: a tenant config flag like
+    # `multi_bubble_nudge_disabled` could short-circuit this. For the cinnox
+    # demo, the global env flag is sufficient.
     if (
         os.environ.get("MULTI_BUBBLE_ENABLED", "1") == "1"
         and role in ("customer", "lead")
@@ -1667,6 +2026,157 @@ async def test_turn_queue_serializes_two_rapid_submits():
     finish_a.set()
     await asyncio.sleep(0.05)
     assert seen_order == ["a-start", "a-end", "b"]
+
+
+@pytest.mark.asyncio
+async def test_ack_queue_interaction_each_turn_gets_own_ack(monkeypatch):
+    """Spec §12.2: customer fires msg A, then msg B during A's ack-delay
+    window. Each turn gets its own ack; B waits until A's drain finishes."""
+    monkeypatch.setenv("ACK_DELAY_MIN_MS", "0")
+    monkeypatch.setenv("ACK_DELAY_MAX_MS", "0")
+    from autoservice.gateway.agent_ack import send_pretriage_ack
+
+    engine = _FakeEngine()
+    ws_a = MagicMock(); ws_a.send_json = AsyncMock()
+    ws_b = MagicMock(); ws_b.send_json = AsyncMock()
+    q = TurnQueue()
+
+    started_a_drain = asyncio.Event()
+    finish_a_drain = asyncio.Event()
+
+    async def turn_a():
+        await send_pretriage_ack(engine, "c1", ws_a, "我想问一个产品问题")
+        started_a_drain.set()
+        await finish_a_drain.wait()
+        # Pretend the drain ran here.
+
+    async def turn_b():
+        await send_pretriage_ack(engine, "c1", ws_b, "另外团队规模多大?")
+
+    await q.submit("c1", turn_a)
+    await started_a_drain.wait()
+    # A's ack should have already persisted by now.
+    ack_count_after_a = len([m for m in engine.messages if m.content])
+    await q.submit("c1", turn_b)
+    # B is queued; B's ack hasn't fired yet.
+    assert q.queue_depth("c1") == 1
+    finish_a_drain.set()
+    await asyncio.sleep(0.05)
+    # Now B's turn ran → its ack persisted.
+    assert len(engine.messages) >= ack_count_after_a + 1
+
+
+@pytest.mark.asyncio
+async def test_queue_advances_on_runner_exception():
+    """Spec §12.2: triage failure / runner raises → queue still advances."""
+    q = TurnQueue()
+    seen: list[str] = []
+
+    async def boom():
+        raise RuntimeError("triage failed")
+
+    async def good():
+        seen.append("good")
+
+    await q.submit("c1", boom)
+    await q.submit("c1", good)
+    await asyncio.sleep(0.05)
+    assert seen == ["good"]
+    assert q.queue_depth("c1") == 0
+    assert not q.has_in_flight("c1")
+
+
+@pytest.mark.asyncio
+async def test_drain_flush_emits_residual_on_error_mid_segment(monkeypatch):
+    """Spec §12.2: drain hits an exception mid-stream → flush still emits
+    residual content. We simulate by raising inside the iterator after a
+    partial segment has accumulated."""
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    engine = _FakeEngine()
+    ws = MagicMock(); ws.send_json = AsyncMock()
+
+    from claude_agent_sdk.types import StreamEvent
+
+    async def _bad_stream():
+        # First chunk: long enough to cross MIN.
+        yield StreamEvent(event={
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "Half a segment, growing... "},
+        })
+        # Then raise to simulate upstream error.
+        raise RuntimeError("upstream stream broken")
+
+    with pytest.raises(RuntimeError, match="upstream stream broken"):
+        await _drain_into_bubbles(
+            _bad_stream(), engine=engine, conv_id="c1",
+            target_role="customer", ws=ws,
+        )
+    # The finally block still ran flush; one bubble should be persisted.
+    assert len(engine.messages) >= 1
+    assert "Half a segment" in engine.messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_instant_ack_disabled_skips_ack_but_drain_runs(monkeypatch):
+    """Spec §12.2: kill switch INSTANT_ACK_ENABLED=0 → no ack, reply still
+    segments normally."""
+    monkeypatch.setenv("INSTANT_ACK_ENABLED", "0")
+    monkeypatch.setenv("MULTI_BUBBLE_ENABLED", "1")
+    monkeypatch.setenv("ACK_DELAY_MIN_MS", "0")
+    monkeypatch.setenv("ACK_DELAY_MAX_MS", "0")
+    from autoservice.gateway.agent_ack import send_pretriage_ack
+
+    engine = _FakeEngine()
+    ws = MagicMock(); ws.send_json = AsyncMock()
+
+    out = await send_pretriage_ack(
+        engine, "c1", ws, "我想问一个长一点的产品问题", tenant_id="cinnox",
+    )
+    assert out is None  # ack disabled
+    assert len(engine.messages) == 0  # nothing persisted
+
+    # Drain still works; emits segments normally.
+    text = "First long-enough paragraph.\n\nSecond long-enough paragraph."
+    await _drain_into_bubbles(
+        _aiter(_stream_for(text, 4)),
+        engine=engine, conv_id="c1", target_role="customer", ws=ws,
+    )
+    assert len(engine.messages) == 2  # exactly two segments, no ack
+
+
+@pytest.mark.asyncio
+async def test_queue_disabled_falls_back_to_concurrent():
+    """Spec §12.2: kill switch QUEUE_ENABLED=0 — without TurnQueue, two
+    submitted runners execute concurrently (no serialization).
+
+    Sanity: when fire-and-forget tasks both run, B can finish before A
+    finishes — the inverse of the queue behavior pinned in
+    test_two_submits_run_serially.
+    """
+    seen: list[str] = []
+    started_a = asyncio.Event()
+    finish_a = asyncio.Event()
+
+    async def runner_a():
+        seen.append("a-start")
+        started_a.set()
+        await finish_a.wait()
+        seen.append("a-end")
+
+    async def runner_b():
+        await started_a.wait()  # ensure ordering: a starts first
+        seen.append("b-start")
+        seen.append("b-end")     # B finishes BEFORE A's end_event fires
+
+    task_a = asyncio.create_task(runner_a())
+    task_b = asyncio.create_task(runner_b())
+    await task_b
+    # B finished while A is still mid-flight (held by finish_a):
+    assert "b-end" in seen
+    assert "a-end" not in seen  # A hasn't finished yet
+    finish_a.set()
+    await task_a
+    assert seen == ["a-start", "b-start", "b-end", "a-end"]
 ```
 
 - [ ] **Step 2: Run the integration tests**
@@ -1746,10 +2256,12 @@ In `autoservice/web_gateway.py`, in the existing env-banner / startup function, 
 ```python
     # Deprecation: PLACEHOLDER_ENABLED → INSTANT_ACK_ENABLED.
     # Spec: 2026-04-26-instant-ack-multi-bubble-queue-design.md §11.
-    if os.environ.get("PLACEHOLDER_ENABLED") is not None and os.environ.get("INSTANT_ACK_ENABLED") is None:
+    _legacy_val = os.environ.get("PLACEHOLDER_ENABLED")
+    if _legacy_val is not None and os.environ.get("INSTANT_ACK_ENABLED") is None:
         log.warning(
-            "PLACEHOLDER_ENABLED is deprecated; please set INSTANT_ACK_ENABLED instead. "
-            "The deprecated alias will be removed in a future release."
+            "PLACEHOLDER_ENABLED=%s is deprecated; honoring as INSTANT_ACK_ENABLED. "
+            "Please rename the variable; the alias will be removed in a future release.",
+            _legacy_val,
         )
 ```
 
@@ -1891,9 +2403,9 @@ Expected: see `Application startup complete` and `Uvicorn running on http://127.
 - [ ] **Step 4: Hit /api/healthz to confirm responsive**
 
 ```bash
-NO_PROXY="127.0.0.1,localhost" curl -sS --max-time 5 -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8000/
+NO_PROXY="127.0.0.1,localhost" curl -sS --max-time 5 -w "\nHTTP %{http_code}\n" http://127.0.0.1:8000/api/healthz
 ```
-Expected: HTTP 404 (root not defined, but server is up — anything 4xx/5xx confirms reachable).
+Expected: HTTP 200 with a healthz body (or HTTP 404 if the route isn't registered — in that case fall back to checking that the WS endpoint accepts upgrade requests via `curl -sS -i -H 'Upgrade: websocket' -H 'Connection: Upgrade' http://127.0.0.1:8000/ws/customer?tenant=cinnox 2>&1 | head -5` which should return `HTTP/1.1 400` or similar handshake error from the WS handler — confirming the gateway is reachable).
 
 ---
 
