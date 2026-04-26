@@ -182,13 +182,19 @@ async def test_ack_queue_interaction_each_turn_gets_own_ack(monkeypatch):
     finish_a_drain = asyncio.Event()
 
     async def turn_a():
-        await send_pretriage_ack(engine, "c1", ws_a, "我想问一个产品问题")
+        await send_pretriage_ack(
+            engine, "c1", ws_a, "我想问一个产品问题",
+            delay_min_ms=0, delay_max_ms=0,
+        )
         started_a_drain.set()
         await finish_a_drain.wait()
         # Pretend the drain ran here.
 
     async def turn_b():
-        await send_pretriage_ack(engine, "c1", ws_b, "另外团队规模多大?")
+        await send_pretriage_ack(
+            engine, "c1", ws_b, "另外团队规模多大?",
+            delay_min_ms=0, delay_max_ms=0,
+        )
 
     await q.submit("c1", turn_a)
     await started_a_drain.wait()
