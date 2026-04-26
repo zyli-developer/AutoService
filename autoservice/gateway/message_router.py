@@ -69,6 +69,18 @@ def get_subscription_registry() -> SubscriptionRegistry:
     return _registry
 
 
+# Module-level TurnQueue singleton (spec 2026-04-26 §7) — serializes
+# agent reply turns per conversation under CC-X queue semantics.
+from autoservice.gateway.turn_queue import TurnQueue, QueueFullError  # noqa: E402
+
+_turn_queue: TurnQueue = TurnQueue()
+
+
+def get_turn_queue() -> TurnQueue:
+    """Accessor for tests + diagnostics."""
+    return _turn_queue
+
+
 _HINT_RE = re.compile(r"T[12]A\.\d+")
 
 # Track conversation creation timestamps for SLA first_reply_ms (T6D.1)
@@ -585,10 +597,32 @@ async def _call_engine(
                 ),
                 name=f"pretriage-ack-{conv_id}",
             )
-            asyncio.create_task(
-                _generate_agent_reply(engine, conv_id, payload["content"], ws),
-                name=f"agent-reply-{conv_id}",
-            )
+            queue_enabled = os.getenv("QUEUE_ENABLED", "1") == "1"
+            if queue_enabled:
+                # Capture the message text for the closure so a later turn
+                # in the FIFO doesn't accidentally reference a mutated payload.
+                _content_snapshot = payload["content"]
+
+                async def _runner() -> None:
+                    await _generate_agent_reply(engine, conv_id, _content_snapshot, ws)
+                try:
+                    await _turn_queue.submit(conv_id, _runner)
+                except QueueFullError:
+                    err_frame = build_frame("error", make_error_payload(
+                        ERR_VALIDATION,
+                        "Too many pending messages, please wait.",
+                        details={"code": "QUEUE_FULL"},
+                    ))
+                    try:
+                        await ws.send_json(err_frame)
+                    except Exception:
+                        logger.debug("Queue-full error frame push failed conv=%s", conv_id)
+            else:
+                # Legacy path: concurrent reply tasks (QUEUE_ENABLED=0).
+                asyncio.create_task(
+                    _generate_agent_reply(engine, conv_id, payload["content"], ws),
+                    name=f"agent-reply-{conv_id}",
+                )
 
         # Return confirmation data (not full message echo — FE has optimistic msg)
         return [build_frame("message_confirm", {
