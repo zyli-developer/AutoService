@@ -1831,14 +1831,11 @@ async def _generate_agent_reply(
         perf["t_prompt_built"] = _time.perf_counter()
         perf["prompt_chars"] = len(prompt)
 
-        # Collect response. Placeholder-then-stream (designs 2026-04-22 + 2026-04-23):
-        # eligible roles get a soothe bubble if the model hasn't emitted a token
-        # within `_effective_placeholder_delay_s()` — 0s when SOOTHE_ENABLED,
-        # else PLACEHOLDER_DELAY_S (1.5s) as rollback baseline. Fast-tier roles
-        # (translate/direct) skip the timer entirely.
+        # Collect response via _drain_into_bubbles (spec 2026-04-26):
+        # multi-bubble paragraph splitter persists each segment as its own
+        # Message row, with within-bubble typewriter via message_edited frames.
+        # See docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md.
         reply_text = ""
-        placeholder_msg: Any = None
-        placeholder_eligible = target_role in PLACEHOLDER_ELIGIBLE_ROLES
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
         async def _role_stream():
@@ -1894,11 +1891,10 @@ async def _generate_agent_reply(
 
         perf["t_llm_start"] = _time.perf_counter()
         try:
-            reply_text, placeholder_msg = await _drain_with_placeholder(
+            reply_text = await _drain_into_bubbles(
                 iterator,
                 engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
                 detected_language=detected_language,
-                eligible=placeholder_eligible,
                 intent=getattr(decision, "intent", None) if decision else None,
                 perf_out=perf,
             )
@@ -1959,12 +1955,19 @@ async def _generate_agent_reply(
                     )
 
         if not reply_text.strip():
-            logger.warning("Agent reply: empty response from CC SDK")
-            await _cleanup_stranded_placeholder(
-                engine, ws, conv_id, placeholder_msg,
-                reason="(抱歉,本次未生成有效回复)",
-                edited_by="system:empty_reply",
-            )
+            logger.warning("Agent reply: empty response from CC SDK conv=%s", conv_id)
+            try:
+                fallback = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(抱歉,本次未生成有效回复)",
+                    metadata={"is_fallback": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(fallback))
+                except Exception:
+                    logger.debug("Empty-reply fallback ws push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Empty-reply fallback persist failed conv=%s", conv_id)
             return
 
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
@@ -1979,31 +1982,26 @@ async def _generate_agent_reply(
         except Exception:
             current_mode = None
         if current_mode == ConversationMode.TAKEOVER:
-            logger.info("Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id)
-            await _cleanup_stranded_placeholder(
-                engine, ws, conv_id, placeholder_msg,
-                reason="(客服已接管对话)",
-                edited_by="system:takeover",
+            logger.info(
+                "Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id,
             )
+            try:
+                notice = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(客服已接管对话)",
+                    metadata={"is_takeover_notice": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(notice))
+                except Exception:
+                    logger.debug("Takeover notice push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Takeover notice persist failed conv=%s", conv_id)
             return
 
-        # Store + push agent reply. Two paths:
-        #   1. Placeholder was sent → edit it in place (emits message_edited
-        #      frame; frontend clears isStreaming via chatStore.updateMessage).
-        #   2. No placeholder → normal send_message + "message" frame.
-        if placeholder_msg is not None:
-            edited_by = f"agent:{target_role}"
-            agent_msg = await engine.edit_message(
-                conv_id, placeholder_msg.id,
-                new_content=reply_text.strip(),
-                edited_by=edited_by,
-            )
-            frame = _message_edited_frame(agent_msg, edited_by=edited_by)
-        else:
-            agent_msg = await engine.send_message(
-                conv_id, source="agent", content=reply_text.strip(),
-            )
-            frame = _message_frame(agent_msg)
+        # _drain_into_bubbles already persisted each segment as its own row
+        # and pushed each `message` + typewriter `message_edited` frame.
+        # Nothing to do here for the agent-reply persistence path.
 
         # Record SLA first_reply_ms (T6D.1)
         try:
@@ -2019,11 +2017,11 @@ async def _generate_agent_reply(
         except Exception:
             logger.warning("Failed to record first_reply SLA for conv=%s", conv_id)
 
-        # Push to customer via WebSocket
-        await ws.send_json(frame)
         perf["t_pushed"] = _time.perf_counter()
-        logger.info("Agent reply pushed: conv=%s len=%d placeholder=%s",
-                    conv_id, len(reply_text), placeholder_msg is not None)
+        logger.info(
+            "Agent reply pushed: conv=%s len=%d (segmented)",
+            conv_id, len(reply_text),
+        )
 
         # Single-line phase timing — use this to spot-check which phase
         # dominates. first_token = TTFT from the start of the LLM call;
