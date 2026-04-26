@@ -469,9 +469,23 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
                 return f"<unset -> {fallback_default}>" if fallback_default else "<unset>"
             return v
 
+        # Deprecation: PLACEHOLDER_ENABLED → INSTANT_ACK_ENABLED.
+        # Spec: 2026-04-26-instant-ack-multi-bubble-queue-design.md §11.
+        _legacy_val = os.environ.get("PLACEHOLDER_ENABLED")
+        if _legacy_val is not None and os.environ.get("INSTANT_ACK_ENABLED") is None:
+            logger.warning(
+                "PLACEHOLDER_ENABLED=%s is deprecated; honoring as INSTANT_ACK_ENABLED. "
+                "Please rename the variable; the alias will be removed in a future release.",
+                _legacy_val,
+            )
+
         # Layer 1: runtime feature flags
         flags = [
-            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "1")),
+            ("INSTANT_ACK_ENABLED",        _e("INSTANT_ACK_ENABLED", "1")),
+            ("MULTI_BUBBLE_ENABLED",       _e("MULTI_BUBBLE_ENABLED", "1")),
+            ("QUEUE_ENABLED",              _e("QUEUE_ENABLED", "1")),
+            ("PLACEHOLDER_ENABLED",        _e("PLACEHOLDER_ENABLED", "(deprecated alias)")),
+            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "(deprecated, ignored)")),
             ("TRIAGE_AGENT_ENABLED",       _e("TRIAGE_AGENT_ENABLED", "0")),
             ("TRIAGE_AGENT_TIMEOUT_S",     _e("TRIAGE_AGENT_TIMEOUT_S", "15.0")),
             ("AUTH_DEV_MODE",              _e("AUTH_DEV_MODE", "(disabled)")),
