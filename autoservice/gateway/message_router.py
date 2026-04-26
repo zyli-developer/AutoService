@@ -572,6 +572,19 @@ async def _call_engine(
             logger.warning("[AI-trigger] skip: ws is None conv=%s", conv_id)
         else:
             logger.warning("[AI-trigger] firing conv=%s mode=%s", conv_id, mode_name)
+            # Pre-triage instant ack — fire-and-forget. Persist + push happen
+            # inside; errors are swallowed. Spec §5.
+            from autoservice.gateway.agent_ack import send_pretriage_ack
+            tenant_id_for_ack = (
+                getattr(ws, "state_customer_tenant_id", None) if ws is not None else None
+            )
+            asyncio.create_task(
+                send_pretriage_ack(
+                    engine, conv_id, ws, payload["content"],
+                    tenant_id=tenant_id_for_ack,
+                ),
+                name=f"pretriage-ack-{conv_id}",
+            )
             asyncio.create_task(
                 _generate_agent_reply(engine, conv_id, payload["content"], ws),
                 name=f"agent-reply-{conv_id}",
