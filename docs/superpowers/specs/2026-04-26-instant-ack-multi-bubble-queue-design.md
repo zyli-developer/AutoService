@@ -141,10 +141,20 @@ if FIFO non-empty: pop next, kick off another _run_agent_turn task
 
 ### 5.1 Behavior
 
-- Emitted **before triage_and_route runs**, with a small jitter delay of 150–350ms (uniform random) — instant feels robotic, ~250ms feels human.
-- Lang detected via a 5-line regex on customer_text (`一-鿿` → zh else en) — not a full lang model.
+- Emitted **before triage_and_route runs**, with a small jitter delay of 100–300ms (uniform random) — instant feels robotic, ~200ms feels human. Note that the **perceived** latency at the user's browser is ack_jitter + WS round-trip + render ≈ 150–500ms depending on network; the spec's "~200ms" target is the server-side schedule, not the wire-observable.
+- Lang detected via a regex on customer_text. Match any of `　-鿿` (CJK Unified incl. extension), `぀-ヿ` (hiragana/katakana), `가-힯` (hangul), or any CJK punctuation → `zh`; else → `en`. For tenant `cinnox`, default to `zh` if the text is too short / all-punctuation to classify (the demo audience is overwhelmingly CN/HK/TW).
 - Text picked uniformly at random from a per-lang static bank in `ack_templates.yaml`. No intent dependency (intent isn't known yet).
 - Persisted as a normal agent `Message` with `metadata={"is_ack": True}` so downstream filters / analytics can identify it. Visible in chat history; **no edit-in-place** later.
+
+### 5.1.1 Ack suppression heuristic (avoid duplicate-greeting effect)
+
+Without suppression, a customer message of "你好" would produce two near-identical bubbles in <2s: ack `"好的👋"` + triage's direct-reply `"你好！欢迎来到 Cinnox。"` — exactly the "confused bot" effect this spec is trying to avoid.
+
+**v1 heuristic**: skip the ack entirely when `len(customer_text.strip()) < 8` (zh) or `< 15` (en, more chars per word). These short-message cases are highly correlated with greetings, thanks, and goodbyes — exactly the messages where `triage_dispatch.py` would route to the `direct` short-circuit reply.
+
+Trade-off: occasionally suppresses ack on a legitimate short non-greeting like "5 个？" — the customer in that case waits a bit longer for the first feedback, but never sees a duplicate. Acceptable.
+
+**v2 follow-up (out of scope)**: run FastClassifier (sub-100ms keyword/regex match in `autoservice/classify_intent.py`) before the ack and skip when intent is `greeting / thanks / bye`. More accurate, slightly more code. Tracked as a v2 enhancement, not blocking this PR.
 
 ### 5.2 Templates (initial bank)
 
@@ -258,7 +268,7 @@ on flush:
 - LLM emits `\n\n\n\n\n\n` (multiple boundaries with empty text between) → only non-empty segments emitted; consecutive empty boundaries collapse.
 - LLM emits a code block with `\n\n` inside ` ``` ` → not split.
 - LLM hits MAX_SEGMENTS — chunk 6, 7, 8... all accumulate into final segment.
-- LLM emits `\n\n` after only 2 chars (e.g. "好。\n\nHere is..."). The "好。" segment is below `MIN_SEGMENT_CHARS=5`, so accumulate; eventually emits "好。Here is..." as one segment OR splits at the next valid boundary. **Accept this** — small fragments shouldn't bubble independently.
+- LLM emits `\n\n` after only 2 chars (e.g. `"好。\n\nHere is..."`). The "好。" buffer is below `MIN_SEGMENT_CHARS=5`, so the boundary is **consumed** (dropped, not retained) and the bubble keeps growing through it. Test pins: input `"好。\n\nHere is the rest of the longer answer."` → output `["好。Here is the rest of the longer answer."]` (single segment, no `\n\n` in result).
 
 ### 6.5 LLM prompt nudge
 
@@ -323,9 +333,46 @@ class TurnQueue:
 
 The `runner` is the closure that does `agent_ack → triage → pool.acquire → drain_into_bubbles`. The queue doesn't know about the inner mechanics; it just guarantees serialization.
 
-### 7.5 Cleanup
+### 7.5 Cleanup and registry race
 
-Per-conv state (lock + FIFO) is auto-cleaned when conv has no in-flight + empty FIFO. Use `weakref` or a TTL sweep to avoid memory leak from dead conversations. **Use weakref-style sentinel**: when finally block sees lock + empty FIFO, `_state.pop(conv_id, None)`.
+Per-conv state (lock + FIFO) is auto-cleaned when the conversation has no in-flight runner *and* an empty FIFO. There's a real race here that must be guarded explicitly:
+
+- **Race**: turn N's `finally` sees empty FIFO and pops `_state[conv_id]`. Concurrently, a fresh `submit()` for the same `conv_id` already past its "does state exist?" check holds a stale reference to the popped state and appends to a FIFO that is no longer in `_state`. The new submission is silently lost.
+
+- **Fix**: a single `_registry_lock: asyncio.Lock` (one per `TurnQueue` instance, distinct from per-conv mechanisms) guards every `_state` mutation. `submit()` acquires it to atomically (a) check existence, (b) create state if absent, (c) check queue depth, (d) append to FIFO, (e) decide if it should run-now. Cleanup also acquires it to atomically check-empty-and-pop.
+
+```python
+async def submit(self, conv_id: str, runner) -> None:
+    async with self._registry_lock:
+        st = self._state.get(conv_id)
+        if st is None:
+            st = self._state[conv_id] = _ConvState()
+            should_start_loop = True
+        else:
+            if len(st.fifo) >= MAX_QUEUE_DEPTH:
+                raise QueueFullError(conv_id)
+            st.fifo.append(runner)
+            should_start_loop = False
+    if should_start_loop:
+        asyncio.create_task(self._run_loop(conv_id, runner), name=f"turn-loop-{conv_id}")
+
+async def _run_loop(self, conv_id: str, first_runner) -> None:
+    runner = first_runner
+    while runner is not None:
+        try:
+            await runner()
+        except Exception:
+            logger.exception("turn runner failed conv=%s", conv_id)
+        async with self._registry_lock:
+            st = self._state.get(conv_id)
+            if st and st.fifo:
+                runner = st.fifo.popleft()
+            else:
+                self._state.pop(conv_id, None)
+                runner = None
+```
+
+Note: `weakref` does not help here because the per-conv state is held alive by the running loop task itself; cleanup must be explicit. The earlier "weakref-style sentinel" framing has been removed.
 
 ## 8. Replacing the existing placeholder mechanism
 
@@ -356,21 +403,44 @@ The pre-triage ack is similarly a Message with `metadata={"is_ack": True}`.
 
 **Implication for sequence_number**: a single user turn now produces 1 ack + N segments = N+1 agent messages in history. CSAT / SLA queries that count "agent replies" need to be aware (filter on metadata if they need "primary reply count"). Existing SLA queries in `autoservice/sla_aggregator.py` count by `MetricType.ACCEPT_MS`, not by message count, so no change needed there.
 
-### 9.2 Within-bubble typewriter
+### 9.2 Within-bubble typewriter — explicit policy
 
-Each bubble grows token-by-token via the existing `message_edited` machinery, until the next `\n\n` boundary closes it. After close, the next bubble opens with the next chunk. So:
+This subsection is the canonical resolution of "when do we persist?" given that the splitter only confirms a segment is complete at the next `\n\n` boundary, while the FE wants progressive typewriter rendering before that boundary arrives.
 
+**Policy: persist-on-first-token-of-segment, edit-progressively, finalize-at-boundary.**
+
+For each new segment (counting from stream start or from the last accepted boundary):
+
+1. **Buffer-then-persist gate**: do NOT call `engine.send_message` for the new segment until the splitter has buffered ≥ `MIN_SEGMENT_CHARS` of non-whitespace text. This avoids creating phantom Message rows for segments that may turn out to be too short and get merged into the next.
+2. **First persistence**: once buffered ≥ `MIN_SEGMENT_CHARS`, call `engine.send_message(agent, content=<buffered_so_far>, metadata={"is_segment": True, "segment_index": i})` once. Push the `message` frame.
+3. **Progressive growth**: as more chunks arrive, push throttled `message_edited` frames carrying the running content (no engine writes during typewriter — same throttling as the existing `_drain_with_placeholder` does today).
+4. **Boundary finalize**: when an *accepted* `\n\n` boundary fires (≥ MIN_SEGMENT_CHARS, not in code block, MAX_SEGMENTS not yet hit), call `engine.edit_message(msg_id, content=<final_trimmed_text>)` to persist the canonical final content. Push a final `message_edited` frame so the FE has the trimmed text.
+5. **Open next segment**: reset accumulator, return to step 1.
+6. **Stream end**: flush — same as a synthetic boundary, finalize the current bubble.
+
+**Critical interaction with MIN_SEGMENT_CHARS suppression**: when a `\n\n` is hit but `len(buffered) < MIN_SEGMENT_CHARS`, the `\n\n` is **consumed** (treated as ordinary inline whitespace; the bubble keeps growing through it). It does NOT get retained for later boundary detection — only fresh `\n\n` after sufficient content can fire a boundary. This is pinned by a unit test: input `"好。\n\nHere is the rest of the longer answer."` → output `["好。Here is the rest of the longer answer."]` (single segment, the suppressed `\n\n` is dropped, content joined directly).
+
+**Worked example**:
 ```
-t+200ms:  message     {bubble_1: "好"}              ← first token of segment 1
-t+250ms:  message_edited {bubble_1: "好的"}           ← typewriter
-t+400ms:  message_edited {bubble_1: "好的，让我"}     ← typewriter
-t+600ms:  message_edited {bubble_1: "好的，让我想想"} ← typewriter (final form before \n\n)
-t+700ms:  ← LLM emits "\n\n", splitter closes bubble_1, opens bubble_2
-t+750ms:  message     {bubble_2: "我"}              ← first token of segment 2
-...
+chunk arrives: "好"          → buffer="好" (1 char, below MIN=5; no row yet)
+chunk arrives: "的"          → buffer="好的" (2 chars; no row yet)
+chunk arrives: "，"          → buffer="好的，" (3; no row)
+chunk arrives: "让"          → buffer="好的，让" (4; no row)
+chunk arrives: "我看看"      → buffer="好的，让我看看" (7 chars; ≥MIN now)
+                             → persist row#1, push `message` frame with content="好的，让我看看"
+chunk arrives: "。"          → buffer grows to "好的，让我看看。"
+                             → push throttled `message_edited` frame
+chunk arrives: "\n\nHere"    → boundary hit at len=9 ≥ MIN, accepted
+                             → edit_message(row#1, content="好的，让我看看。") (trimmed final)
+                             → push final `message_edited`
+                             → reset; new buffer="Here"
+chunk arrives: "is..."       → buffer="Hereis..." (only 9 chars, but no boundary)
+... continues, growing row#2 once it crosses MIN ...
 ```
 
-This preserves the ChatGPT-style fill-in for the *first* bubble (bubble_1's growth), and each subsequent bubble also fills in.
+**Edge cases this resolves**:
+- A segment that's all very short and ends without ever crossing MIN before a boundary: the boundary is suppressed, the segment merges with the next one. No row is ever created for the suppressed segment.
+- A segment that crosses MIN, persists, then receives content that takes it past MAX_SEGMENTS state: still persisted as its own row. MAX_SEGMENTS just prevents further splits; it does not retroactively merge already-persisted rows.
 
 ### 9.3 Bubble persistence ordering
 
@@ -402,18 +472,21 @@ Implementation order in `_drain_into_bubbles`:
 
 | Env var | Default | Effect |
 |---------|---------|--------|
-| `PLACEHOLDER_ENABLED` | `1` | **Semantically repurposed** by this spec. Previously gated the post-triage 1.5s placeholder; now gates the pre-triage instant ack (§5). When `0`, `agent_ack.send_pretriage_ack` is a no-op. The main reply pipeline still runs and emits segmented bubbles. The deprecated post-triage placeholder is removed regardless of this flag. |
+| `INSTANT_ACK_ENABLED` | `1` | **New canonical name**. When `0`, `agent_ack.send_pretriage_ack` is a no-op. The main reply pipeline still runs and emits segmented bubbles. |
+| `PLACEHOLDER_ENABLED` | (alias) | **Deprecated** — kept as a backward-compat alias that maps onto `INSTANT_ACK_ENABLED` for one release. Reading the var emits `logger.warning("PLACEHOLDER_ENABLED is deprecated; use INSTANT_ACK_ENABLED")` once at startup. The deprecated post-triage placeholder is removed regardless. **Action**: same PR updates the "Placeholder Filler Kill-Switch" section of CLAUDE.md to document the rename + new semantics. |
 | `MULTI_BUBBLE_ENABLED` | `1` | When `0`, splitter is bypassed: the entire reply is emitted as one bubble (legacy single-bubble behavior). |
 | `QUEUE_ENABLED` | `1` | When `0`, falls back to current "fire-and-forget per-message" behavior (concurrent reply tasks, possible interleaving). |
-| `ACK_DELAY_MIN_MS` | `150` | Pre-triage ack jitter floor. |
-| `ACK_DELAY_MAX_MS` | `350` | Pre-triage ack jitter ceiling. |
+| `ACK_DELAY_MIN_MS` | `100` | Pre-triage ack jitter floor (server-scheduled; wire-observable adds RTT + render). |
+| `ACK_DELAY_MAX_MS` | `300` | Pre-triage ack jitter ceiling. |
+| `ACK_SKIP_LEN_ZH` | `8` | If `len(stripped customer_text) < this` and detected lang is zh, skip ack. See §5.1.1. |
+| `ACK_SKIP_LEN_EN` | `15` | Same, en. |
 | `PARAGRAPH_MIN_CHARS` | `5` | Splitter `MIN_SEGMENT_CHARS`. |
 | `PARAGRAPH_MAX_SEGMENTS` | `5` | Splitter `MAX_SEGMENTS_PER_TURN`. |
 | `QUEUE_MAX_DEPTH` | `5` | TurnQueue soft cap. |
 
 All kill switches are independent — a deploy can roll back A, B, or C in isolation.
 
-The launchd plist needs `PLACEHOLDER_ENABLED=1` set (currently `0`); the others default-on without explicit declaration.
+The launchd plist currently has `PLACEHOLDER_ENABLED=0` (set on 2026-04-25 to disable the old post-triage placeholder). After this PR: **remove** that entry and let `INSTANT_ACK_ENABLED` default to on, OR explicitly set `INSTANT_ACK_ENABLED=1`. The others default-on without explicit declaration.
 
 ## 12. Test plan
 
@@ -431,12 +504,15 @@ The launchd plist needs `PLACEHOLDER_ENABLED=1` set (currently `0`); the others 
 - Streaming chunk boundaries fall inside `\n\n` ("`A\n`" then "`\nB`") — correctly detected
 - Whitespace-only segment (`A\n\n   \n\nB`) — middle segment dropped
 
-**`tests/gateway/test_agent_ack.py`** (~5-8 cases):
+**`tests/gateway/test_agent_ack.py`** (~7-10 cases):
 - Sends a Message with `metadata.is_ack = True`
 - Picks zh template for Chinese customer text
 - Picks en template for English customer text
+- Picks zh for cinnox tenant on too-short / all-punctuation text (tenant default)
 - Random choice covers all bank lines (statistical, multiple iterations)
 - Honors `delay_range_ms`
+- **Skip suppression**: zh msg of length < 8 → no Message persisted, no WS push
+- **Skip suppression**: en msg of length < 15 → no Message persisted, no WS push
 - Engine failure → swallowed, returns None
 - WS push failure → swallowed
 
@@ -450,20 +526,26 @@ The launchd plist needs `PLACEHOLDER_ENABLED=1` set (currently `0`); the others 
 
 ### 12.2 Integration tests (with real engine, mocked LLM)
 
-**`tests/gateway/test_multi_bubble_integration.py`** (~5 cases):
+**`tests/gateway/test_multi_bubble_integration.py`** (~8 cases):
 - End-to-end: customer_message → ack persisted + frame pushed → reply persisted as N segments → all frames received in order
-- Within-bubble typewriter: `message_edited` frames arrive between `message` frames for next bubble
+- Within-bubble typewriter: `message_edited` frames arrive between `message` frames for next bubble; persist-on-first-token-of-segment policy (§9.2) honored
 - Two rapid `customer_message` frames: only one in-flight at a time (verify timestamps)
+- **Ack + queue interaction**: customer fires msg A, then msg B during A's ack-delay window. B's ack also fires (each turn gets its own ack), B's turn waits for A's turn to fully complete before reply
+- **Splitter + queue cleanup on error**: turn finishes mid-segment due to mocked LLM raising; flush still emits residual content, queue still advances to next pending turn (no stuck state)
+- **Triage failure + queue advance**: ack persisted, triage raises, queue advances cleanly without leaving turn in-flight forever (verify `queue_depth` returns to 0 within timeout)
 - Kill switch `MULTI_BUBBLE_ENABLED=0` → falls back to single bubble (no segmenting)
-- Kill switch `PLACEHOLDER_ENABLED=0` → no ack emitted, reply still segmented
+- Kill switch `INSTANT_ACK_ENABLED=0` → no ack emitted, reply still segmented
+- Kill switch `QUEUE_ENABLED=0` → concurrent reply tasks behave as the legacy fire-and-forget
 
 ### 12.3 E2E (agent-browser, on production)
 
 After deploy, drive `https://autoservice.ezagent.chat/site/?tenant=cinnox` with agent-browser:
-- Send a single short message ("你好") → verify ack appears <500ms, then reply (1 or more bubbles)
-- Send a complex question that should produce multi-paragraph reply ("你们有什么服务？") → verify multiple bubbles
-- Burst-send 3 messages in <1 second → verify replies are processed serially (not interleaved)
-- Verify ack text varies across messages (template randomization works)
+- Send a single short greeting message ("你好") → verify ack is **suppressed** (§5.1.1), only the triage direct-reply bubble appears (no duplicate-greeting effect)
+- Send a slightly longer question ("有哪些服务?") → verify ack appears within ~500ms, then a reply (1 or more bubbles)
+- Send a complex question that should produce multi-paragraph reply ("你们有哪些产品和定价?") → verify ack + multiple reply bubbles (≥2)
+- Burst-send 3 messages in <1 second → verify replies are processed serially (not interleaved); the second/third user messages persist immediately (visible in their own chat) but their agent replies wait
+- Verify ack text varies across messages (template randomization works, multiple sends)
+- **Operator-side spot check**: open `/console/` (CF Access required) in a second browser, observe the same conversation. Verify operator console renders all bubbles in correct order, no double-rendering, scroll behavior is reasonable while customer-side is bursting messages
 
 ## 13. Rollout
 
@@ -479,7 +561,7 @@ This is a backend-mainly change with no schema migration. Rollout per environmen
 |------|-----------|------------|
 | Splitter mis-handles a Markdown / code-fence edge case → reply renders weirdly | Medium | Comprehensive splitter unit tests (§12.1); state machine simple enough to read; degrade-gracefully to single bubble on any internal exception |
 | LLM ignores `\n\n` hint → all replies are 1 bubble | High at first | Acceptable degradation; bubble count is "1 or more", never "0"; A still gives the instant-ack win |
-| Pre-triage ack fires + triage decides direct-reply (greeting/thanks) → user gets two near-identical bubbles | Medium | Direct-reply is rare on Cinnox traffic; if it happens, the ack is "好的👋", direct-reply is "你好！" — duplicate but harmless. Follow-up: skip ack when triage_dispatch detects direct-reply intent (requires moving ack after triage; out of scope for v1) |
+| Pre-triage ack fires + triage decides direct-reply (greeting/thanks) → user gets two near-identical bubbles | High (greetings are common in demo traffic) | **Mitigated in v1** by length-based skip heuristic (§5.1.1): zh < 8 chars or en < 15 chars → no ack. Greetings/thanks/byes overwhelmingly fall under these thresholds. v2 follow-up will use FastClassifier for precise intent-based suppression. |
 | Queue serialization adds latency for users who want their 2nd message answered ASAP | Low | This is the explicit design choice (CC-X). User chose it knowingly. |
 | Per-conv lock memory leak if cleanup fails | Low | `_state.pop(conv_id)` in finally; weak references could be added in a follow-up |
 | Existing tests for `_drain_with_placeholder` break | High (intentional) | All replaced with multi-bubble tests; old tests deleted in same PR |
@@ -488,18 +570,22 @@ This is a backend-mainly change with no schema migration. Rollout per environmen
 
 The following is the ordered task list this spec hands off to the writing-plans skill:
 
-- [ ] **T1** Implement `paragraph_splitter.py` + unit tests
-- [ ] **T2** Implement `agent_ack.py` + `ack_templates.yaml` + unit tests
-- [ ] **T3** Implement `turn_queue.py` + unit tests
-- [ ] **T4** Refactor `_drain_with_placeholder` → `_drain_into_bubbles` in `message_router.py`; integrate splitter
+- [ ] **T1** Implement `paragraph_splitter.py` + unit tests (incl. boundary-suppression policy from §6.4 / §9.2)
+- [ ] **T2** Implement `agent_ack.py` + `ack_templates.yaml` + unit tests (incl. length-based skip §5.1.1, broader CJK regex §5.1)
+- [ ] **T3** Implement `turn_queue.py` + unit tests (incl. registry-lock race coverage §7.5)
+- [ ] **T4** Refactor `_drain_with_placeholder` → `_drain_into_bubbles` in `message_router.py`; integrate splitter under persist-on-first-token-of-segment policy (§9.2)
 - [ ] **T5** Wire `agent_ack` and `turn_queue` into `customer_message` handler
 - [ ] **T6** Delete old in-place-edit placeholder code path; mark `SoothePicker` deprecated
 - [ ] **T7** Add prompt nudge suffix at cc_pool acquire site (not in soul files; see §6.5)
-- [ ] **T8** Update launchd plist: `PLACEHOLDER_ENABLED=1`, add `MULTI_BUBBLE_ENABLED=1`, `QUEUE_ENABLED=1`
-- [ ] **T9** Integration tests (multi-bubble end-to-end)
-- [ ] **T10** Reload gateway, smoke test locally
-- [ ] **T11** E2E test on autoservice.ezagent.chat with agent-browser
-- [ ] **T12** PR
+- [ ] **T8** Add `INSTANT_ACK_ENABLED` env var; keep `PLACEHOLDER_ENABLED` as deprecation alias with one-time `logger.warning` (§11)
+- [ ] **T9** Update launchd plist: remove `PLACEHOLDER_ENABLED=0`; explicit `INSTANT_ACK_ENABLED=1`, `MULTI_BUBBLE_ENABLED=1`, `QUEUE_ENABLED=1`
+- [ ] **T10** Update CLAUDE.md "Placeholder Filler Kill-Switch" section to document rename + new semantics
+- [ ] **T11** Integration tests (multi-bubble end-to-end, incl. ack+queue, splitter+queue-cleanup, triage-failure interactions)
+- [ ] **T12** Reload gateway, smoke test locally
+- [ ] **T13** E2E test on autoservice.ezagent.chat with agent-browser (incl. operator-console spot check §12.3)
+- [ ] **T14** PR
+
+**Scope note**: this is borderline-too-big for one PR (T4 alone touches 200+ lines of nuanced timer/race logic). If review feedback on the implementation PR suggests splitting, the natural cut is: PR1 = T1+T2+T3 (pure components, defaults off, no wiring) + PR2 = T4-T14 (integration). Keep this as a fallback if the single-PR diff exceeds reviewer comfort.
 
 ## 16. Out of scope (explicit)
 
