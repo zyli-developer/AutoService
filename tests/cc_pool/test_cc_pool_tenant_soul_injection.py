@@ -161,14 +161,16 @@ class TestCreateCCClientTenantInjection:
         injected = patched_sdk["options"].system_prompt
         assert injected is not None
         assert len(injected) > 0
-        # Should match default agents/customer/soul.md
+        # Should start with default agents/customer/soul.md (the
+        # multi-bubble paragraph nudge is appended to customer/lead souls
+        # by cc_pool — see spec 2026-04-26 §6.5).
         default_path = (
             Path(__file__).resolve().parent.parent.parent
             / "agents"
             / "customer"
             / "soul.md"
         )
-        assert injected == default_path.read_text(encoding="utf-8")
+        assert injected.startswith(default_path.read_text(encoding="utf-8"))
 
     @pytest.mark.asyncio
     async def test_tenant_with_sandbox_soul_injected(
@@ -180,7 +182,9 @@ class TestCreateCCClientTenantInjection:
         cfg = PoolConfig(cwd=str(sandbox_root))
 
         await create_cc_client(cfg, role="customer", tenant_id="tenantX")
-        assert patched_sdk["options"].system_prompt == custom
+        # Soul is prepended to the multi-bubble paragraph nudge appended
+        # by cc_pool (spec 2026-04-26 §6.5).
+        assert patched_sdk["options"].system_prompt.startswith(custom)
 
     @pytest.mark.asyncio
     async def test_two_tenants_produce_distinct_clients(
@@ -198,8 +202,10 @@ class TestCreateCCClientTenantInjection:
         await create_cc_client(cfg, role="customer", tenant_id="tenantB")
         prompt_b = patched_sdk["options"].system_prompt
 
-        assert prompt_a == "SOUL_A"
-        assert prompt_b == "SOUL_B"
+        # Soul is prepended to the multi-bubble paragraph nudge appended
+        # by cc_pool (spec 2026-04-26 §6.5). Compare prefix only.
+        assert prompt_a.startswith("SOUL_A")
+        assert prompt_b.startswith("SOUL_B")
         assert prompt_a != prompt_b
 
     @pytest.mark.asyncio
@@ -220,5 +226,7 @@ class TestCreateCCClientTenantInjection:
             / "customer"
             / "soul.md"
         )
-        assert injected == default_path.read_text(encoding="utf-8")
+        # Soul is prepended to the multi-bubble paragraph nudge appended
+        # by cc_pool (spec 2026-04-26 §6.5).
+        assert injected.startswith(default_path.read_text(encoding="utf-8"))
         assert client is not None

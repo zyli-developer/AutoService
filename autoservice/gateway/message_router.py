@@ -1716,8 +1716,8 @@ async def _generate_agent_reply(
             len(reply_text),
         )
 
-        # Broadcast to operator connections subscribed to this squad (T6A.2)
-        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+        # _drain_into_bubbles already broadcasts each segment frame to the
+        # operator squad — nothing to broadcast here.
 
     except Exception:
         logger.exception("Agent reply FAILED for conv=%s", conv_id)
