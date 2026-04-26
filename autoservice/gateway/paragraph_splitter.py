@@ -48,9 +48,36 @@ class ParagraphSplitter:
     def feed(self, chunk: str) -> list[str]:
         if not chunk:
             return []
-        # Stub: never finds a boundary, just buffers.
-        self._buf += chunk
-        return []
+        emitted: list[str] = []
+        for ch in chunk:
+            self._buf += ch
+            # MAX gate: once we've emitted (max-1) segments, the next one
+            # is the last; never fire another boundary, just accumulate.
+            if self._emitted >= self._max - 1:
+                continue
+            # Fence toggle: triple-backtick at line start (line head means
+            # buf is exactly "```" or the char four back is "\n").
+            if (
+                len(self._buf) >= 3
+                and self._buf[-3:] == "```"
+                and (len(self._buf) == 3 or self._buf[-4] == "\n")
+            ):
+                self._in_code = not self._in_code
+                continue
+            if self._in_code:
+                continue
+            # Boundary: "\n\n" outside code block.
+            if self._buf.endswith("\n\n"):
+                candidate = self._buf[:-2]
+                if len(candidate.strip()) >= self._min:
+                    emitted.append(candidate)
+                    self._buf = ""
+                    self._emitted += 1
+                else:
+                    # Below MIN: consume the boundary (treat as inline whitespace).
+                    # See spec §9.2 — drop the "\n\n" entirely; bubble keeps growing.
+                    self._buf = candidate
+        return emitted
 
     def flush(self) -> str | None:
         # Strip leading/trailing whitespace from the final segment so a
