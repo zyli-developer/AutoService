@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from autoservice.conversation_engine.errors import ConversationNotFound
@@ -39,6 +39,11 @@ _SSE_HEADERS = {
 }
 
 _UNAUTHORIZED_BODY = {"error": "unauthorized"}
+
+
+class _TenantMismatchError(Exception):
+    """Raised by _persist_customer_message when conv reuse hits a tenant
+    boundary mismatch (data corruption only)."""
 
 
 def _extract_query(body: Any) -> str | None:
@@ -108,7 +113,7 @@ async def _persist_customer_message(
             "tenant mismatch on conv reuse: conv=%s expected=%s got=%s",
             conv_id, tenant_id, existing_tid,
         )
-        raise HTTPException(status_code=401, detail="unauthorized")
+        raise _TenantMismatchError(conv_id)
 
     source = f"cinnox:{inquiry_id or 'anon'}"
     now = datetime.now(timezone.utc)
@@ -177,9 +182,12 @@ async def post_chat(tenant_id: str, request: Request):
         return JSONResponse(status_code=503, content={"error": "cc_pool unavailable"})
 
     # 4. Persist customer message + squad broadcast
-    conv_id, _customer_msg = await _persist_customer_message(
-        engine, tenant_id=tid, inquiry_id=inquiry_id, query=query,
-    )
+    try:
+        conv_id, _customer_msg = await _persist_customer_message(
+            engine, tenant_id=tid, inquiry_id=inquiry_id, query=query,
+        )
+    except _TenantMismatchError:
+        return JSONResponse(status_code=401, content=_UNAUTHORIZED_BODY)
 
     # 5. Dispatch (streaming or JSON)
     streaming = _wants_streaming(request.headers.get("accept"))
