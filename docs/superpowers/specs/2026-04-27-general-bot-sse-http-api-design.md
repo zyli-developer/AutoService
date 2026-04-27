@@ -247,22 +247,33 @@ stream_agent_reply (D3):
 - `autoservice.gateway.tenant_resolver.resolve_customer_tenant`
 - `autoservice.plugins.squad_plugin.SquadPlugin`
 
-### 6.2 Small refactors
+### 6.2 Touches to shared code
 
-- Promote `gateway.message_router._collect_operator_suggestions` to
-  `gateway.message_router.collect_operator_suggestions` (drop the underscore;
-  it is already pure and reused across two call sites). Old name kept as
-  alias for one release to avoid breaking anything that grepped for it.
-- Add `passive_channel` skip in the takeover scheduler entry point at
-  [autoservice/conversation_engine/local_engine.py:766](../../../autoservice/conversation_engine/local_engine.py#L766)
-  (`_arm_takeover_timer`). Three-line guard at the top:
-  ```python
-  conv = self._conversations.get(conversation_id)
-  if conv is not None and conv.metadata.get("passive_channel"):
-      return
-  ```
-  This is the single funnel for arming — `reset_takeover_timer` and the
-  mode/leave/close paths all flow through it, so one guard covers all cases.
+The implementation is almost entirely additive. Two tiny touchpoints to
+existing modules:
+
+1. **`_arm_takeover_timer` metadata guard** at
+   [autoservice/conversation_engine/local_engine.py:766](../../../autoservice/conversation_engine/local_engine.py#L766) —
+   three-line guard at the top:
+   ```python
+   conv = self._conversations.get(conversation_id)
+   if conv is not None and conv.metadata.get("passive_channel"):
+       return
+   ```
+   This is the single funnel for arming (reset/mode/leave/close all flow
+   through it), so one guard covers all cases. Existing web/feishu
+   conversations never set `passive_channel`, so the guard is a no-op for
+   them — zero behavior change for existing channels.
+
+2. **`web_gateway.create_app` mount** — one line:
+   `app.include_router(general_bot_router)` next to the existing routers.
+   New path `/chat/{tid}` doesn't conflict with any existing route.
+
+`_collect_operator_suggestions` is reused across modules by direct import
+(`from autoservice.gateway.message_router import _collect_operator_suggestions`)
+— Python permits cross-module imports of underscore-prefixed names, and
+this avoids editing the existing file. If we want to clean up the
+convention later, that's a separate cosmetic PR.
 
 ### 6.3 Multi-bubble explicitly NOT used
 
