@@ -42,6 +42,12 @@ _UNAUTHORIZED_BODY = {"error": "unauthorized"}
 
 RUNNER_TIMEOUT_S = 120.0  # spec §8 total response time cap
 
+import time as _time
+
+# Track conv creation timestamps for SLA first_reply_ms (mirrors message_router)
+_conv_created_at: dict[str, float] = {}
+_conv_first_reply_sent: set[str] = set()
+
 
 class _TenantMismatchError(Exception):
     """Raised by _persist_customer_message when conv reuse hits a tenant
@@ -122,6 +128,8 @@ async def _persist_customer_message(
         channel=channel, external_id=external_id, metadata=metadata,
     )
     conv_id = conv.id
+    if conv_id not in _conv_created_at:
+        _conv_created_at[conv_id] = _time.time()
 
     # Defensive: on reuse, ensure tenant matches (only fails on data corruption)
     existing_tid = conv.metadata.get("tenant_id")
@@ -238,6 +246,7 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
                 ),
                 timeout=RUNNER_TIMEOUT_S,
             )
+            _record_first_reply_sla(conv_id)
         except asyncio.TimeoutError:
             logger.warning("stream_agent_reply timeout conv=%s", conv_id)
             try:
@@ -294,6 +303,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
                 ),
                 timeout=RUNNER_TIMEOUT_S,
             )
+            _record_first_reply_sla(conv_id)
         except asyncio.TimeoutError:
             try:
                 await sink.emit_terminal("(超时未生成完整回复)")
@@ -322,3 +332,22 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
             content={"error": "internal"},
         )
     return JSONResponse(content=sink.body)
+
+
+def _record_first_reply_sla(conv_id: str) -> None:
+    """Record SLA first_reply_ms / TTFB_MS once per conv (mirrors WS path)."""
+    if conv_id in _conv_first_reply_sent:
+        return
+    started = _conv_created_at.get(conv_id)
+    if started is None:
+        return
+    _conv_first_reply_sent.add(conv_id)
+    latency_ms = (_time.time() - started) * 1000.0
+    try:
+        from autoservice.api_routes import get_sla_aggregator
+        from autoservice.sla_aggregator import MetricType
+        sla = get_sla_aggregator()
+        sla.record(MetricType.FIRST_REPLY_MS, latency_ms)
+        sla.record(MetricType.TTFB_MS, latency_ms)
+    except Exception:
+        logger.warning("SLA record failed conv=%s", conv_id, exc_info=True)

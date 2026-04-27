@@ -490,6 +490,7 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             ("INSTANT_ACK_ENABLED",        _e("INSTANT_ACK_ENABLED", "1")),
             ("MULTI_BUBBLE_ENABLED",       _e("MULTI_BUBBLE_ENABLED", "1")),
             ("QUEUE_ENABLED",              _e("QUEUE_ENABLED", "1")),
+            ("GENERAL_BOT_ENABLED",        _e("GENERAL_BOT_ENABLED", "1")),
             ("PLACEHOLDER_ENABLED",        _e("PLACEHOLDER_ENABLED", "(deprecated alias)")),
             ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "(deprecated, ignored)")),
             ("TRIAGE_AGENT_ENABLED",       _e("TRIAGE_AGENT_ENABLED", "0")),

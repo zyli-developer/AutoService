@@ -250,6 +250,17 @@ path it used to gate has been removed regardless.
 Gates: `autoservice/gateway/agent_ack.py`, `autoservice/gateway/paragraph_splitter.py`,
 `autoservice/gateway/turn_queue.py`, `autoservice/gateway/message_router.py`.
 
+## General Bot Inbound API
+
+`GENERAL_BOT_ENABLED` (default **on**) gates `POST /chat/{tenant_id}` —
+the inbound HTTP/SSE endpoint for third-party IM platforms (CINNOX-
+compatible, see [docs/General-Bot-Streaming-Message(SSE)-API_20260427.md](docs/General-Bot-Streaming-Message(SSE)-API_20260427.md)).
+When `0`, the route returns 503. Auth uses per-tenant Bearer keys stored
+hashed at `.autoservice/sandbox/<tid>/api_keys.json`; mint a key with
+`python scripts/issue_general_bot_key.py <tid> [--label NAME]`.
+
+Spec: `docs/superpowers/specs/2026-04-27-general-bot-sse-http-api-design.md`.
+
 ## Credentials
 
 - `.feishu-credentials.json` — Feishu app credentials (gitignored)
