@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from autoservice.integrations.general_bot.sse import ReplySink
 
@@ -25,7 +25,7 @@ logger = logging.getLogger("autoservice.general_bot.pipeline")
 
 
 async def _drain_to_sink(
-    iterator: AsyncIterator[Any],
+    iterator: AsyncIterator,
     sink: ReplySink,
     *,
     perf: dict | None = None,
@@ -137,6 +137,7 @@ async def stream_agent_reply(
             )
         await sink.emit_terminal(text)
         await _persist_agent_message(engine, conv_id, text)
+        perf["t_done"] = _time.perf_counter()
         return text
 
     # Reseed history if role switched
@@ -161,6 +162,14 @@ async def stream_agent_reply(
 
     perf["t_prompt_built"] = _time.perf_counter()
 
+    # v1 simplification (CINNOX): all non-direct roles route through the
+    # customer sticky pool, regardless of decision.role. The WS path
+    # (gateway/message_router._generate_agent_reply) uses pool.acquire(role=…)
+    # for lead/translate roles to bind to the right sub-pool's soul + KB.
+    # We accept the degradation here because (a) CINNOX traffic is dominated
+    # by customer-role, (b) the role-shaped prompt built above still nudges
+    # the model toward the right voice. Port _role_stream if/when CINNOX
+    # needs lead/translate routing. Tracked: spec §6 step 4.
     iterator = pool.session_query(
         conv_id, prompt, tenant_id=tenant_id, tier=decision.tier,
     )
@@ -174,6 +183,7 @@ async def stream_agent_reply(
         await _persist_agent_message(
             engine, conv_id, full_text, metadata={"is_fallback": True},
         )
+        perf["t_done"] = _time.perf_counter()
         return full_text
 
     await sink.emit_terminal(full_text)
