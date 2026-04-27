@@ -395,8 +395,12 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
 
     # Path to the per-email password file; same convention as auth.db etc.
     _PASSWORDS_FILE = Path(__file__).resolve().parent.parent / ".autoservice" / "passwords.json"
+    from autoservice.api_routes import _get_auth_db as _get_auth_db_for_pw_login
     app.include_router(
-        _password_login.build_router(passwords_path=str(_PASSWORDS_FILE))
+        _password_login.build_router(
+            passwords_path=str(_PASSWORDS_FILE),
+            db_provider=_get_auth_db_for_pw_login,
+        )
     )
 
     # Wire SLA alert push to admin WebSocket connections (T6E.7)
