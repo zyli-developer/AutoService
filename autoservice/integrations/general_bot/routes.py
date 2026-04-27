@@ -73,6 +73,21 @@ def _bearer_token(auth_header: str | None) -> str | None:
     return auth_header.split(" ", 1)[1].strip() or None
 
 
+async def _submit_runner(conv_id: str, runner) -> bool:
+    """Submit runner via turn_queue (default) or fire-and-forget if QUEUE_ENABLED=0.
+
+    Returns True on success, raises QueueFullError on full queue. Mirrors
+    autoservice/gateway/message_router.py's QUEUE_ENABLED gate for parity.
+    """
+    if os.getenv("QUEUE_ENABLED", "1") == "1":
+        from autoservice.gateway.message_router import get_turn_queue
+        await get_turn_queue().submit(conv_id, runner)
+    else:
+        # Legacy concurrent path: each request gets its own task, no FIFO
+        asyncio.create_task(runner(), name=f"general-bot-runner-{conv_id}")
+    return True
+
+
 async def _persist_customer_message(
     engine, *, tenant_id: str, inquiry_id: str | None, query: str,
 ) -> tuple[str, Any]:
@@ -205,8 +220,6 @@ async def post_chat(tenant_id: str, request: Request):
 
 async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
     """Submit runner to turn_queue + bridge to SSE wire via asyncio.Queue."""
-    from autoservice.gateway.message_router import get_turn_queue
-
     sse_queue: asyncio.Queue = asyncio.Queue()
 
     async def _send(line: bytes) -> None:
@@ -231,17 +244,24 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
             await sse_queue.put(None)
 
     try:
-        await get_turn_queue().submit(conv_id, _runner)
+        await _submit_runner(conv_id, _runner)
     except QueueFullError:
         return JSONResponse(status_code=429, content={"error": "queue full"})
 
     async def _generator():
         yield b": keepalive\n\n"
-        while True:
-            line = await sse_queue.get()
-            if line is None:
-                return
-            yield line
+        try:
+            while True:
+                line = await sse_queue.get()
+                if line is None:
+                    return
+                yield line
+        finally:
+            # Client disconnected mid-stream: close the sink so subsequent
+            # runner emits become no-ops and the keepalive task cancels.
+            # We can't cancel the runner itself (turn_queue is fire-and-forget),
+            # but Task 9's 120s watchdog will bound any orphaned execution.
+            await sink.close()
 
     return StreamingResponse(
         _generator(), media_type="text/event-stream", headers=_SSE_HEADERS,
@@ -250,11 +270,9 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
 
 async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
     """JSON path also routes through turn_queue for per-conv FIFO."""
-    from autoservice.gateway.message_router import get_turn_queue
-
     done = asyncio.Event()
     sink = JSONSink()
-    runner_exc: list[BaseException] = []
+    runner_exc: list[Exception] = []
 
     async def _runner() -> None:
         try:
@@ -262,7 +280,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
                 engine=engine, pool=pool, conv_id=conv_id,
                 customer_text=query, tenant_id=tenant_id, sink=sink,
             )
-        except BaseException as exc:  # noqa: BLE001
+        except Exception as exc:
             runner_exc.append(exc)
             try:
                 await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
@@ -273,11 +291,15 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
             done.set()
 
     try:
-        await get_turn_queue().submit(conv_id, _runner)
+        await _submit_runner(conv_id, _runner)
     except QueueFullError:
         return JSONResponse(status_code=429, content={"error": "queue full"})
 
     await done.wait()
     if runner_exc:
         logger.exception("json runner failed", exc_info=runner_exc[0])
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal"},
+        )
     return JSONResponse(content=sink.body)
