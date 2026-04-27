@@ -40,6 +40,8 @@ _SSE_HEADERS = {
 
 _UNAUTHORIZED_BODY = {"error": "unauthorized"}
 
+RUNNER_TIMEOUT_S = 120.0  # spec §8 total response time cap
+
 
 class _TenantMismatchError(Exception):
     """Raised by _persist_customer_message when conv reuse hits a tenant
@@ -229,10 +231,19 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
 
     async def _runner() -> None:
         try:
-            await stream_agent_reply(
-                engine=engine, pool=pool, conv_id=conv_id,
-                customer_text=query, tenant_id=tenant_id, sink=sink,
+            await asyncio.wait_for(
+                stream_agent_reply(
+                    engine=engine, pool=pool, conv_id=conv_id,
+                    customer_text=query, tenant_id=tenant_id, sink=sink,
+                ),
+                timeout=RUNNER_TIMEOUT_S,
             )
+        except asyncio.TimeoutError:
+            logger.warning("stream_agent_reply timeout conv=%s", conv_id)
+            try:
+                await sink.emit_terminal("(超时未生成完整回复)")
+            except Exception:
+                pass
         except Exception:
             logger.exception("stream_agent_reply failed conv=%s", conv_id)
             try:
@@ -276,10 +287,18 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
 
     async def _runner() -> None:
         try:
-            await stream_agent_reply(
-                engine=engine, pool=pool, conv_id=conv_id,
-                customer_text=query, tenant_id=tenant_id, sink=sink,
+            await asyncio.wait_for(
+                stream_agent_reply(
+                    engine=engine, pool=pool, conv_id=conv_id,
+                    customer_text=query, tenant_id=tenant_id, sink=sink,
+                ),
+                timeout=RUNNER_TIMEOUT_S,
             )
+        except asyncio.TimeoutError:
+            try:
+                await sink.emit_terminal("(超时未生成完整回复)")
+            except Exception:
+                pass
         except Exception as exc:
             runner_exc.append(exc)
             try:
