@@ -203,25 +203,18 @@ async def post_chat(tenant_id: str, request: Request):
         )
 
 
-async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
-    sink = JSONSink()
-    await stream_agent_reply(
-        engine=engine, pool=pool, conv_id=conv_id,
-        customer_text=query, tenant_id=tenant_id, sink=sink,
-    )
-    return JSONResponse(content=sink.body)
-
-
 async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
-    """Bridge the runner → SSE wire via an asyncio.Queue (spec §8)."""
-    queue: asyncio.Queue = asyncio.Queue()
+    """Submit runner to turn_queue + bridge to SSE wire via asyncio.Queue."""
+    from autoservice.gateway.message_router import get_turn_queue
+
+    sse_queue: asyncio.Queue = asyncio.Queue()
 
     async def _send(line: bytes) -> None:
-        await queue.put(line)
+        await sse_queue.put(line)
 
     sink = SSEStream(_send)
 
-    async def _runner():
+    async def _runner() -> None:
         try:
             await stream_agent_reply(
                 engine=engine, pool=pool, conv_id=conv_id,
@@ -235,23 +228,56 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
                 pass
         finally:
             await sink.close()
-            await queue.put(None)  # sentinel
+            await sse_queue.put(None)
 
-    runner_task = asyncio.create_task(_runner(), name=f"general-bot-{conv_id}")
+    try:
+        await get_turn_queue().submit(conv_id, _runner)
+    except QueueFullError:
+        return JSONResponse(status_code=429, content={"error": "queue full"})
 
     async def _generator():
-        # Initial keepalive: defeat LB idle while runner is starting
         yield b": keepalive\n\n"
-        try:
-            while True:
-                line = await queue.get()
-                if line is None:
-                    return
-                yield line
-        finally:
-            if not runner_task.done():
-                runner_task.cancel()
+        while True:
+            line = await sse_queue.get()
+            if line is None:
+                return
+            yield line
 
     return StreamingResponse(
         _generator(), media_type="text/event-stream", headers=_SSE_HEADERS,
     )
+
+
+async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
+    """JSON path also routes through turn_queue for per-conv FIFO."""
+    from autoservice.gateway.message_router import get_turn_queue
+
+    done = asyncio.Event()
+    sink = JSONSink()
+    runner_exc: list[BaseException] = []
+
+    async def _runner() -> None:
+        try:
+            await stream_agent_reply(
+                engine=engine, pool=pool, conv_id=conv_id,
+                customer_text=query, tenant_id=tenant_id, sink=sink,
+            )
+        except BaseException as exc:  # noqa: BLE001
+            runner_exc.append(exc)
+            try:
+                await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
+            except Exception:
+                pass
+        finally:
+            await sink.close()
+            done.set()
+
+    try:
+        await get_turn_queue().submit(conv_id, _runner)
+    except QueueFullError:
+        return JSONResponse(status_code=429, content={"error": "queue full"})
+
+    await done.wait()
+    if runner_exc:
+        logger.exception("json runner failed", exc_info=runner_exc[0])
+    return JSONResponse(content=sink.body)
