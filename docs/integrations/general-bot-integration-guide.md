@@ -50,7 +50,7 @@ describing the integration (e.g., `"cinnox-prod"`, `"cinnox-staging"`). They
 will run:
 
 ```
-python scripts/issue_general_bot_key.py <tenant_id> --label "<label>"
+python3 scripts/issue_general_bot_key.py <tenant_id> --label "<label>"
 ```
 
 and return the raw key to you over a secure channel (the raw key is shown
