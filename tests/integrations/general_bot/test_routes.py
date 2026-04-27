@@ -188,3 +188,86 @@ def test_inquiry_id_absent_creates_oneshot(app, sandbox_dir):
         if cid.startswith("cinnox-oneshot_")
     ]
     assert len(oneshot_convs) == 2  # two distinct convs
+
+
+# --- error path coverage ---
+
+
+def test_missing_authorization_returns_401(app, sandbox_dir):
+    seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post("/chat/tenantA", json={"query": "hi"})
+    assert r.status_code == 401
+    assert r.json() == {"error": "unauthorized"}
+
+
+def test_wrong_authorization_returns_401(app, sandbox_dir):
+    seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hi"},
+            headers={"Authorization": "Bearer wrong-key"},
+        )
+    assert r.status_code == 401
+    assert r.json() == {"error": "unauthorized"}
+
+
+def test_unknown_tenant_returns_401_with_same_body(app, sandbox_dir):
+    """No oracle: same response shape for bad-key vs unknown-tenant."""
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/ghost-tenant",
+            json={"query": "hi"},
+            headers={"Authorization": "Bearer anything"},
+        )
+    assert r.status_code == 401
+    assert r.json() == {"error": "unauthorized"}
+
+
+def test_non_bearer_authorization_returns_401(app, sandbox_dir):
+    seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hi"},
+            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+        )
+    assert r.status_code == 401
+
+
+def test_invalid_json_body_returns_422(app, sandbox_dir):
+    raw_key = seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            content=b"{not-json",
+            headers={
+                "Authorization": f"Bearer {raw_key}",
+                "Content-Type": "application/json",
+            },
+        )
+    assert r.status_code == 422
+
+
+def test_inquiry_id_non_string_returns_422(app, sandbox_dir):
+    raw_key = seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hi", "inquiryID": 123},
+            headers={"Authorization": f"Bearer {raw_key}"},
+        )
+    assert r.status_code == 422
+
+
+def test_general_bot_disabled_returns_503(app, sandbox_dir, monkeypatch):
+    raw_key = seed_api_key(sandbox_dir, "tenantA")
+    monkeypatch.setenv("GENERAL_BOT_ENABLED", "0")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hi"},
+            headers={"Authorization": f"Bearer {raw_key}"},
+        )
+    assert r.status_code == 503
