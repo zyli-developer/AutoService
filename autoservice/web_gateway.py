@@ -391,6 +391,8 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     from autoservice.api_routes import api_router, _set_engine
     app.include_router(onboard_router)
     app.include_router(api_router)
+    from autoservice.integrations.general_bot.routes import general_bot_router
+    app.include_router(general_bot_router)
     _set_engine(app.state.engine)
 
     # Path to the per-email password file; same convention as auth.db etc.
