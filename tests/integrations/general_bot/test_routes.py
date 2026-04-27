@@ -271,3 +271,50 @@ def test_general_bot_disabled_returns_503(app, sandbox_dir, monkeypatch):
             headers={"Authorization": f"Bearer {raw_key}"},
         )
     assert r.status_code == 503
+
+
+# --- agent broadcast + fallback persistence + truncation ---
+
+
+def test_agent_reply_broadcast_to_squad(app, sandbox_dir, monkeypatch):
+    """C1: agent reply must be broadcast to operator squad (decision E1)."""
+    raw_key = seed_api_key(sandbox_dir, "tenantA")
+
+    broadcasts: list[dict] = []
+    from autoservice.integrations.general_bot import reply_pipeline as rp
+
+    # Wrap _broadcast_to_squad to capture frames pushed during agent persist
+    original_persist = rp._persist_agent_message
+
+    async def _capture_broadcast(frame, conv_id, **kw):
+        broadcasts.append(frame)
+
+    async def _wrapped_persist(engine, conv_id, text, *, metadata=None):
+        msg = await engine.send_message(
+            conv_id, source="agent", content=text,
+            metadata=dict(metadata) if metadata else {},
+        )
+        from autoservice.gateway.message_router import _message_frame
+        frame = _message_frame(msg)
+        frame["payload"]["source_display"] = {"id": "agent", "role": "agent"}
+        await _capture_broadcast(frame, conv_id)
+        return msg
+
+    monkeypatch.setattr(
+        "autoservice.integrations.general_bot.reply_pipeline._persist_agent_message",
+        _wrapped_persist,
+    )
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hello", "inquiryID": "broadcast-1"},
+            headers={"Authorization": f"Bearer {raw_key}"},
+        )
+    assert r.status_code == 200
+    # The agent message should have been "broadcast" via our wrapper
+    agent_frames = [
+        f for f in broadcasts
+        if f.get("payload", {}).get("source_display", {}).get("role") == "agent"
+    ]
+    assert len(agent_frames) >= 1

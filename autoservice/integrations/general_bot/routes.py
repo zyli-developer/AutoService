@@ -253,12 +253,32 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
                 await sink.emit_terminal("(超时未生成完整回复)")
             except Exception:
                 pass
+            try:
+                from autoservice.integrations.general_bot.reply_pipeline import (
+                    _persist_agent_message,
+                )
+                await _persist_agent_message(
+                    engine, conv_id, "(超时未生成完整回复)",
+                    metadata={"is_fallback": True, "is_timeout": True},
+                )
+            except Exception:
+                logger.exception("timeout fallback persist failed conv=%s", conv_id)
         except Exception:
             logger.exception("stream_agent_reply failed conv=%s", conv_id)
             try:
                 await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
             except Exception:
                 pass
+            try:
+                from autoservice.integrations.general_bot.reply_pipeline import (
+                    _persist_agent_message,
+                )
+                await _persist_agent_message(
+                    engine, conv_id, "(抱歉,本次未能生成完整回复)",
+                    metadata={"is_fallback": True},
+                )
+            except Exception:
+                logger.exception("fallback persist failed conv=%s", conv_id)
         finally:
             await sink.close()
             await sse_queue.put(None)
@@ -309,12 +329,32 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
                 await sink.emit_terminal("(超时未生成完整回复)")
             except Exception:
                 pass
+            try:
+                from autoservice.integrations.general_bot.reply_pipeline import (
+                    _persist_agent_message,
+                )
+                await _persist_agent_message(
+                    engine, conv_id, "(超时未生成完整回复)",
+                    metadata={"is_fallback": True, "is_timeout": True},
+                )
+            except Exception:
+                logger.exception("timeout fallback persist failed conv=%s", conv_id)
         except Exception as exc:
             runner_exc.append(exc)
             try:
                 await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
             except Exception:
                 pass
+            try:
+                from autoservice.integrations.general_bot.reply_pipeline import (
+                    _persist_agent_message,
+                )
+                await _persist_agent_message(
+                    engine, conv_id, "(抱歉,本次未能生成完整回复)",
+                    metadata={"is_fallback": True},
+                )
+            except Exception:
+                logger.exception("fallback persist failed conv=%s", conv_id)
         finally:
             await sink.close()
             done.set()

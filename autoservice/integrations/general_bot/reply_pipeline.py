@@ -93,11 +93,24 @@ def _compose_role_prompt(suggestions: str, customer_text: str) -> str:
 
 
 async def _persist_agent_message(engine, conv_id: str, text: str, *, metadata=None):
-    """Persist a single agent message row (no segments — spec §6.3)."""
-    return await engine.send_message(
+    """Persist a single agent message row (no segments — spec §6.3) and
+    broadcast to the operator squad (decision E1 — full operator visibility)."""
+    msg = await engine.send_message(
         conv_id, source="agent", content=text,
         metadata=dict(metadata) if metadata else {},
     )
+    # Broadcast to operator squad. Best-effort — broadcast errors must not
+    # break the customer reply path.
+    try:
+        from autoservice.gateway.message_router import (
+            _broadcast_to_squad, _message_frame,
+        )
+        frame = _message_frame(msg)
+        frame["payload"]["source_display"] = {"id": "agent", "role": "agent"}
+        await _broadcast_to_squad(frame, conv_id)
+    except Exception:
+        logger.exception("agent broadcast failed conv=%s", conv_id)
+    return msg
 
 
 async def stream_agent_reply(
@@ -185,6 +198,26 @@ async def stream_agent_reply(
         )
         perf["t_done"] = _time.perf_counter()
         return full_text
+
+    # Spec §9 4MB-cumulative cap: when the sink truncated mid-stream,
+    # also truncate the terminal text and persisted row so neither blows
+    # the cap nor exceeds CINNOX's 1MB-per-event limit.
+    if getattr(sink, "truncated", False):
+        from autoservice.integrations.general_bot.sse import MAX_CUMULATIVE_BYTES
+        suffix = "\n(回复已截断)"
+        # Reserve room for the suffix in the byte budget.
+        budget = MAX_CUMULATIVE_BYTES - len(suffix.encode("utf-8"))
+        encoded = full_text.encode("utf-8")
+        if len(encoded) > budget:
+            # Truncate at byte boundary, then drop trailing partial UTF-8.
+            truncated = encoded[:budget].decode("utf-8", errors="ignore")
+            full_text = truncated + suffix
+        else:
+            full_text = full_text + suffix
+        logger.warning(
+            "stream_agent_reply: truncated to 4MB cap conv=%s len=%d",
+            conv_id, len(full_text.encode("utf-8")),
+        )
 
     await sink.emit_terminal(full_text)
     await _persist_agent_message(engine, conv_id, full_text)

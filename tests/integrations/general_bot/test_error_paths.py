@@ -135,3 +135,42 @@ def test_watchdog_timeout_emits_terminal(app_factory, sandbox_dir, monkeypatch):
     ]
     assert len(terminals) == 1
     assert "超时" in terminals[0]["message"]["text"]
+
+
+# --- C2 fallback persistence + C3 truncation ---
+
+
+def test_mid_stream_error_persists_fallback_row(app_factory, sandbox_dir):
+    """C2: mid-stream error must persist a Message row with metadata.is_fallback=True."""
+    class _BoomPool:
+        def session_query(self, conv_id, prompt, **kw):
+            from claude_agent_sdk.types import StreamEvent
+            async def _gen():
+                yield StreamEvent(
+                    uuid="u", session_id="s",
+                    event={"type": "content_block_delta",
+                           "delta": {"type": "text_delta", "text": "before-error "}},
+                )
+                raise RuntimeError("simulated pool failure")
+            return _gen()
+
+    app = app_factory(_BoomPool())
+    raw_key = seed_api_key(sandbox_dir, "tenantA")
+    with TestClient(app) as client:
+        r = client.post(
+            "/chat/tenantA",
+            json={"query": "hi", "inquiryID": "fallback-c2"},
+            headers={
+                "Authorization": f"Bearer {raw_key}",
+                "Accept": "text/event-stream",
+            },
+        )
+    assert r.status_code == 200
+    # Inspect engine state: there should be a fallback row persisted
+    conv_id = "cinnox_tenantA:fallback-c2"
+    msgs = app.state.engine._messages[conv_id]
+    fallback_rows = [
+        m for m in msgs
+        if m.source == "agent" and m.metadata.get("is_fallback") is True
+    ]
+    assert len(fallback_rows) == 1
