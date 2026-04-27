@@ -7,11 +7,10 @@
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { I18nextProvider, createI18n, useTranslation } from '@autoservice/i18n';
 import { useSessionMode } from '@autoservice/shared';
 import { App } from './App';
-import { NoTenantFallback } from './components/NoTenantFallback';
 import './index.css';
 
 const i18n = createI18n();
@@ -118,14 +117,15 @@ export function RouteBootstrap({
   return (
     <BrowserRouter>
       <Routes>
-        {/* Tenant-scoped entry — master mode primary shape */}
+        {/* Canonical tenant-scoped route — master mode primary shape */}
         <Route path="/tenant/:tenantId/operator" element={<App />} />
         {/* URL-flat — tenant mode primary (backend middleware rewrites) */}
         <Route path="/operator" element={<App />} />
-        {/* Legacy / no-tenant entry — show a helpful fallback */}
-        <Route path="/" element={<NoTenantFallback />} />
-        {/* Any other path → back to root */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Catch-all — App mounts unconditionally; useTenantId() reads
+            either path param or `?tenant=` query string. WorkspacePage
+            renders NoTenantFallback when neither is present. Mirrors
+            customer-chat's main.tsx pattern. */}
+        <Route path="*" element={<App />} />
       </Routes>
     </BrowserRouter>
   );

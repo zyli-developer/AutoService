@@ -27,10 +27,11 @@ export function NoTenantFallback() {
       <p>
         {t('operator.no_tenant.hint', {
           defaultValue:
-            'Open this console with a tenant path, e.g. /tenant/<your-tenant>/operator',
+            'Open this console with either a tenant query string or path.',
         })}
       </p>
-      <code data-testid="no-tenant-example">/tenant/&lt;your-tenant&gt;/operator</code>
+      <code data-testid="no-tenant-example">?tenant=&lt;your-tenant&gt;</code>
+      <code>/tenant/&lt;your-tenant&gt;/operator</code>
     </div>
   );
 }

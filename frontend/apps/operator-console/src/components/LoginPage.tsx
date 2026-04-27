@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { useTenantId } from '@autoservice/shared';
 import { useOperatorStore } from '../store/operatorStore';
 
 /**
@@ -17,8 +18,11 @@ import { useOperatorStore } from '../store/operatorStore';
 export function LoginPage() {
   const { t } = useTranslation();
   const login = useOperatorStore((s) => s.login);
+  // Pre-fill tenant from URL (path /tenant/:id/* or query ?tenant=...).
+  // Operators landing on /console/?tenant=cinnox don't have to retype it.
+  const urlTenant = useTenantId();
   const [email, setEmail] = useState('');
-  const [tenantId, setTenantId] = useState('');
+  const [tenantId, setTenantId] = useState(urlTenant ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
