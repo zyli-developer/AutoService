@@ -257,7 +257,7 @@ the inbound HTTP/SSE endpoint for third-party IM platforms (CINNOX-
 compatible, see [docs/General-Bot-Streaming-Message(SSE)-API_20260427.md](docs/General-Bot-Streaming-Message(SSE)-API_20260427.md)).
 When `0`, the route returns 503. Auth uses per-tenant Bearer keys stored
 hashed at `.autoservice/sandbox/<tid>/api_keys.json`; mint a key with
-`python3 scripts/issue_general_bot_key.py <tid> [--label NAME]`.
+`uv run python3 scripts/issue_general_bot_key.py <tid> [--label NAME]`.
 
 Spec: `docs/superpowers/specs/2026-04-27-general-bot-sse-http-api-design.md`.
 
