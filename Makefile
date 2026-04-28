@@ -37,12 +37,17 @@ run-server:
 
 # --- Dev stack: gateway + 3 frontend dev servers ---
 # `make start` launches everything in the background; `make stop` kills them.
+# `start` defensively zeroes dev-only backend flags (AUTH_DEV_MODE /
+# DREAM_DEV_STUB) so a stray `export AUTH_DEV_MODE=1` in the caller's
+# shell — or an earlier `make dev-start` — does NOT leak into a `make
+# start` invocation. Explicit command-line assignment beats any env var
+# inherited from the parent shell.
 # Logs: .autoservice/logs/{gateway,customer,operator,admin}.log
 # PIDs: .autoservice/run/{gateway,customer,operator,admin}.pid
 start: stop
 	@mkdir -p .autoservice/logs .autoservice/run
-	@echo "==> Starting backend gateway (port 8000)..."
-	@uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port 8000 --log-level info > .autoservice/logs/gateway.log 2>&1 & echo $$! > .autoservice/run/gateway.pid
+	@echo "==> Starting backend gateway (port 8000, AUTH_DEV_MODE=0 DREAM_DEV_STUB=0)..."
+	@AUTH_DEV_MODE=0 DREAM_DEV_STUB=0 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port 8000 --log-level info > .autoservice/logs/gateway.log 2>&1 & echo $$! > .autoservice/run/gateway.pid
 	@echo "==> Starting customer-chat (port 5173)..."
 	@bash -c 'cd frontend; pnpm dev:customer > ../.autoservice/logs/customer.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/customer.pid'
 	@echo "==> Starting operator-console (port 5174)..."
@@ -58,10 +63,28 @@ start: stop
 	@echo "  logs: .autoservice/logs/{gateway,customer,operator,admin}.log"
 	@echo "  stop: make stop"
 
-# Same as `start` but with AUTH_DEV_MODE=1 so admin portal dev-login works
-# without SMTP. Do NOT use in production — see CLAUDE.md "Dev Auth Bypass".
-dev-start: export AUTH_DEV_MODE=1
-dev-start: start
+# Same service shape as `start`, but with AUTH_DEV_MODE=1 so admin portal
+# dev-login works without SMTP. Do NOT use on prod/staging — see
+# CLAUDE.md "Dev Auth Bypass". Independent recipe so `start` can
+# defensively force AUTH_DEV_MODE=0 without cross-talk.
+dev-start: stop
+	@mkdir -p .autoservice/logs .autoservice/run
+	@echo "==> Starting backend gateway (port 8000, AUTH_DEV_MODE=1)..."
+	@AUTH_DEV_MODE=1 uv run uvicorn autoservice.web_gateway:create_app --factory --host 0.0.0.0 --port 8000 --log-level info > .autoservice/logs/gateway.log 2>&1 & echo $$! > .autoservice/run/gateway.pid
+	@echo "==> Starting customer-chat (port 5173)..."
+	@bash -c 'cd frontend; pnpm dev:customer > ../.autoservice/logs/customer.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/customer.pid'
+	@echo "==> Starting operator-console (port 5174)..."
+	@bash -c 'cd frontend; pnpm dev:operator > ../.autoservice/logs/operator.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/operator.pid'
+	@echo "==> Starting admin-portal (port 5175)..."
+	@bash -c 'cd frontend; pnpm dev:admin > ../.autoservice/logs/admin.log 2>&1 &  pid=$$!; cd ..; echo $$pid > .autoservice/run/admin.pid'
+	@echo ""
+	@echo "  backend:          http://localhost:8000  (gateway, AUTH_DEV_MODE=1)"
+	@echo "  customer-chat:    http://localhost:5173"
+	@echo "  operator-console: http://localhost:5174"
+	@echo "  admin-portal:     http://localhost:5175"
+	@echo ""
+	@echo "  logs: .autoservice/logs/{gateway,customer,operator,admin}.log"
+	@echo "  stop: make stop"
 
 stop:
 	@if [ -d .autoservice/run ]; then \
