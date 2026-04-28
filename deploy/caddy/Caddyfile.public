@@ -66,6 +66,16 @@ http://:{$CADDY_PORT} {
         }
     }
 
+    # Public general-bot inbound endpoint for third-party IM platforms
+    # (CINNOX-compatible). Bearer-token auth lives in the FastAPI handler;
+    # Caddy just forwards. Cloudflare Access allowlist must also list /chat/*
+    # under public_paths so OTP doesn't block third-party callers.
+    handle /chat/* {
+        reverse_proxy 127.0.0.1:8000 {
+            header_up X-Forwarded-Proto https
+        }
+    }
+
     handle {
         respond "not found" 404
     }
