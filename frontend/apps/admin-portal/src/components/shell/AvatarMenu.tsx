@@ -61,7 +61,7 @@ export function AvatarMenu({ redirector }: AvatarMenuProps = {}) {
       // and show its error splash on the next load if needed.
     } finally {
       setOpen(false);
-      nav('/login');
+      nav(`${import.meta.env.BASE_URL}login`);
       // Leave `logoutPending` true — the page is about to navigate; flipping
       // it back would let the user click Logout again during the redirect,
       // which is pointless and could race.

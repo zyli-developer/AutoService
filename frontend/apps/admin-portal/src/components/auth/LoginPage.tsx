@@ -62,6 +62,43 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Password login (public deploy §4.6): every admin_emails entry has a
+  // generated password in .autoservice/passwords.json.
+  const [pwEmail, setPwEmail] = useState('');
+  const [pwPassword, setPwPassword] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+
+  const onPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    setPwBusy(true);
+    try {
+      const res = await fetch('/api/auth/password-login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: pwEmail.trim(), password: pwPassword }),
+      });
+      if (res.ok) {
+        const target = tenantId ? `/tenant/${tenantId}/admin` : '/admin/';
+        window.location.href = target;
+        return;
+      }
+      if (res.status === 429) {
+        setPwError('Too many attempts. Try again in 10 minutes.');
+      } else if (res.status === 404) {
+        setPwError('Password login is disabled on this deployment.');
+      } else {
+        setPwError('Invalid credentials.');
+      }
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   const [devMode, setDevMode] = useState<DevMode>({
     enabled: false,
     personas: [],
@@ -315,6 +352,98 @@ export function LoginPage({ tenantId = null }: LoginPageProps = {}) {
             </button>
           </form>
         )}
+
+        <details
+          data-testid="password-login-toggle"
+          style={{
+            marginTop: 20,
+            paddingTop: 14,
+            borderTop: '1px dashed var(--color-border)',
+          }}
+        >
+          <summary
+            style={{
+              cursor: 'pointer',
+              fontSize: 12,
+              color: 'var(--color-text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: 0.6,
+            }}
+          >
+            Password login
+          </summary>
+          <form
+            data-testid="password-login-form"
+            onSubmit={onPasswordSubmit}
+            style={{ marginTop: 12 }}
+          >
+            <input
+              data-testid="password-login-email"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={pwEmail}
+              onChange={(e) => setPwEmail(e.target.value)}
+              disabled={pwBusy}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                fontSize: 14,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                boxSizing: 'border-box',
+              }}
+            />
+            <input
+              data-testid="password-login-password"
+              type="password"
+              required
+              autoComplete="current-password"
+              placeholder="Password"
+              value={pwPassword}
+              onChange={(e) => setPwPassword(e.target.value)}
+              disabled={pwBusy}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                fontSize: 14,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                boxSizing: 'border-box',
+                marginTop: 8,
+              }}
+            />
+            {pwError ? (
+              <div
+                data-testid="password-login-error"
+                role="alert"
+                style={{ marginTop: 10, color: 'var(--color-danger)', fontSize: 12 }}
+              >
+                {pwError}
+              </div>
+            ) : null}
+            <button
+              type="submit"
+              data-testid="password-login-submit"
+              disabled={pwBusy}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #444',
+                borderRadius: 'var(--radius-sm)',
+                background: pwBusy ? '#aaa' : '#444',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: pwBusy ? 'wait' : 'pointer',
+              }}
+            >
+              {pwBusy ? 'Signing in…' : 'Sign in with password'}
+            </button>
+          </form>
+        </details>
 
         {devMode.enabled ? (
           <div

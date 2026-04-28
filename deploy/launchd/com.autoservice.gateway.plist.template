@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.autoservice.gateway</string>
+    <key>WorkingDirectory</key>
+    <string>{{AUTOSERVICE_ROOT}}</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>exec uv run uvicorn autoservice.web_gateway:create_app --factory --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1 --log-level info</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+      <key>PLACEHOLDER_ENABLED</key>
+      <string>0</string>
+      <key>CORS_EXTRA_ORIGINS</key>
+      <string>https://autoservice.ezagent.chat</string>
+    </dict>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key>
+    <string>{{AUTOSERVICE_ROOT}}/.autoservice/logs/gateway.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{AUTOSERVICE_ROOT}}/.autoservice/logs/gateway.log</string>
+</dict>
+</plist>

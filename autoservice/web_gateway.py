@@ -18,6 +18,19 @@ from typing import Any
 
 from pathlib import Path
 
+# Load project-root .env so voice creds (DOUBAO_APP_ID / DOUBAO_ACCESS_TOKEN,
+# etc.) are present in os.environ before any `create_app()` route wiring runs.
+# Same pattern as channels/web/app.py; lets `make run-gateway` work with a
+# gitignored .env file instead of requiring callers to shell-export the vars.
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+if _ENV_FILE.exists():
+    with open(_ENV_FILE, encoding="utf-8") as _envf:
+        for _line in _envf:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -34,6 +47,7 @@ from autoservice.gateway.connection import (
 )
 from autoservice.gateway.envelope import ACCEPTED_VERSIONS, parse_envelope
 from autoservice import operator_routes, operators
+from autoservice import password_login as _password_login
 from autoservice.gateway.errors import (
     ERR_AUTH,
     ERR_VALIDATION,
@@ -54,9 +68,12 @@ logger.setLevel(logging.INFO)
 if not logger.handlers and not logging.getLogger().handlers:
     logger.addHandler(logging.StreamHandler())
 
-_CORS_ORIGINS = [
-    f"http://localhost:{p}" for p in range(5173, 5180)
-]
+_CORS_ORIGINS = [f"http://localhost:{p}" for p in range(5173, 5180)]
+_extra_origins = os.environ.get("CORS_EXTRA_ORIGINS", "").strip()
+if _extra_origins:
+    _CORS_ORIGINS.extend(
+        o.strip() for o in _extra_origins.split(",") if o.strip()
+    )
 
 _CLOSE_CODE_VERSION = 4040
 
@@ -387,7 +404,19 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     from autoservice.api_routes import api_router, _set_engine
     app.include_router(onboard_router)
     app.include_router(api_router)
+    from autoservice.integrations.general_bot.routes import general_bot_router
+    app.include_router(general_bot_router)
     _set_engine(app.state.engine)
+
+    # Path to the per-email password file; same convention as auth.db etc.
+    _PASSWORDS_FILE = Path(__file__).resolve().parent.parent / ".autoservice" / "passwords.json"
+    from autoservice.api_routes import _get_auth_db as _get_auth_db_for_pw_login
+    app.include_router(
+        _password_login.build_router(
+            passwords_path=str(_PASSWORDS_FILE),
+            db_provider=_get_auth_db_for_pw_login,
+        )
+    )
 
     # Wire SLA alert push to admin WebSocket connections (T6E.7)
     try:
@@ -441,6 +470,13 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
             name=f"ws_{role}",
         )
 
+    # Voice routes — E2E-adapter ASR + TTS, see channels/web/voice/.
+    # Migrated from cc-openclaw/voice_gateway/ on 2026-04-24.
+    from channels.web.voice.asr_route import asr_endpoint as _asr_endpoint
+    from channels.web.voice.tts_route import tts_endpoint as _tts_endpoint
+    app.add_api_websocket_route("/asr", _asr_endpoint, name="ws_asr")
+    app.add_api_websocket_route("/tts", _tts_endpoint, name="ws_tts")
+
     @app.on_event("startup")
     async def _dump_runtime_config() -> None:
         """Print every env-driven runtime flag + key cc_pool settings at
@@ -459,9 +495,24 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
                 return f"<unset -> {fallback_default}>" if fallback_default else "<unset>"
             return v
 
+        # Deprecation: PLACEHOLDER_ENABLED → INSTANT_ACK_ENABLED.
+        # Spec: 2026-04-26-instant-ack-multi-bubble-queue-design.md §11.
+        _legacy_val = os.environ.get("PLACEHOLDER_ENABLED")
+        if _legacy_val is not None and os.environ.get("INSTANT_ACK_ENABLED") is None:
+            logger.warning(
+                "PLACEHOLDER_ENABLED=%s is deprecated; honoring as INSTANT_ACK_ENABLED. "
+                "Please rename the variable; the alias will be removed in a future release.",
+                _legacy_val,
+            )
+
         # Layer 1: runtime feature flags
         flags = [
-            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "1")),
+            ("INSTANT_ACK_ENABLED",        _e("INSTANT_ACK_ENABLED", "1")),
+            ("MULTI_BUBBLE_ENABLED",       _e("MULTI_BUBBLE_ENABLED", "1")),
+            ("QUEUE_ENABLED",              _e("QUEUE_ENABLED", "1")),
+            ("GENERAL_BOT_ENABLED",        _e("GENERAL_BOT_ENABLED", "1")),
+            ("PLACEHOLDER_ENABLED",        _e("PLACEHOLDER_ENABLED", "(deprecated alias)")),
+            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "(deprecated, ignored)")),
             ("TRIAGE_AGENT_ENABLED",       _e("TRIAGE_AGENT_ENABLED", "0")),
             ("TRIAGE_AGENT_TIMEOUT_S",     _e("TRIAGE_AGENT_TIMEOUT_S", "15.0")),
             ("AUTH_DEV_MODE",              _e("AUTH_DEV_MODE", "(disabled)")),

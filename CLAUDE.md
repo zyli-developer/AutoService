@@ -223,33 +223,44 @@ tier accuracy on the ~10% of messages that miss all keywords.
 
 Gate: `autoservice/model_router.py::_triage_agent_enabled`.
 
-## Placeholder Filler Kill-Switch
+## Instant Ack / Multi-Bubble / Queue Kill-Switches
 
-`PLACEHOLDER_ENABLED` controls the **filler text** ("正在为您查询..."
-or soothe-picker variant) that gets emitted on a 1.5s timer if the
-model hasn't produced a first token yet. Default **on**.
+Three independent kill-switches gate the customer-chat UX upgrade
+(spec: `docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md`):
 
-When set to `0`:
+- `INSTANT_ACK_ENABLED` (default **on**) — emits a pre-triage ack bubble
+  100–300ms after the user submits, before triage runs. Replaces the
+  former post-triage 1.5s placeholder. Length-skip heuristic suppresses
+  ack on short messages (zh<8, en<15) to avoid duplicate-greeting
+  effect when triage routes to a direct-reply.
+- `MULTI_BUBBLE_ENABLED` (default **on**) — agent reply is split on
+  paragraph boundaries (`\n\n`) into separate bubbles via
+  `paragraph_splitter.py`. When `0`, replies render as one bubble.
+- `QUEUE_ENABLED` (default **on**) — per-conversation reply
+  serialization (CC-X queue semantics). Mid-stream user messages are
+  persisted immediately but their agent replies wait for the previous
+  turn to fully complete. When `0`, falls back to the legacy
+  fire-and-forget concurrent path.
 
-- The timer-based `_placeholder_worker` is never scheduled, so no
-  filler bubble is ever emitted.
-- **Streaming is preserved.** On the first real model token,
-  `_drain_with_placeholder` inline-creates a message with that chunk
-  as its content (no `is_placeholder` flag) — this becomes the edit
-  target for subsequent progressive `message_edited` frames. The
-  customer still gets the typewriter-style fill-in, just without the
-  stiff filler bubble preceding it.
-- Overrides `SOOTHE_PLACEHOLDER_ENABLED` — with this off, soothe
-  templates are irrelevant because no filler is ever produced.
+`PLACEHOLDER_ENABLED` is **deprecated** as of 2026-04-26: it remains
+honored as an alias for `INSTANT_ACK_ENABLED` for one release, with a
+one-time `logger.warning` at startup. The post-triage placeholder code
+path it used to gate has been removed regardless.
+`SOOTHE_PLACEHOLDER_ENABLED` is also deprecated and ignored.
 
-Net customer UX with `PLACEHOLDER_ENABLED=0`: ~0.5-1 s of empty wait
-(haiku TTFT on warm pool), then the real reply streams in token-by-
-token as normal. Use when the filler text feels stiff.
+Gates: `autoservice/gateway/agent_ack.py`, `autoservice/gateway/paragraph_splitter.py`,
+`autoservice/gateway/turn_queue.py`, `autoservice/gateway/message_router.py`.
 
-`make run-web` / `make run-gateway` set this to `0` for local dev;
-production leaves it unset (defaults to on).
+## General Bot Inbound API
 
-Gate: `autoservice/gateway/message_router.py::PLACEHOLDER_ENABLED`.
+`GENERAL_BOT_ENABLED` (default **on**) gates `POST /chat/{tenant_id}` —
+the inbound HTTP/SSE endpoint for third-party IM platforms (CINNOX-
+compatible, see [docs/General-Bot-Streaming-Message(SSE)-API_20260427.md](docs/General-Bot-Streaming-Message(SSE)-API_20260427.md)).
+When `0`, the route returns 503. Auth uses per-tenant Bearer keys stored
+hashed at `.autoservice/sandbox/<tid>/api_keys.json`; mint a key with
+`uv run python3 scripts/issue_general_bot_key.py <tid> [--label NAME]`.
+
+Spec: `docs/superpowers/specs/2026-04-27-general-bot-sse-http-api-design.md`.
 
 ## Credentials
 

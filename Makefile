@@ -1,4 +1,4 @@
-.PHONY: setup seed-cinnox run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge
+.PHONY: setup seed-cinnox run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge public-build public-up public-down public-panic public-reload public-smoke public-status public-logs public-install public-uninstall access-apply generate-admin-passwords generate-operator-passwords install-smtp-config
 
 # --- Setup ---
 # Mode-aware setup delegated to scripts/setup.sh (T7S.4, spec §3.5):
@@ -198,3 +198,56 @@ sync-bridge:
 # make refine-pull REPO=../AutoService-Cinnox  — scan a specific fork
 refine-pull:
 	@bash scripts/refine-pull.sh $(if $(REPO),--repo $(REPO)) $(if $(AUTO),--auto) $(if $(DRY_RUN),--dry-run) $(if $(PR),--pr)
+
+# --- Public tunnel deploy (autoservice.ezagent.chat) ---
+# Spec: docs/superpowers/specs/2026-04-24-cloudflare-tunnel-demo-deploy-design.md
+# Runbook: docs/deploy/public-tunnel-runbook.md
+
+public-build:
+	@bash scripts/public-build.sh
+
+public-up:
+	@bash scripts/public-up.sh
+
+public-down:
+	@bash scripts/public-down.sh
+
+public-panic:
+	@bash scripts/public-panic.sh
+
+public-reload:
+	@bash scripts/public-reload.sh
+
+public-smoke:
+	@bash scripts/public-smoke.sh
+
+public-status:
+	@for name in gateway caddy cloudflared; do \
+		pidfile=".autoservice/run/$$name.pid"; \
+		if [ -f "$$pidfile" ] && ps -p $$(cat $$pidfile) -o pid= >/dev/null 2>&1; then \
+			echo "$$name UP (pid=$$(cat $$pidfile))"; \
+		else \
+			echo "$$name DOWN"; \
+		fi; \
+	done
+
+public-logs:
+	@tail -n 40 -F .autoservice/logs/gateway.log .autoservice/logs/caddy.log .autoservice/logs/cloudflared.log 2>/dev/null
+
+public-install:
+	@bash scripts/install-launchd.sh
+
+public-uninstall:
+	@bash scripts/uninstall-launchd.sh
+
+access-apply:
+	@bash scripts/apply-cf-access.sh
+
+install-smtp-config:
+	@bash scripts/install-smtp-config.sh
+
+generate-admin-passwords:
+	@bash scripts/generate-admin-passwords.sh
+
+generate-operator-passwords:
+	@bash scripts/generate-operator-passwords.sh

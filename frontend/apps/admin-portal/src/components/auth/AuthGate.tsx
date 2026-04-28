@@ -124,7 +124,7 @@ export function AuthGate({ children, redirector }: AuthGateProps) {
     const search =
       typeof window !== 'undefined' ? window.location.search : '';
     const target = `${pathname}${search}`;
-    nav(`/login?redirect=${encodeURIComponent(target)}`);
+    nav(`${import.meta.env.BASE_URL}login?redirect=${encodeURIComponent(target)}`);
   }, [shouldRedirect, redirector]);
 
   if (loading) {

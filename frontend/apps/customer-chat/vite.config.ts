@@ -3,12 +3,16 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  base: process.env.VITE_MOUNT_PATH ?? '/',
   server: {
     port: 5173,
     host: true,
+    allowedHosts: ['localhost', '127.0.0.1', '.trycloudflare.com', '.ngrok-free.app', '.ngrok.io', '.ezagent.chat'],
     proxy: {
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
+      '/asr': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
+      '/tts': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
     },
   },
   preview: { port: 5173 },

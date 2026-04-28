@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatInput } from '../components/ChatInput';
+import { checkVoiceCapability } from '../voice/capability';
+
+vi.mock('../voice/capability');
 
 describe('ChatInput', () => {
+  beforeEach(() => {
+    (checkVoiceCapability as any).mockReturnValue({ supported: true });
+  });
+
   it('TC-014: clicking Send button calls onSend with input value and clears input', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
@@ -42,5 +49,25 @@ describe('ChatInput', () => {
     await user.click(sendBtn);
 
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('renders mic button when capability.supported', () => {
+    (checkVoiceCapability as any).mockReturnValue({ supported: true });
+    render(<ChatInput onSend={vi.fn()} onMicClick={vi.fn()} />);
+    expect(screen.getByTestId('voice-mic-btn')).toBeEnabled();
+  });
+
+  it('disables mic button when not supported', () => {
+    (checkVoiceCapability as any).mockReturnValue({ supported: false, reason: 'insecure_context' });
+    render(<ChatInput onSend={vi.fn()} onMicClick={vi.fn()} />);
+    expect(screen.getByTestId('voice-mic-btn')).toBeDisabled();
+  });
+
+  it('fires onMicClick when clicked', () => {
+    (checkVoiceCapability as any).mockReturnValue({ supported: true });
+    const onMic = vi.fn();
+    render(<ChatInput onSend={vi.fn()} onMicClick={onMic} />);
+    fireEvent.click(screen.getByTestId('voice-mic-btn'));
+    expect(onMic).toHaveBeenCalled();
   });
 });

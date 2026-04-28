@@ -765,6 +765,12 @@ class LocalEngine:
 
     def _arm_takeover_timer(self, conversation_id: str, operator_id: str) -> None:
         """Schedule warning and release tasks. Cancels any existing ones first."""
+        # Passive-channel guard: HTTP/SSE inbound channels (e.g. CINNOX general-bot)
+        # are one-shot request/response — operator takeover semantics don't apply.
+        # Spec: docs/superpowers/specs/2026-04-27-general-bot-sse-http-api-design.md §6.2
+        conv = self._conversations.get(conversation_id)
+        if conv is not None and conv.metadata.get("passive_channel"):
+            return
         self._cancel_takeover_timer(conversation_id)
         cfg = self._takeover_config
         warning_delay = max(0, cfg.idle_timeout_ms - cfg.warning_ms) / 1000.0

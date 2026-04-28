@@ -1230,6 +1230,71 @@
       "created_at": "2026-04-21T04:23:48Z",
       "updated_at": "2026-04-21T04:23:48Z",
       "related_ids": []
+    },
+    {
+      "id": "eval-doc-022",
+      "name": "customer-chat voice call FAB (integrate cc-openclaw voice service)",
+      "type": "eval-doc",
+      "status": "confirmed",
+      "producer": "skill-5",
+      "consumers": ["test-plan-004"],
+      "path": ".artifacts/eval-docs/eval-voice-call-fab.md",
+      "created_at": "2026-04-22T00:00:00Z",
+      "updated_at": "2026-04-22T09:00:00Z",
+      "confirmed_at": "2026-04-22T08:45:00Z",
+      "related_ids": ["issue-002"]
+    },
+    {
+      "id": "issue-002",
+      "name": "Issue #79 customer-chat voice call FAB",
+      "type": "issue",
+      "status": "open",
+      "producer": "skill-5",
+      "consumers": [],
+      "path": ".artifacts/issues/issue-voice-call-fab.md",
+      "created_at": "2026-04-22T00:00:00Z",
+      "updated_at": "2026-04-22T00:00:00Z",
+      "related_ids": ["eval-doc-022"]
+    },
+    {
+      "id": "test-plan-004",
+      "name": "customer-chat voice call FAB test plan (15 TCs, 7 CI / 5 E2E / 3 manual)",
+      "type": "test-plan",
+      "status": "executed",
+      "producer": "skill-2",
+      "consumers": ["test-diff-024"],
+      "path": ".artifacts/test-plans/test-plan-voice-call-fab.md",
+      "created_at": "2026-04-22T09:00:00Z",
+      "updated_at": "2026-04-22T17:00:00Z",
+      "confirmed_at": "2026-04-22T09:15:00Z",
+      "executed_at": "2026-04-22T17:00:00Z",
+      "related_ids": ["eval-doc-022", "issue-002"]
+    },
+    {
+      "id": "test-diff-024",
+      "name": "customer-chat voice call FAB test-diff (17/17 new tests green, 0 regression)",
+      "type": "test-diff",
+      "status": "executed",
+      "producer": "skill-3",
+      "consumers": ["e2e-report-016"],
+      "path": ".artifacts/test-diffs/test-diff-voice-call-fab.md",
+      "created_at": "2026-04-22T17:00:00Z",
+      "updated_at": "2026-04-22T17:20:00Z",
+      "executed_at": "2026-04-22T17:20:00Z",
+      "related_ids": ["test-plan-004", "eval-doc-022", "issue-002"]
+    },
+    {
+      "id": "e2e-report-016",
+      "name": "customer-chat voice call FAB e2e-report (gate: PASS, 17/17 new green, 0 regression)",
+      "type": "e2e-report",
+      "status": "executed",
+      "producer": "skill-4",
+      "consumers": [],
+      "path": ".artifacts/e2e-reports/e2e-report-voice-call-fab.md",
+      "created_at": "2026-04-22T17:20:00Z",
+      "updated_at": "2026-04-22T17:20:00Z",
+      "gate": "pass",
+      "related_ids": ["test-diff-024", "test-plan-004", "eval-doc-022", "issue-002"]
     }
   ]
 }

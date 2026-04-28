@@ -5,9 +5,24 @@ Selects a soothing line from a declarative template bank, keyed by the
 replaces the generic ``"正在为您查询，请稍候..."`` placeholder with
 something that reflects what the user just said.
 
+DEPRECATED 2026-04-26: no longer wired into the main reply pipeline; see
+``docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md`` §8.
+Module-level DeprecationWarning emitted on import.
+
 Design: docs/superpowers/specs/2026-04-23-soothe-placeholder-design.md
 """
 from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "autoservice.gateway.soothe_picker is deprecated and no longer wired "
+    "into the main reply pipeline (see "
+    "docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md §8). "
+    "It will be removed in a follow-up cleanup PR.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import logging
 import random

@@ -34,7 +34,8 @@ interface PublishBlocked {
 // Use raw fetch rather than the shared api helper so we can branch on 409
 // (gate blocked) without losing the JSON body.
 const API_BASE =
-  typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : '';
+  (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
+  '';
 
 export function SandboxReady() {
   const { t } = useTranslation();

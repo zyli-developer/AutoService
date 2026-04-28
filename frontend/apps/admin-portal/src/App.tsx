@@ -60,8 +60,10 @@ export function App() {
     setTenantId(pathTenantId ?? data?.tenant_id ?? null);
   }, [pathTenantId, data?.tenant_id, setTenantId]);
 
-  // `/login` public — no gate.
-  if (pathname === '/login' || pathname.startsWith('/login/')) {
+  // `/login` public — no gate. Mount-aware: under `/admin/` base the
+  // pathname browser sees is `/admin/login`, in dev it is `/login`.
+  const loginPath = `${import.meta.env.BASE_URL}login`;
+  if (pathname === loginPath || pathname.startsWith(`${loginPath}/`)) {
     return <LoginPage />;
   }
 

@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from '@autoservice/i18n';
+import { checkVoiceCapability } from '../voice/capability';
 
 interface ChatInputProps {
   onSend: (content: string) => void;
   disabled?: boolean;
+  onMicClick?: () => void;
 }
 
 const PicIcon = () => (
@@ -29,8 +31,14 @@ const SendIcon = () => (
     <path d="M22 2 11 13M22 2 15 22l-4-9-9-4Z" />
   </svg>
 );
+const MicIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" />
+  </svg>
+);
 
-export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export function ChatInput({ onSend, disabled = false, onMicClick }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { t } = useTranslation();
@@ -82,6 +90,22 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           <button type="button" className="w-tool-btn" title={t('chat.input.tool.emoji')} aria-label={t('chat.input.tool.emoji')} disabled={disabled}>
             <EmojiIcon />
           </button>
+          {(() => {
+            const cap = checkVoiceCapability();
+            return (
+              <button
+                type="button"
+                className="w-tool-btn"
+                data-testid="voice-mic-btn"
+                title={cap.supported ? t('voice.button.mic') : t('voice.button.unsupported')}
+                aria-label={cap.supported ? t('voice.button.mic') : t('voice.button.unsupported')}
+                disabled={disabled || !cap.supported || !onMicClick}
+                onClick={onMicClick}
+              >
+                <MicIcon />
+              </button>
+            );
+          })()}
         </div>
         <button
           type="button"
