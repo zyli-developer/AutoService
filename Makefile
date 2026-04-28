@@ -1,4 +1,4 @@
-.PHONY: setup seed-cinnox run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge public-build public-up public-down public-panic public-reload public-smoke public-status public-logs public-install public-uninstall access-apply generate-admin-passwords install-smtp-config
+.PHONY: setup seed-cinnox run-channel run-web run-gateway run-server start dev-start stop status check e2e-web e2e-feishu pool-status pool-start pool-test sync sync-dry sync-auto sync-status sync-status-all sync-all register-fork unregister-fork refine refine-auto refine-pull sync-bridge public-build public-up public-down public-panic public-reload public-smoke public-status public-logs public-install public-uninstall access-apply generate-admin-passwords generate-operator-passwords install-smtp-config
 
 # --- Setup ---
 # Mode-aware setup delegated to scripts/setup.sh (T7S.4, spec §3.5):
@@ -225,3 +225,6 @@ install-smtp-config:
 
 generate-admin-passwords:
 	@bash scripts/generate-admin-passwords.sh
+
+generate-operator-passwords:
+	@bash scripts/generate-operator-passwords.sh

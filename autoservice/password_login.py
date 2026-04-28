@@ -27,15 +27,17 @@ from __future__ import annotations
 
 import json
 import logging
-import secrets
+import sqlite3
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
+
+from autoservice import auth as _auth
 
 logger = logging.getLogger("autoservice.password_login")
 
@@ -94,8 +96,18 @@ def _find_entry(entries: list[dict], email: str) -> Optional[dict]:
     return None
 
 
-def build_router(*, passwords_path: str) -> APIRouter:
-    """Build the router; ``passwords_path`` is the absolute path to passwords.json."""
+def build_router(
+    *,
+    passwords_path: str,
+    db_provider: Callable[[], sqlite3.Connection],
+) -> APIRouter:
+    """Build the router.
+
+    Args:
+        passwords_path: absolute path to passwords.json.
+        db_provider: callable returning the auth-DB connection.  Called per
+            request so test fixtures and lazy-init in production both work.
+    """
     router = APIRouter()
 
     @router.post("/api/auth/password-login")
@@ -124,13 +136,20 @@ def build_router(*, passwords_path: str) -> APIRouter:
 
         _clear_failures(ip)
 
-        token = secrets.token_urlsafe(32)
+        # Persist a real session row so middleware accepts the cookie on
+        # subsequent requests.  Without this the cookie is opaque junk and
+        # the next page load redirects back to /login.
+        email_normalized = body.email.lower()
+        session_id = _auth.create_session(
+            db_provider(), email_normalized, tenant_id=None
+        )
+        secure_flag = request.url.scheme == "https"
         response.set_cookie(
             key="auth_session",
-            value=token,
-            max_age=7 * 24 * 3600,
+            value=session_id,
+            max_age=_auth.DEFAULT_SESSION_TTL_DAYS * 24 * 3600,
             httponly=True,
-            secure=True,
+            secure=secure_flag,
             samesite="lax",
             path="/",
         )

@@ -53,6 +53,10 @@ public_paths:
   - /api/healthz
   - /ws/customer
   - /ws/customer/*
+  # General-bot inbound endpoint for third-party IM platforms
+  # (CINNOX-compatible). Auth is via Bearer API key in the FastAPI
+  # handler — Cloudflare Access OTP would block third-party callers.
+  - /chat/*
 
 allowed_emails:
   - lin.yilun@h2oslabs.com

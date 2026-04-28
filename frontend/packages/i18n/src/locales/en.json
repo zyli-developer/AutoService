@@ -97,9 +97,13 @@
 
   "operator.login.title": "AutoService · Operator Sign-in",
   "operator.login.email": "Email",
+  "operator.login.password": "Password",
   "operator.login.tenant_id": "Tenant ID (e.g. acme)",
   "operator.login.error_dev_disabled": "AUTH_DEV_MODE is off in this environment; use the magic-link flow in production.",
+  "operator.login.error_password_disabled": "Password login is disabled on this deployment. Ask the admin to run `make generate-operator-passwords`.",
+  "operator.login.error_too_many_attempts": "Too many failed attempts. Try again in 10 minutes.",
   "operator.login.error_generic": "Login failed: {{error}}",
+  "operator.login.dev_login_toggle": "Developer login (AUTH_DEV_MODE)",
   "operator.login.operator_id": "Operator ID",
   "operator.login.token": "Token (optional)",
   "operator.titlebar.title": "Merchant Support Workspace",

@@ -4,13 +4,14 @@ Covers:
 - File missing → 404 (feature disabled)
 - Email not in entries → 401 (constant-time, no enumeration)
 - Wrong password → 401
-- Correct password → 200 + auth_session cookie
+- Correct password → 200 + auth_session cookie + persisted sessions row
 - Rate limit (5 failures / 10 min per IP) → 429
 - Lockout decay after window
 """
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 
 import bcrypt
@@ -18,6 +19,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from autoservice import auth as _auth
 from autoservice import password_login as pl
 
 
@@ -31,10 +33,21 @@ def _mk_file(tmp_path, entries: list[dict]) -> str:
     return str(p)
 
 
-def _mk_app(path_or_none) -> TestClient:
+def _mk_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    _auth.apply_schema(conn)
+    return conn
+
+
+def _mk_app(path_or_none, db: sqlite3.Connection | None = None) -> tuple[TestClient, sqlite3.Connection]:
+    if db is None:
+        db = _mk_db()
     app = FastAPI()
-    app.include_router(pl.build_router(passwords_path=path_or_none))
-    return TestClient(app)
+    app.include_router(
+        pl.build_router(passwords_path=path_or_none, db_provider=lambda: db)
+    )
+    return TestClient(app), db
 
 
 def _entry(email: str, pw: str) -> dict:
@@ -54,14 +67,14 @@ def _reset_lockout():
 
 def test_missing_file_returns_404(tmp_path):
     path = tmp_path / "nonexistent.json"
-    client = _mk_app(str(path))
+    client, _db = _mk_app(str(path))
     r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": "x"})
     assert r.status_code == 404
 
 
 def test_email_not_in_entries_returns_401_without_enumeration(tmp_path):
     path = _mk_file(tmp_path, [_entry("someone@else.com", _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, _db = _mk_app(path)
     r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": "x"})
     assert r.status_code == 401
     assert r.json().get("detail") == "invalid credentials"
@@ -69,31 +82,41 @@ def test_email_not_in_entries_returns_401_without_enumeration(tmp_path):
 
 def test_wrong_password_returns_401(tmp_path):
     path = _mk_file(tmp_path, [_entry(_EMAIL, _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, _db = _mk_app(path)
     r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": "wrong"})
     assert r.status_code == 401
 
 
-def test_success_sets_session_cookie(tmp_path):
+def test_success_sets_session_cookie_and_persists_row(tmp_path):
     path = _mk_file(tmp_path, [_entry(_EMAIL, _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, db = _mk_app(path)
     r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": _GOOD_PASSWORD})
     assert r.status_code == 200
     set_cookie = r.headers.get("set-cookie", "")
     assert "auth_session=" in set_cookie
     assert "HttpOnly" in set_cookie
+    # Cookie value MUST match a real row in the sessions table — without
+    # this the auth middleware rejects subsequent requests and the user
+    # bounces back to /login on refresh.
+    cookie_value = r.cookies.get("auth_session")
+    assert cookie_value
+    row = db.execute(
+        "SELECT admin_email FROM sessions WHERE session_id=?", (cookie_value,)
+    ).fetchone()
+    assert row is not None
+    assert row["admin_email"] == _EMAIL
 
 
 def test_email_match_is_case_insensitive(tmp_path):
     path = _mk_file(tmp_path, [_entry(_EMAIL, _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, _db = _mk_app(path)
     r = client.post("/api/auth/password-login", json={"email": _EMAIL.upper(), "password": _GOOD_PASSWORD})
     assert r.status_code == 200
 
 
 def test_rate_limit_blocks_after_five_failures(tmp_path):
     path = _mk_file(tmp_path, [_entry(_EMAIL, _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, _db = _mk_app(path)
     for _ in range(5):
         r = client.post("/api/auth/password-login", json={"email": _EMAIL, "password": "wrong"})
         assert r.status_code == 401
@@ -103,7 +126,7 @@ def test_rate_limit_blocks_after_five_failures(tmp_path):
 
 def test_rate_limit_decays_after_window(tmp_path):
     path = _mk_file(tmp_path, [_entry(_EMAIL, _GOOD_PASSWORD)])
-    client = _mk_app(path)
+    client, _db = _mk_app(path)
     for _ in range(5):
         client.post("/api/auth/password-login", json={"email": _EMAIL, "password": "wrong"})
     for ip in list(pl._FAILED_ATTEMPTS.keys()):

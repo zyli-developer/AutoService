@@ -34,7 +34,6 @@ from .subscription_registry import (
     SubscriptionRegistry,
     generate_subscription_id,
 )
-from . import soothe_picker
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
@@ -68,6 +67,18 @@ _registry = SubscriptionRegistry()
 def get_subscription_registry() -> SubscriptionRegistry:
     """Access the global subscription registry."""
     return _registry
+
+
+# Module-level TurnQueue singleton (spec 2026-04-26 §7) — serializes
+# agent reply turns per conversation under CC-X queue semantics.
+from autoservice.gateway.turn_queue import TurnQueue, QueueFullError  # noqa: E402
+
+_turn_queue: TurnQueue = TurnQueue()
+
+
+def get_turn_queue() -> TurnQueue:
+    """Accessor for tests + diagnostics."""
+    return _turn_queue
 
 
 _HINT_RE = re.compile(r"T[12]A\.\d+")
@@ -573,10 +584,45 @@ async def _call_engine(
             logger.warning("[AI-trigger] skip: ws is None conv=%s", conv_id)
         else:
             logger.warning("[AI-trigger] firing conv=%s mode=%s", conv_id, mode_name)
-            asyncio.create_task(
-                _generate_agent_reply(engine, conv_id, payload["content"], ws),
-                name=f"agent-reply-{conv_id}",
+            # Pre-triage instant ack — fire-and-forget. Persist + push happen
+            # inside; errors are swallowed. Spec §5.
+            from autoservice.gateway.agent_ack import send_pretriage_ack
+            tenant_id_for_ack = (
+                getattr(ws, "state_customer_tenant_id", None) if ws is not None else None
             )
+            asyncio.create_task(
+                send_pretriage_ack(
+                    engine, conv_id, ws, payload["content"],
+                    tenant_id=tenant_id_for_ack,
+                ),
+                name=f"pretriage-ack-{conv_id}",
+            )
+            queue_enabled = os.getenv("QUEUE_ENABLED", "1") == "1"
+            if queue_enabled:
+                # Capture the message text for the closure so a later turn
+                # in the FIFO doesn't accidentally reference a mutated payload.
+                _content_snapshot = payload["content"]
+
+                async def _runner() -> None:
+                    await _generate_agent_reply(engine, conv_id, _content_snapshot, ws)
+                try:
+                    await _turn_queue.submit(conv_id, _runner)
+                except QueueFullError:
+                    err_frame = build_frame("error", make_error_payload(
+                        ERR_VALIDATION,
+                        "Too many pending messages, please wait.",
+                        details={"code": "QUEUE_FULL"},
+                    ))
+                    try:
+                        await ws.send_json(err_frame)
+                    except Exception:
+                        logger.debug("Queue-full error frame push failed conv=%s", conv_id)
+            else:
+                # Legacy path: concurrent reply tasks (QUEUE_ENABLED=0).
+                asyncio.create_task(
+                    _generate_agent_reply(engine, conv_id, payload["content"], ws),
+                    name=f"agent-reply-{conv_id}",
+                )
 
         # Return confirmation data (not full message echo — FE has optimistic msg)
         return [build_frame("message_confirm", {
@@ -787,21 +833,8 @@ def _message_edited_frame(msg: Any, *, edited_by: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder-then-stream (strategy 1 + 3 — design discussion 2026-04-22)
+# Multi-bubble drain (spec 2026-04-26)
 # ---------------------------------------------------------------------------
-
-#: Roles eligible to trigger a placeholder bubble. fast-tier roles
-#: (triage/translate) run haiku and return sub-second, so emitting a
-#: "正在为您查询..." bubble would be noise. Sticky customer + lead roles
-#: run sonnet and routinely wait 5–15 s — those are the ones worth
-#: masking with an instant placeholder.
-PLACEHOLDER_ELIGIBLE_ROLES: frozenset[str] = frozenset({"customer", "lead"})
-
-#: Time window (seconds) we allow the model to produce its first token
-#: before we decide to show a placeholder. Anything faster than this and
-#: the customer never sees a placeholder at all — the final reply is sent
-#: as a normal `message` frame.
-PLACEHOLDER_DELAY_S: float = 1.5
 
 #: Minimum interval between intermediate `message_edited` pushes while
 #: draining the CC SDK stream. Tuned for token-level streaming
@@ -815,94 +848,8 @@ STREAM_EDIT_MIN_INTERVAL_S: float = 0.08
 #: 40-char chunks instead of fluid fill-in.
 STREAM_EDIT_MIN_DELTA_CHARS: int = 12
 
-_PLACEHOLDER_TEXT_ZH = "正在为您查询，请稍候..."
-_PLACEHOLDER_TEXT_EN = "Just a moment while I look into this..."
 
-#: Module-level kill-switch for the soothe placeholder feature. Read once
-#: at import (not per-request) for consistency. Setting
-#: SOOTHE_PLACEHOLDER_ENABLED=0 restores the 2026-04-22 baseline behavior:
-#: static text + 1.5s delay. See spec §10.
-SOOTHE_ENABLED: bool = os.getenv("SOOTHE_PLACEHOLDER_ENABLED", "1") != "0"
-
-#: Intent-keyed random-jitter ranges (min_s, max_s) for soothe
-#: placeholder emission. Mimics real-agent reading cadence with
-#: intent-appropriate variation — a frustrated customer gets faster
-#: acknowledgement; a lead prospect gets a slightly longer "considering
-#: your needs" pause. Uniform distribution within each range.
-#:
-#: Rationale per intent:
-#:   complaint        : frustrated user, faster ack reduces perceived
-#:                      latency of empathy → (1.0, 1.8)
-#:   product_inquiry  : neutral thinking pace → (1.5, 2.5)
-#:   purchase_intent  : lead qualification, salesperson-gravitas feel
-#:                      → (2.0, 3.0)
-#:   general_question : casual, low-stakes → (1.2, 2.0)
-#:   (None / unknown) : safe default matching product_inquiry → (1.5, 2.5)
-#:
-#: Values are policy, not schema — tune in code, not YAML.
-SOOTHE_DELAY_RANGES: dict[str, tuple[float, float]] = {
-    "complaint":        (1.0, 1.8),
-    "product_inquiry":  (1.5, 2.5),
-    "purchase_intent":  (2.0, 3.0),
-    "general_question": (1.2, 2.0),
-}
-SOOTHE_DELAY_DEFAULT_RANGE: tuple[float, float] = (1.5, 2.5)
-
-
-def _placeholder_text(
-    detected_language: str | None,
-    intent: str | None = None,
-) -> str:
-    """Localize the placeholder bubble.
-
-    When ``SOOTHE_ENABLED`` is true, delegates to
-    :func:`soothe_picker.get_picker` to return a context-aware line keyed
-    by ``(intent, lang)``. On any picker exception (or when the feature
-    flag is off), falls back to the static ``_PLACEHOLDER_TEXT_*``
-    constants — main reply pipeline must never break because of a soothe
-    lookup.
-    """
-    def _static() -> str:
-        if detected_language and detected_language.lower().startswith("en"):
-            return _PLACEHOLDER_TEXT_EN
-        return _PLACEHOLDER_TEXT_ZH
-
-    if not SOOTHE_ENABLED:
-        return _static()
-
-    try:
-        pick = soothe_picker.get_picker().pick(
-            intent=intent, lang=detected_language,
-        )
-        logger.info(
-            "soothe picked intent=%s lang=%s template_id=%s",
-            intent, detected_language, pick.template_id,
-        )
-        return pick.text
-    except Exception:
-        logger.exception("soothe picker failed — falling back to static text")
-        return _static()
-
-
-def _effective_placeholder_delay_s(intent: str | None = None) -> float:
-    """Resolve the actual delay used at call time.
-
-    With SOOTHE_ENABLED=True, return a random delay sampled from the
-    intent-specific range (or the default range for unknown / None
-    intent). With the flag off, return the PLACEHOLDER_DELAY_S baseline
-    unchanged — exact 2026-04-22 rollback parity.
-
-    The random jitter is intentional: a fixed delay (even a humanized
-    one like 2.0s) becomes a detectable AI signature over a few
-    interactions. Uniform randomness prevents that pattern.
-    """
-    if not SOOTHE_ENABLED:
-        return PLACEHOLDER_DELAY_S
-    lo, hi = SOOTHE_DELAY_RANGES.get(intent or "", SOOTHE_DELAY_DEFAULT_RANGE)
-    return random.uniform(lo, hi)
-
-
-async def _drain_with_placeholder(
+async def _drain_into_bubbles(
     iterator: Any,
     *,
     engine: ConversationEngine,
@@ -910,94 +857,76 @@ async def _drain_with_placeholder(
     target_role: str,
     ws: "WebSocket",
     detected_language: str | None = None,
-    eligible: bool = True,
-    delay_s: float | None = None,    # was: = PLACEHOLDER_DELAY_S
     intent: str | None = None,
     perf_out: dict | None = None,
-) -> tuple[str, Any | None]:
-    """Drain the CC SDK stream and — if eligible and slow — emit a
-    placeholder bubble that the caller can later replace via
-    ``engine.edit_message``.
+) -> str:
+    """Drain the CC SDK stream into multiple bubbles split on paragraph
+    boundaries. Each segment is persisted as its own ``Message`` row and
+    pushed as its own ``message`` frame; within-bubble token growth uses
+    the existing ``message_edited`` typewriter mechanism.
 
-    Behavior contract (test-pinned):
+    Spec: docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md §6, §9.
 
-    * **Eligibility gate (strategy 1)** — ``eligible=False`` fully
-      disables the placeholder path; no timer is scheduled and no engine
-      write occurs. Used for fast-tier roles (translate/triage) where
-      the full reply is already sub-second.
-
-    * **Timer gate (strategy 3)** — when eligible, a timer runs in
-      parallel with the stream drain. If ``delay_s`` elapses before any
-      assistant token, a placeholder message is persisted
-      (``metadata={"is_placeholder": True}``) and pushed via
-      ``ws.send_json`` + squad broadcast. If the first token arrives
-      first, the timer cancels silently.
-
-    * **Failure isolation** — engine/ws exceptions during placeholder
-      send are logged and swallowed; the stream drain continues and
-      returns ``placeholder_msg=None`` so the caller falls back to the
-      normal "send final reply as a fresh message" path.
-
-    * **Cleanup** — the timer task is always awaited before return, so
-      no dangling placeholder sends can race with the reply edit.
-
-    * **Progressive streaming** — once the placeholder is persisted,
-      subsequent SDK chunks trigger throttled ``message_edited`` frames
-      pushed directly over ``ws`` + ``_broadcast_to_squad``. These
-      bypass ``engine.edit_message`` so the Engine event stream still
-      sees a single atomic ``message.edited`` when the caller finally
-      persists the full reply. The FE's ``updateMessage`` is
-      covering-semantic, so each intermediate frame just overwrites
-      ``content`` with the accumulated text — ChatGPT-style fill-in.
-
-    Returns ``(reply_text, placeholder_msg)``. ``placeholder_msg`` is
-    ``None`` whenever no placeholder was persisted — the caller uses
-    this to decide between ``edit_message`` + ``message_edited`` frame
-    vs. ``send_message`` + ``message`` frame.
+    Returns the full reply text. Engine/ws errors are logged + swallowed
+    per-bubble; the function never raises on a transport error.
     """
-    if delay_s is None:
-        delay_s = _effective_placeholder_delay_s(intent=intent)
-
-    # Imported lazily so the gateway module stays import-cheap for tests
-    # that don't exercise the CC stream.
     from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+    from autoservice.gateway.paragraph_splitter import (
+        ParagraphSplitter, DEFAULT_MIN_SEGMENT_CHARS,
+    )
 
-    reply_text = ""
-    first_token_seen = asyncio.Event()
-    placeholder_msg: Any = None
-    # When the SDK runs with `include_partial_messages=True`, text arrives via
-    # StreamEvent (content_block_delta / text_delta) **and** the trailing
-    # AssistantMessage carries the same fully-assembled text. Track whether we
-    # accumulated from deltas so the AssistantMessage tail doesn't double-count.
+    multi_bubble = os.getenv("MULTI_BUBBLE_ENABLED", "1") == "1"
+    # When multi_bubble is off, instantiate a splitter that never fires
+    # boundaries (max_segments=1 guarantees no mid-stream emissions).
+    if multi_bubble:
+        splitter = ParagraphSplitter()
+    else:
+        splitter = ParagraphSplitter(
+            min_segment_chars=DEFAULT_MIN_SEGMENT_CHARS, max_segments=1,
+        )
+
+    full_text = ""
     saw_stream_text = False
 
-    # Intermediate-edit throttle state. `_push_streaming_edit` is a
-    # closure over `placeholder_msg` / `reply_text`, so it always reads
-    # the current values at call time.
+    current_msg: Any = None
+    segment_index: int = 0
     last_push_time: float = 0.0
     last_push_len: int = 0
     streaming_edited_by = f"agent:{target_role}"
 
-    async def _push_streaming_edit() -> None:
-        """Push the current `reply_text` as a progress `message_edited` frame.
+    async def _persist_open_segment(text: str) -> Any:
+        nonlocal segment_index
+        try:
+            msg = await engine.send_message(
+                conv_id, source="agent", content=text,
+                metadata={"is_segment": True, "segment_index": segment_index},
+            )
+            segment_index += 1
+            frame = _message_frame(msg)
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                logger.warning("Bubble open ws push failed conv=%s", conv_id)
+            try:
+                await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+            except Exception:
+                logger.debug("Bubble open broadcast failed conv=%s", conv_id)
+            return msg
+        except Exception:
+            logger.exception("Bubble open persist failed conv=%s", conv_id)
+            return None
 
-        Skips the Engine entirely — intermediate frames are UI-only
-        progressive render, and the caller's final ``edit_message``
-        remains the canonical persistence + audit event. Errors are
-        swallowed: a missed intermediate frame is harmless (the final
-        flush backfills content), a raised exception would abort the
-        drain and strand the placeholder.
-        """
-        if placeholder_msg is None:
+    async def _push_streaming_edit(msg: Any, text: str) -> None:
+        if msg is None:
             return
         frame = build_frame(
             "message_edited",
             {
                 "conversation_id": conv_id,
-                "message_id": placeholder_msg.id,
-                "new_content": reply_text,
+                "message_id": msg.id,
+                "new_content": text,
                 "edited_by": streaming_edited_by,
-                "sequence_number": placeholder_msg.sequence_number,
+                "sequence_number": msg.sequence_number,
             },
         )
         try:
@@ -1009,55 +938,57 @@ async def _drain_with_placeholder(
         except Exception:
             logger.debug("Streaming edit broadcast failed conv=%s", conv_id)
 
-    async def _placeholder_worker() -> None:
-        nonlocal placeholder_msg
-        try:
-            await asyncio.wait_for(first_token_seen.wait(), timeout=delay_s)
-            return  # token beat the timer; nothing to do
-        except asyncio.TimeoutError:
-            pass
-        # Re-check after the wait — the event may have fired between the
-        # timeout and this line (tight race on fast machines).
-        if first_token_seen.is_set():
+    async def _finalize_segment(msg: Any, final_text: str) -> None:
+        if msg is None:
             return
-        text = _placeholder_text(detected_language, intent)
-        logger.info(
-            "soothe placeholder conv=%s intent=%s lang=%s",
-            conv_id, intent, detected_language,
-        )
         try:
-            msg = await engine.send_message(
-                conv_id,
-                source="agent",
-                content=text,
-                metadata={"is_placeholder": True},
+            await engine.edit_message(
+                conv_id, msg.id, new_content=final_text,
+                edited_by=streaming_edited_by,
             )
         except Exception:
-            logger.exception("Placeholder send failed conv=%s", conv_id)
-            return
-        placeholder_msg = msg
-        frame = _message_frame(msg)
-        try:
-            await ws.send_json(frame)
-        except Exception:
-            logger.warning("Placeholder ws push failed conv=%s", conv_id)
-        try:
-            await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
-        except Exception:
-            logger.debug("Placeholder squad broadcast failed conv=%s", conv_id)
+            logger.exception("Bubble finalize edit_message failed conv=%s", conv_id)
+        await _push_streaming_edit(msg, final_text)
 
-    placeholder_task: asyncio.Task | None = None
-    if eligible and target_role in PLACEHOLDER_ELIGIBLE_ROLES:
-        placeholder_task = asyncio.create_task(
-            _placeholder_worker(), name=f"placeholder-{conv_id}",
-        )
+    async def _emit_chunk(chunk: str) -> None:
+        """Process one text chunk: feed splitter, manage current bubble.
+
+        State is driven entirely off ``splitter.pending`` — never maintain
+        a parallel buffer because suppression silently mutates pending in
+        ways the caller can't predict. See spec §9.2.
+        """
+        nonlocal full_text, current_msg, last_push_time, last_push_len
+        full_text += chunk
+        emitted = splitter.feed(chunk)
+        pending = splitter.pending  # post-suppression buffer
+
+        # Persist-on-first-token-of-segment: open a row only after pending
+        # crosses MIN.
+        if current_msg is None:
+            if len(pending.strip()) >= splitter._min:
+                current_msg = await _persist_open_segment(pending)
+                last_push_len = len(pending)
+                last_push_time = asyncio.get_running_loop().time()
+        else:
+            # Throttled typewriter pushes (no engine writes here).
+            now = asyncio.get_running_loop().time()
+            if (
+                len(pending) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
+                and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S
+            ):
+                await _push_streaming_edit(current_msg, pending)
+                last_push_time = now
+                last_push_len = len(pending)
+
+        # Boundaries fired: finalize current bubble and start fresh.
+        for finalized_text in emitted:
+            if current_msg is not None:
+                await _finalize_segment(current_msg, finalized_text)
+            current_msg = None
+            last_push_len = 0
 
     try:
         async for item in iterator:
-            # Token-level deltas (only present when include_partial_messages=True).
-            # Anthropic CLI stream-event shape: content_block_delta with a
-            # text_delta carries one chunk of assistant text. tool_use deltas
-            # are ignored — they're not user-visible reply content.
             if isinstance(item, StreamEvent):
                 event = getattr(item, "event", None) or {}
                 ev_type = event.get("type")
@@ -1070,21 +1001,13 @@ async def _drain_with_placeholder(
                     if delta.get("type") == "text_delta":
                         chunk = delta.get("text") or ""
                         if chunk:
-                            if not first_token_seen.is_set():
-                                first_token_seen.set()
-                                if perf_out is not None and "first_token_t" not in perf_out:
-                                    perf_out["first_token_t"] = _time.perf_counter()
-                            # first *real text* timestamp — distinct from first_token_t
-                            # which is polluted by tool_use AssistantMessages (fallback
-                            # branch). Diff between the two reveals pre-text tool work.
+                            if perf_out is not None and "first_token_t" not in perf_out:
+                                perf_out["first_token_t"] = _time.perf_counter()
                             if perf_out is not None and "first_text_t" not in perf_out:
                                 perf_out["first_text_t"] = _time.perf_counter()
-                            reply_text += chunk
                             saw_stream_text = True
+                            await _emit_chunk(chunk)
             elif isinstance(item, AssistantMessage) and item.content:
-                # tool_use blocks may appear here before any text (haiku deciding
-                # to call kb_search before answering). Count them so we can see
-                # whether the reply round-tripped through tools.
                 has_text = False
                 has_tool = False
                 for block in item.content:
@@ -1094,57 +1017,34 @@ async def _drain_with_placeholder(
                     elif hasattr(block, "text"):
                         has_text = True
                 if has_tool and perf_out is not None and not saw_stream_text:
-                    # Only count here when StreamEvent didn't already count (covers
-                    # include_partial_messages=False fallback path).
                     perf_out["tool_use_count"] = perf_out.get("tool_use_count", 0) + 1
-                if not first_token_seen.is_set():
-                    first_token_seen.set()
-                    if perf_out is not None and "first_token_t" not in perf_out:
-                        perf_out["first_token_t"] = _time.perf_counter()
+                if perf_out is not None and "first_token_t" not in perf_out:
+                    perf_out["first_token_t"] = _time.perf_counter()
                 if has_text and perf_out is not None and "first_text_t" not in perf_out:
                     perf_out["first_text_t"] = _time.perf_counter()
-                # Skip text accumulation when StreamEvent deltas already built
-                # reply_text; AssistantMessage.content is the same fully-assembled
-                # text and would double the output. Fallback path (no partial
-                # messages enabled) still captures the full reply here.
                 if not saw_stream_text:
                     for block in item.content:
                         if hasattr(block, "text"):
-                            reply_text += block.text
+                            await _emit_chunk(block.text)
             elif isinstance(item, ResultMessage) and item.result:
-                if not first_token_seen.is_set():
-                    first_token_seen.set()
-                    if perf_out is not None and "first_token_t" not in perf_out:
-                        perf_out["first_token_t"] = _time.perf_counter()
+                if perf_out is not None and "first_token_t" not in perf_out:
+                    perf_out["first_token_t"] = _time.perf_counter()
                 if perf_out is not None and "first_text_t" not in perf_out:
                     perf_out["first_text_t"] = _time.perf_counter()
                 if not saw_stream_text:
-                    reply_text = item.result
-
-            # Throttled progress push. Runs only once the placeholder
-            # exists (so there's a message_id to edit) and the chunk is
-            # big enough / interval elapsed — otherwise we'd spam a
-            # frame per SDK token and drown the WS.
-            if placeholder_msg is not None:
-                now = asyncio.get_running_loop().time()
-                if (len(reply_text) - last_push_len >= STREAM_EDIT_MIN_DELTA_CHARS
-                        and now - last_push_time >= STREAM_EDIT_MIN_INTERVAL_S):
-                    await _push_streaming_edit()
-                    last_push_time = now
-                    last_push_len = len(reply_text)
+                    await _emit_chunk(item.result)
     finally:
-        # Wake the timer so it exits cleanly even if the stream ended
-        # without any token (e.g. upstream exception).
-        first_token_seen.set()
-        if placeholder_task is not None:
-            try:
-                await placeholder_task
-            except Exception:
-                logger.exception(
-                    "Placeholder worker raised for conv=%s", conv_id,
-                )
+        # Flush whatever is still in splitter.pending as the final segment.
+        final_tail = splitter.flush()
+        if final_tail:
+            if current_msg is None:
+                # Whole turn was below MIN until end; persist now as the
+                # one and only bubble.
+                await _persist_open_segment(final_tail)
+            else:
+                await _finalize_segment(current_msg, final_tail)
 
-    return reply_text, placeholder_msg
+    return full_text
 
 
 async def _send_direct_reply(
@@ -1175,46 +1075,6 @@ async def _send_direct_reply(
     except Exception:
         logger.debug("Direct reply broadcast failed conv=%s", conv_id)
 
-
-async def _cleanup_stranded_placeholder(
-    engine: ConversationEngine,
-    ws: "WebSocket",
-    conv_id: str,
-    placeholder_msg: Any | None,
-    *,
-    reason: str,
-    edited_by: str,
-) -> None:
-    """Replace a placeholder bubble when the agent reply won't arrive.
-
-    Without this, the frontend leaves ``isStreaming=true`` forever on the
-    customer's screen — the "正在查询..." dots animate indefinitely. Used
-    when the CC SDK returns empty or when operator takeover races the
-    reply. All errors are swallowed: cleanup is best-effort and must not
-    mask the upstream reason we're returning.
-    """
-    if placeholder_msg is None:
-        return
-    try:
-        edited = await engine.edit_message(
-            conv_id, placeholder_msg.id,
-            new_content=reason, edited_by=edited_by,
-        )
-    except Exception:
-        logger.exception(
-            "Placeholder cleanup edit failed conv=%s msg=%s",
-            conv_id, getattr(placeholder_msg, "id", "?"),
-        )
-        return
-    frame = _message_edited_frame(edited, edited_by=edited_by)
-    try:
-        await ws.send_json(frame)
-    except Exception:
-        logger.debug("Placeholder cleanup push failed conv=%s", conv_id)
-    try:
-        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
-    except Exception:
-        logger.debug("Placeholder cleanup broadcast failed conv=%s", conv_id)
 
 
 async def _broadcast_to_squad(
@@ -1633,14 +1493,11 @@ async def _generate_agent_reply(
         perf["t_prompt_built"] = _time.perf_counter()
         perf["prompt_chars"] = len(prompt)
 
-        # Collect response. Placeholder-then-stream (designs 2026-04-22 + 2026-04-23):
-        # eligible roles get a soothe bubble if the model hasn't emitted a token
-        # within `_effective_placeholder_delay_s()` — 0s when SOOTHE_ENABLED,
-        # else PLACEHOLDER_DELAY_S (1.5s) as rollback baseline. Fast-tier roles
-        # (translate/direct) skip the timer entirely.
+        # Collect response via _drain_into_bubbles (spec 2026-04-26):
+        # multi-bubble paragraph splitter persists each segment as its own
+        # Message row, with within-bubble typewriter via message_edited frames.
+        # See docs/superpowers/specs/2026-04-26-instant-ack-multi-bubble-queue-design.md.
         reply_text = ""
-        placeholder_msg: Any = None
-        placeholder_eligible = target_role in PLACEHOLDER_ELIGIBLE_ROLES
         from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
         async def _role_stream():
@@ -1696,11 +1553,10 @@ async def _generate_agent_reply(
 
         perf["t_llm_start"] = _time.perf_counter()
         try:
-            reply_text, placeholder_msg = await _drain_with_placeholder(
+            reply_text = await _drain_into_bubbles(
                 iterator,
                 engine=engine, conv_id=conv_id, target_role=target_role, ws=ws,
                 detected_language=detected_language,
-                eligible=placeholder_eligible,
                 intent=getattr(decision, "intent", None) if decision else None,
                 perf_out=perf,
             )
@@ -1761,12 +1617,19 @@ async def _generate_agent_reply(
                     )
 
         if not reply_text.strip():
-            logger.warning("Agent reply: empty response from CC SDK")
-            await _cleanup_stranded_placeholder(
-                engine, ws, conv_id, placeholder_msg,
-                reason="(抱歉,本次未生成有效回复)",
-                edited_by="system:empty_reply",
-            )
+            logger.warning("Agent reply: empty response from CC SDK conv=%s", conv_id)
+            try:
+                fallback = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(抱歉,本次未生成有效回复)",
+                    metadata={"is_fallback": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(fallback))
+                except Exception:
+                    logger.debug("Empty-reply fallback ws push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Empty-reply fallback persist failed conv=%s", conv_id)
             return
 
         logger.info("Agent reply: got response len=%d, storing...", len(reply_text))
@@ -1781,31 +1644,26 @@ async def _generate_agent_reply(
         except Exception:
             current_mode = None
         if current_mode == ConversationMode.TAKEOVER:
-            logger.info("Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id)
-            await _cleanup_stranded_placeholder(
-                engine, ws, conv_id, placeholder_msg,
-                reason="(客服已接管对话)",
-                edited_by="system:takeover",
+            logger.info(
+                "Agent reply discarded: conv=%s switched to TAKEOVER mid-flight", conv_id,
             )
+            try:
+                notice = await engine.send_message(
+                    conv_id, source="agent",
+                    content="(客服已接管对话)",
+                    metadata={"is_takeover_notice": True},
+                )
+                try:
+                    await ws.send_json(_message_frame(notice))
+                except Exception:
+                    logger.debug("Takeover notice push failed conv=%s", conv_id)
+            except Exception:
+                logger.exception("Takeover notice persist failed conv=%s", conv_id)
             return
 
-        # Store + push agent reply. Two paths:
-        #   1. Placeholder was sent → edit it in place (emits message_edited
-        #      frame; frontend clears isStreaming via chatStore.updateMessage).
-        #   2. No placeholder → normal send_message + "message" frame.
-        if placeholder_msg is not None:
-            edited_by = f"agent:{target_role}"
-            agent_msg = await engine.edit_message(
-                conv_id, placeholder_msg.id,
-                new_content=reply_text.strip(),
-                edited_by=edited_by,
-            )
-            frame = _message_edited_frame(agent_msg, edited_by=edited_by)
-        else:
-            agent_msg = await engine.send_message(
-                conv_id, source="agent", content=reply_text.strip(),
-            )
-            frame = _message_frame(agent_msg)
+        # _drain_into_bubbles already persisted each segment as its own row
+        # and pushed each `message` + typewriter `message_edited` frame.
+        # Nothing to do here for the agent-reply persistence path.
 
         # Record SLA first_reply_ms (T6D.1)
         try:
@@ -1821,11 +1679,11 @@ async def _generate_agent_reply(
         except Exception:
             logger.warning("Failed to record first_reply SLA for conv=%s", conv_id)
 
-        # Push to customer via WebSocket
-        await ws.send_json(frame)
         perf["t_pushed"] = _time.perf_counter()
-        logger.info("Agent reply pushed: conv=%s len=%d placeholder=%s",
-                    conv_id, len(reply_text), placeholder_msg is not None)
+        logger.info(
+            "Agent reply pushed: conv=%s len=%d (segmented)",
+            conv_id, len(reply_text),
+        )
 
         # Single-line phase timing — use this to spot-check which phase
         # dominates. first_token = TTFT from the start of the LLM call;
@@ -1858,8 +1716,8 @@ async def _generate_agent_reply(
             len(reply_text),
         )
 
-        # Broadcast to operator connections subscribed to this squad (T6A.2)
-        await _broadcast_to_squad(frame, conv_id, exclude_ws=ws)
+        # _drain_into_bubbles already broadcasts each segment frame to the
+        # operator squad — nothing to broadcast here.
 
     except Exception:
         logger.exception("Agent reply FAILED for conv=%s", conv_id)

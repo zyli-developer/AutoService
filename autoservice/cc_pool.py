@@ -542,6 +542,30 @@ async def create_cc_client(
                 role, tenant_id,
             )
 
+        # Append paragraph-break nudge for customer/lead roles when
+        # multi-bubble is enabled. The splitter
+        # (autoservice/gateway/paragraph_splitter.py) only splits on \n\n
+        # boundaries, so the LLM needs to be encouraged to use them. Soft
+        # hint — splitter degrades to 1 bubble if ignored.
+        # See spec 2026-04-26 §6.5.
+        # Only applied when the soul was auto-loaded above; explicit
+        # system_prompt values from callers (tests, diag) are left
+        # untouched. Per-tenant override is a future-work hook.
+        _PARAGRAPH_NUDGE_SUFFIX = (
+            "\n\n---\n"
+            "When your reply spans multiple points, separate them with a blank line "
+            "(two newlines) so the customer can read them as distinct messages. "
+            "Keep each paragraph to 1–3 sentences.\n"
+            "当你的回复包含多个要点时，请用空行（两个换行）将它们分开，"
+            "让客户像收到多条短消息一样阅读。每段保持 1-3 句话即可。"
+        )
+        if (
+            os.environ.get("MULTI_BUBBLE_ENABLED", "1") == "1"
+            and role in ("customer", "lead")
+            and system_prompt
+        ):
+            system_prompt = system_prompt + _PARAGRAPH_NUDGE_SUFFIX
+
     if enable_kb_tool and tenant_id:
         # Lazy import: avoids pulling SQLite/kb deps when tool isn't needed.
         from autoservice.kb_mcp_server import build_kb_mcp_server

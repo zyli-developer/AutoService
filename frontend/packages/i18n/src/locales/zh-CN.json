@@ -97,9 +97,13 @@
 
   "operator.login.title": "AutoService · 工作台登录",
   "operator.login.email": "邮箱",
+  "operator.login.password": "密码",
   "operator.login.tenant_id": "租户 ID（例如 acme）",
   "operator.login.error_dev_disabled": "本环境未开启 AUTH_DEV_MODE；生产环境请走邮件登录链路。",
+  "operator.login.error_password_disabled": "本部署未启用密码登录。请管理员运行 `make generate-operator-passwords`。",
+  "operator.login.error_too_many_attempts": "失败次数过多，请 10 分钟后再试。",
   "operator.login.error_generic": "登录失败：{{error}}",
+  "operator.login.dev_login_toggle": "开发者登录（AUTH_DEV_MODE）",
   "operator.login.operator_id": "Operator ID",
   "operator.login.token": "Token（可选）",
   "operator.titlebar.title": "商户客服工作区",

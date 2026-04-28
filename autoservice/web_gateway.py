@@ -404,12 +404,18 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     from autoservice.api_routes import api_router, _set_engine
     app.include_router(onboard_router)
     app.include_router(api_router)
+    from autoservice.integrations.general_bot.routes import general_bot_router
+    app.include_router(general_bot_router)
     _set_engine(app.state.engine)
 
     # Path to the per-email password file; same convention as auth.db etc.
     _PASSWORDS_FILE = Path(__file__).resolve().parent.parent / ".autoservice" / "passwords.json"
+    from autoservice.api_routes import _get_auth_db as _get_auth_db_for_pw_login
     app.include_router(
-        _password_login.build_router(passwords_path=str(_PASSWORDS_FILE))
+        _password_login.build_router(
+            passwords_path=str(_PASSWORDS_FILE),
+            db_provider=_get_auth_db_for_pw_login,
+        )
     )
 
     # Wire SLA alert push to admin WebSocket connections (T6E.7)
@@ -489,9 +495,24 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
                 return f"<unset -> {fallback_default}>" if fallback_default else "<unset>"
             return v
 
+        # Deprecation: PLACEHOLDER_ENABLED → INSTANT_ACK_ENABLED.
+        # Spec: 2026-04-26-instant-ack-multi-bubble-queue-design.md §11.
+        _legacy_val = os.environ.get("PLACEHOLDER_ENABLED")
+        if _legacy_val is not None and os.environ.get("INSTANT_ACK_ENABLED") is None:
+            logger.warning(
+                "PLACEHOLDER_ENABLED=%s is deprecated; honoring as INSTANT_ACK_ENABLED. "
+                "Please rename the variable; the alias will be removed in a future release.",
+                _legacy_val,
+            )
+
         # Layer 1: runtime feature flags
         flags = [
-            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "1")),
+            ("INSTANT_ACK_ENABLED",        _e("INSTANT_ACK_ENABLED", "1")),
+            ("MULTI_BUBBLE_ENABLED",       _e("MULTI_BUBBLE_ENABLED", "1")),
+            ("QUEUE_ENABLED",              _e("QUEUE_ENABLED", "1")),
+            ("GENERAL_BOT_ENABLED",        _e("GENERAL_BOT_ENABLED", "1")),
+            ("PLACEHOLDER_ENABLED",        _e("PLACEHOLDER_ENABLED", "(deprecated alias)")),
+            ("SOOTHE_PLACEHOLDER_ENABLED", _e("SOOTHE_PLACEHOLDER_ENABLED", "(deprecated, ignored)")),
             ("TRIAGE_AGENT_ENABLED",       _e("TRIAGE_AGENT_ENABLED", "0")),
             ("TRIAGE_AGENT_TIMEOUT_S",     _e("TRIAGE_AGENT_TIMEOUT_S", "15.0")),
             ("AUTH_DEV_MODE",              _e("AUTH_DEV_MODE", "(disabled)")),
