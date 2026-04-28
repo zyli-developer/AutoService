@@ -144,17 +144,17 @@ status is already `200` and cannot be changed. The server emits one
 final terminal event with an error message and closes:
 
 ```
-data: {"message":{"type":1,"text":"(抱歉,本次未能生成完整回复)"}}
+data: {"message":{"type":1,"text":"(Sorry, the reply could not be completed.)"}}
 ```
 
 For timeouts (see §7):
 
 ```
-data: {"message":{"type":1,"text":"(超时未生成完整回复)"}}
+data: {"message":{"type":1,"text":"(Timed out before the reply could be completed.)"}}
 ```
 
 For replies exceeding the 4 MB cap, the server emits a truncated
-terminal text suffixed with `\n(回复已截断)`.
+terminal text suffixed with `\n(reply truncated)`.
 
 ---
 
@@ -174,7 +174,7 @@ Content-Type: application/json
 | Condition | Status | Body |
 |---|---|---|
 | Successful reply | 200 | full reply |
-| Server timeout (120 s reached) | 200 | `{"message":{"type":1,"text":"(超时未生成完整回复)"}}` |
+| Server timeout (120 s reached) | 200 | `{"message":{"type":1,"text":"(Timed out before the reply could be completed.)"}}` |
 | Hard internal error mid-generation | 500 | `{"error":"internal"}` |
 
 (SSE always returns 200 — once the response headers go out, the status
@@ -350,7 +350,7 @@ A: Not in this version. The `query` field is text only.
 **Q: What's the max length of a reply?**
 
 A: 4 MB cumulative. Beyond that, the reply is truncated server-side and
-the client receives `(回复已截断)` as the final suffix. In practice replies
+the client receives `(reply truncated)` as the final suffix. In practice replies
 are much shorter (a few KB at most).
 
 **Q: How do I rotate the API key?**

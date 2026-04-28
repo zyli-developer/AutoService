@@ -72,8 +72,8 @@ async def _drain_to_sink(
 # --- triage + KB + pool integration ---
 
 
-_DIRECT_FALLBACK_TEXT = "您好,请问有什么可以帮您?"
-_EMPTY_REPLY_FALLBACK = "(抱歉,本次未生成有效回复)"
+_DIRECT_FALLBACK_TEXT = "Hello, how can I help you?"
+_EMPTY_REPLY_FALLBACK = "(Sorry, no valid reply was generated.)"
 
 
 def _compose_role_prompt(suggestions: str, customer_text: str) -> str:
@@ -204,7 +204,7 @@ async def stream_agent_reply(
     # the cap nor exceeds CINNOX's 1MB-per-event limit.
     if getattr(sink, "truncated", False):
         from autoservice.integrations.general_bot.sse import MAX_CUMULATIVE_BYTES
-        suffix = "\n(回复已截断)"
+        suffix = "\n(reply truncated)"
         # Reserve room for the suffix in the byte budget.
         budget = MAX_CUMULATIVE_BYTES - len(suffix.encode("utf-8"))
         encoded = full_text.encode("utf-8")

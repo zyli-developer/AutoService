@@ -250,7 +250,7 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
         except asyncio.TimeoutError:
             logger.warning("stream_agent_reply timeout conv=%s", conv_id)
             try:
-                await sink.emit_terminal("(超时未生成完整回复)")
+                await sink.emit_terminal("(Timed out before the reply could be completed.)")
             except Exception:
                 pass
             try:
@@ -258,7 +258,7 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
                     _persist_agent_message,
                 )
                 await _persist_agent_message(
-                    engine, conv_id, "(超时未生成完整回复)",
+                    engine, conv_id, "(Timed out before the reply could be completed.)",
                     metadata={"is_fallback": True, "is_timeout": True},
                 )
             except Exception:
@@ -266,7 +266,7 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
         except Exception:
             logger.exception("stream_agent_reply failed conv=%s", conv_id)
             try:
-                await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
+                await sink.emit_terminal("(Sorry, the reply could not be completed.)")
             except Exception:
                 pass
             try:
@@ -274,7 +274,7 @@ async def _dispatch_streaming(*, engine, pool, conv_id, query, tenant_id):
                     _persist_agent_message,
                 )
                 await _persist_agent_message(
-                    engine, conv_id, "(抱歉,本次未能生成完整回复)",
+                    engine, conv_id, "(Sorry, the reply could not be completed.)",
                     metadata={"is_fallback": True},
                 )
             except Exception:
@@ -326,7 +326,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
             _record_first_reply_sla(conv_id)
         except asyncio.TimeoutError:
             try:
-                await sink.emit_terminal("(超时未生成完整回复)")
+                await sink.emit_terminal("(Timed out before the reply could be completed.)")
             except Exception:
                 pass
             try:
@@ -334,7 +334,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
                     _persist_agent_message,
                 )
                 await _persist_agent_message(
-                    engine, conv_id, "(超时未生成完整回复)",
+                    engine, conv_id, "(Timed out before the reply could be completed.)",
                     metadata={"is_fallback": True, "is_timeout": True},
                 )
             except Exception:
@@ -342,7 +342,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
         except Exception as exc:
             runner_exc.append(exc)
             try:
-                await sink.emit_terminal("(抱歉,本次未能生成完整回复)")
+                await sink.emit_terminal("(Sorry, the reply could not be completed.)")
             except Exception:
                 pass
             try:
@@ -350,7 +350,7 @@ async def _dispatch_json(*, engine, pool, conv_id, query, tenant_id):
                     _persist_agent_message,
                 )
                 await _persist_agent_message(
-                    engine, conv_id, "(抱歉,本次未能生成完整回复)",
+                    engine, conv_id, "(Sorry, the reply could not be completed.)",
                     metadata={"is_fallback": True},
                 )
             except Exception:

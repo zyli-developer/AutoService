@@ -200,7 +200,7 @@ async def test_stream_agent_reply_customer_branch(monkeypatch):
 async def test_stream_agent_reply_direct_short_circuit(monkeypatch):
     from autoservice.integrations.general_bot.reply_pipeline import stream_agent_reply
 
-    _patch_triage_decision(monkeypatch, role="direct", direct_reply="您好,有什么可以帮您?")
+    _patch_triage_decision(monkeypatch, role="direct", direct_reply="Hi, how can I assist you?")
     engine = _FakeEngine()
     pool = _FakePool(["should not be called"])
     sink = JSONSink()
@@ -210,9 +210,9 @@ async def test_stream_agent_reply_direct_short_circuit(monkeypatch):
         customer_text="你好", tenant_id="tenantA", sink=sink,
     )
 
-    assert out == "您好,有什么可以帮您?"
+    assert out == "Hi, how can I assist you?"
     assert pool.called_with is None  # short-circuit avoided pool
-    assert sink.body == {"message": {"type": 1, "text": "您好,有什么可以帮您?"}}
+    assert sink.body == {"message": {"type": 1, "text": "Hi, how can I assist you?"}}
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_stream_agent_reply_direct_empty_uses_fallback_template(monkeypatc
         customer_text="你好", tenant_id="tenantA", sink=sink,
     )
 
-    assert out == "您好,请问有什么可以帮您?"
+    assert out == "Hello, how can I help you?"
     assert pool.called_with is None
 
 
@@ -247,4 +247,4 @@ async def test_stream_agent_reply_empty_text_uses_fallback(monkeypatch):
         customer_text="hi", tenant_id="tenantA", sink=sink,
     )
 
-    assert out == "(抱歉,本次未生成有效回复)"
+    assert out == "(Sorry, no valid reply was generated.)"

@@ -183,22 +183,22 @@ change the HTTP status (it is already `200`). Instead, the server emits one
 terminal event with an error-text body and closes the connection:
 
 ```
-data: {"message":{"type":1,"text":"(抱歉,本次未能生成完整回复)"}}
+data: {"message":{"type":1,"text":"(Sorry, the reply could not be completed.)"}}
 ```
 
 For timeouts (see Section 6) the terminal text is:
 
 ```
-data: {"message":{"type":1,"text":"(超时未生成完整回复)"}}
+data: {"message":{"type":1,"text":"(Timed out before the reply could be completed.)"}}
 ```
 
 ### Truncation on excessive output
 
 If the cumulative reply exceeds 4 MB, the server stops accepting more deltas
-mid-stream, then emits a truncated terminal text suffixed with `\n(回复已截断)`:
+mid-stream, then emits a truncated terminal text suffixed with `\n(reply truncated)`:
 
 ```
-data: {"message":{"type":1,"text":"<truncated text>\n(回复已截断)"}}
+data: {"message":{"type":1,"text":"<truncated text>\n(reply truncated)"}}
 ```
 
 ---
@@ -222,7 +222,7 @@ generation surface differently in the JSON path:
 | Condition | Response |
 |---|---|
 | Successful reply | 200, full reply body |
-| Server timeout (120 s reached) | 200, body `{"message":{"type":1,"text":"(超时未生成完整回复)"}}` |
+| Server timeout (120 s reached) | 200, body `{"message":{"type":1,"text":"(Timed out before the reply could be completed.)"}}` |
 | Hard internal error mid-generation | 500, body `{"error":"internal"}` |
 
 > The streaming path always returns 200 because headers are committed before

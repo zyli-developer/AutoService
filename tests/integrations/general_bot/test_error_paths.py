@@ -99,7 +99,7 @@ def test_mid_stream_pool_error_emits_terminal(app_factory, sandbox_dir):
         if isinstance(e, dict) and e["message"].get("streamType") is None
     ]
     assert len(terminals) == 1
-    assert "未能" in terminals[0]["message"]["text"]
+    assert "could not be completed" in terminals[0]["message"]["text"]
 
 
 def test_watchdog_timeout_emits_terminal(app_factory, sandbox_dir, monkeypatch):
@@ -134,7 +134,7 @@ def test_watchdog_timeout_emits_terminal(app_factory, sandbox_dir, monkeypatch):
         if isinstance(e, dict) and e["message"].get("streamType") is None
     ]
     assert len(terminals) == 1
-    assert "超时" in terminals[0]["message"]["text"]
+    assert "Timed out" in terminals[0]["message"]["text"]
 
 
 # --- C2 fallback persistence + C3 truncation ---
