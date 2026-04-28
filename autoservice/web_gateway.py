@@ -471,6 +471,13 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     app.add_api_websocket_route("/asr", _asr_endpoint, name="ws_asr")
     app.add_api_websocket_route("/tts", _tts_endpoint, name="ws_tts")
 
+    # SIP voice route — jambonz audio_fork bridges PSTN calls in here.
+    # See docs/sip-deploy/08-minimal-cinnox-integration-code.md.
+    # Auth boundary: Cloudflare Access service token (validated at CF edge
+    # before the WS upgrade reaches this handler — see docs §4.1).
+    from channels.web.voice.sip_audio_route import sip_audio_endpoint as _sip_endpoint
+    app.add_api_websocket_route("/sip-audio", _sip_endpoint, name="ws_sip")
+
     @app.on_event("startup")
     async def _dump_runtime_config() -> None:
         """Print every env-driven runtime flag + key cc_pool settings at
