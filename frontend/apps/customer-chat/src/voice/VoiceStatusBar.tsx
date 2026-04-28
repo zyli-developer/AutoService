@@ -22,7 +22,7 @@ export function VoiceStatusBar({ state, errorReason, onHangup, onRetry }: Props)
     ending: t('voice.status.ending'),
     error: errorReason === 'mic_denied'
       ? t('voice.status.mic_denied')
-      : errorReason === 'asr_unreachable' || errorReason === 'tts_unreachable'
+      : errorReason === 'voice_unreachable' || errorReason === 'voice_dropped'
         ? t('voice.status.service_unreachable')
         : errorReason === 'cc_timeout'
           ? t('voice.status.cc_timeout')

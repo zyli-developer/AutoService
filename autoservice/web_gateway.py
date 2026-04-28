@@ -68,6 +68,39 @@ logger.setLevel(logging.INFO)
 if not logger.handlers and not logging.getLogger().handlers:
     logger.addHandler(logging.StreamHandler())
 
+# Same treatment for the voice modules. Root is at WARNING, so just doing
+# setLevel(INFO) on this logger isn't enough — INFO records propagate to
+# root and get filtered out. Mirror cc_pool's pattern: a dedicated file
+# handler (.autoservice/logs/voice.log) plus a stderr handler so
+# VoiceSession/_run_query traces, /ws/voice mode dispatch, and /tts
+# auto-greet info also surface in `make run-web` stderr / gateway.log.
+_voice_log = logging.getLogger("channels.web.voice")
+_voice_log.setLevel(logging.INFO)
+if not any(getattr(h, "_voice_tag", False) for h in _voice_log.handlers):
+    from pathlib import Path as _Path
+    _voice_dir = _Path.cwd() / ".autoservice" / "logs"
+    try:
+        _voice_dir.mkdir(parents=True, exist_ok=True)
+        _voice_file = logging.FileHandler(
+            str(_voice_dir / "voice.log"), mode="a", encoding="utf-8",
+        )
+        _voice_file.setLevel(logging.INFO)
+        _voice_file.setFormatter(logging.Formatter(
+            "[voice] %(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        _voice_file._voice_tag = True  # type: ignore[attr-defined]
+        _voice_log.addHandler(_voice_file)
+    except Exception:
+        pass
+    _voice_stderr = logging.StreamHandler()
+    _voice_stderr.setLevel(logging.INFO)
+    _voice_stderr.setFormatter(logging.Formatter(
+        "[voice] %(levelname)s %(name)s: %(message)s",
+    ))
+    _voice_stderr._voice_tag = True  # type: ignore[attr-defined]
+    _voice_log.addHandler(_voice_stderr)
+
 _CORS_ORIGINS = [f"http://localhost:{p}" for p in range(5173, 5180)]
 _extra_origins = os.environ.get("CORS_EXTRA_ORIGINS", "").strip()
 if _extra_origins:
@@ -474,8 +507,13 @@ def create_app(engine: ConversationEngine | None = None) -> FastAPI:
     # Migrated from cc-openclaw/voice_gateway/ on 2026-04-24.
     from channels.web.voice.asr_route import asr_endpoint as _asr_endpoint
     from channels.web.voice.tts_route import tts_endpoint as _tts_endpoint
+    from channels.web.voice.voice_route import voice_endpoint as _voice_endpoint
     app.add_api_websocket_route("/asr", _asr_endpoint, name="ws_asr")
     app.add_api_websocket_route("/tts", _tts_endpoint, name="ws_tts")
+    # /ws/voice — full E2E (Doubao Realtime Dialogue + cc_pool LLM)
+    # and split-mode (separate ASR/TTS + cc_pool LLM) sessions; mode
+    # selected by the start frame's "mode" field.
+    app.add_api_websocket_route("/ws/voice", _voice_endpoint, name="ws_voice")
 
     @app.on_event("startup")
     async def _dump_runtime_config() -> None:
@@ -788,6 +826,30 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
 
     if viewer_role == "customer":
         ws.state_customer_tenant_id = validated_customer_tenant_id
+        # Register the chat WS in the cross-handler push registry as soon
+        # as we know the source (customer id), so voice (/ws/voice) can
+        # surface its persisted agent/user bubbles to this chat surface
+        # even when the user hasn't typed anything yet. The registry is
+        # otherwise only populated lazily on the first customer_message.
+        # See channels/web/voice/session.py::_persist_to_engine.
+        try:
+            _qsource = ws.query_params.get("source")
+        except Exception:
+            _qsource = None
+        if _qsource:
+            try:
+                from autoservice.gateway.message_router import (
+                    _customer_ws_by_conv,
+                )
+                _conv_id_for_source = f"web_{_qsource}"
+                _customer_ws_by_conv[_conv_id_for_source] = ws
+                ws.state_customer_source = _qsource
+                ws.state_customer_conv_id_hint = _conv_id_for_source
+            except Exception:
+                logger.debug(
+                    "early register failed for customer source=%s", _qsource,
+                    exc_info=True,
+                )
 
     # Resolve brand_name for customer role so the widget can show
     # tenant-scoped branding without a separate HTTP fetch.  We emit only
@@ -874,6 +936,20 @@ async def _handle_connection(ws: WebSocket, *, viewer_role: str) -> None:
                         ws.app.state.offline_watcher.on_disconnect(op_id)
                     except Exception:
                         pass
+
+        # Clean the early-registered customer entry — only if WE registered
+        # this conv_id (don't evict an entry a later customer_message
+        # registered with a different ws).
+        _conv_hint = getattr(ws, "state_customer_conv_id_hint", None)
+        if _conv_hint:
+            try:
+                from autoservice.gateway.message_router import (
+                    _customer_ws_by_conv,
+                )
+                if _customer_ws_by_conv.get(_conv_hint) is ws:
+                    _customer_ws_by_conv.pop(_conv_hint, None)
+            except Exception:
+                pass
 
 
 async def _process_frame(

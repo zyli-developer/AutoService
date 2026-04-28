@@ -14,10 +14,12 @@ Hardening applied preemptively (same lessons as /asr T3 review):
 import asyncio
 import json
 import logging
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from .config import GREETING_TEXT
 from .tts_client import TTSClient
 
 log = logging.getLogger(__name__)
@@ -32,6 +34,58 @@ async def _cancel_and_wait(task: asyncio.Task | None) -> None:
             pass
 
 
+async def _persist_greeting_in_chat(
+    app: Any, conversation_id: str, text: str
+) -> None:
+    """Persist the voice greeting as an `agent` message and push the
+    resulting `message` frame to the customer's /ws/customer connection so
+    the bubble appears in chat history alongside the audio playback.
+
+    The frontend's voice-forward useEffect skips messages whose metadata
+    contains ``voice_greeting: True`` so this bubble doesn't get re-spoken.
+    """
+    try:
+        engine = getattr(app.state, "engine", None)
+        if engine is None:
+            log.warning(
+                "[/tts] greeting persist skipped: no engine in app.state "
+                "(conv=%s)", conversation_id,
+            )
+            return
+        msg = await engine.send_message(
+            conversation_id,
+            source="agent",
+            content=text,
+            metadata={"voice_greeting": True},
+        )
+        # Look up the customer's chat WS in the gateway-owned registry and
+        # push the frame directly. engine.send_message also fires a
+        # MESSAGE_SENT event, but the customer endpoint reads from
+        # _customer_ws_by_conv (not the subscription fan-out) for its
+        # message frames, so we mirror that path here.
+        from autoservice.gateway.message_router import (
+            _customer_ws_by_conv,
+            _message_frame,
+        )
+        cust_ws = _customer_ws_by_conv.get(conversation_id)
+        if cust_ws is None:
+            log.info(
+                "[/tts] greeting persisted but no customer WS to push "
+                "(conv=%s)", conversation_id,
+            )
+            return
+        try:
+            await cust_ws.send_json(_message_frame(msg))
+        except Exception:
+            log.warning(
+                "[/tts] greeting frame push failed conv=%s", conversation_id,
+            )
+    except Exception:
+        log.exception(
+            "[/tts] greeting persist failed conv=%s", conversation_id,
+        )
+
+
 async def tts_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     log.info("[/tts] browser connected")
@@ -39,9 +93,33 @@ async def tts_endpoint(ws: WebSocket) -> None:
     tts: TTSClient | None = None
     current_task: asyncio.Task | None = None
 
+    # Optional context for chat-side greeting bubble. Frontend appends
+    # ?conversation_id=... once it has the id from server_hello. Missing
+    # conversation_id ⇒ voice still plays, just no chat bubble persistence.
+    conversation_id = ws.query_params.get("conversation_id")
+
     try:
         tts = TTSClient()
         await tts.connect()
+
+        # Backend-driven greeting: now that the TTS upstream is established,
+        # speak the configured greeting before handling any client frames.
+        # The frontend transitions to 'speaking' on /tts open and falls back
+        # to 'listening' on the matching {type:"done"} this task emits.
+        if GREETING_TEXT:
+            log.info(
+                "[/tts] auto-greet on connect (conv=%s)", conversation_id,
+            )
+            current_task = asyncio.create_task(_do_speak(tts, ws, GREETING_TEXT))
+            if conversation_id:
+                # Fire-and-forget: persist + push chat bubble in parallel
+                # with audio synthesis. Errors are logged inside the helper.
+                asyncio.create_task(
+                    _persist_greeting_in_chat(
+                        ws.app, conversation_id, GREETING_TEXT,
+                    ),
+                    name=f"voice-greeting-persist-{conversation_id}",
+                )
 
         while True:
             message = await ws.receive()

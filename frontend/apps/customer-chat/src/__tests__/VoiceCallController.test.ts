@@ -1,19 +1,21 @@
 // src/__tests__/VoiceCallController.test.ts
+//
+// Unit tests for the new /ws/voice-driven VoiceCallController. The
+// controller's frontend state machine is now mostly a translator of the
+// backend's {type:"state"} frames into the legacy 'idle/preparing/
+// listening/...' state names that VoiceStatusBar renders.
 import { describe, it, expect, vi } from 'vitest';
 import { VoiceCallController, VoiceState } from '../voice/VoiceCallController';
 
 function makeController(overrides: Partial<ConstructorParameters<typeof VoiceCallController>[0]> = {}) {
   return new VoiceCallController({
-    asrUrl: 'ws://fake/asr',
-    ttsUrl: 'ws://fake/tts',
+    voiceUrl: 'ws://fake/ws/voice',
     onUserMessage: vi.fn(),
-    onSendTextToChat: vi.fn(),
-    comfortPool: ['hmm'],
     ...overrides,
   });
 }
 
-describe('VoiceCallController state machine', () => {
+describe('VoiceCallController state machine (/ws/voice)', () => {
   it('starts in idle', () => {
     const c = makeController();
     expect(c.state).toBe('idle' as VoiceState);
@@ -33,67 +35,70 @@ describe('VoiceCallController state machine', () => {
     expect(c.state).toBe('preparing');
   });
 
-  it('from listening, ASR final moves to thinking and calls onUserMessage', () => {
-    const onUserMessage = vi.fn();
-    const onSend = vi.fn();
-    const c2 = makeController({ onUserMessage, onSendTextToChat: onSend });
-    c2._testForceState('listening');
-    c2._testOnAsrFrame({ type: 'final', text: 'hello' });
-    expect(c2.state).toBe('thinking');
-    expect(onUserMessage).toHaveBeenCalledWith('hello');
-    expect(onSend).toHaveBeenCalledWith('hello');
+  it('backend "connecting" state maps to frontend preparing', () => {
+    const c = makeController();
+    c._testInjectServerState('connecting');
+    expect(c.state).toBe('preparing');
   });
 
-  it('from thinking WITH comfort still playing, CC reply is queued until comfort done', async () => {
+  it('backend "greeting" state maps to frontend speaking', () => {
     const c = makeController();
-    c._testForceState('thinking');
-    (c as any).comfortPlaying = true;
-    c.onCcReply('reply from CC');
-    expect(c.state).toBe('thinking'); // queued
-    await (c as any)._onTtsDone();    // comfort finishes (awaits playback-done)
-    expect(c.state).toBe('speaking'); // promoted
-  });
-
-  it('from thinking WITH comfort already finished, CC reply is spoken immediately', () => {
-    const c = makeController();
-    c._testForceState('thinking');
-    (c as any).comfortPlaying = false;
-    c.onCcReply('late reply');
+    c._testInjectServerState('greeting');
     expect(c.state).toBe('speaking');
   });
 
-  it('comfort finishing with no queued CC reply stays in thinking', async () => {
+  it('backend "talking" state maps to frontend listening', () => {
     const c = makeController();
-    c._testForceState('thinking');
-    (c as any).comfortPlaying = true;
-    await (c as any)._onTtsDone();
-    expect(c.state).toBe('thinking'); // waits for onCcReply
-    expect((c as any).comfortPlaying).toBe(false);
-  });
-
-  it('speech_started while speaking: auto barge-in → listening', () => {
-    const c = makeController();
-    c._testForceState('speaking');
-    c._testOnAsrFrame({ type: 'speech_started' });
+    c._testInjectServerState('talking');
     expect(c.state).toBe('listening');
   });
 
-  it('speech_started while thinking: auto barge-in → listening, drops pending reply', () => {
+  it('backend "ending" maps to frontend ending', () => {
     const c = makeController();
-    c._testForceState('thinking');
-    (c as any).comfortPlaying = true;
-    (c as any).pendingCcReply = 'queued reply';
-    c._testOnAsrFrame({ type: 'speech_started' });
-    expect(c.state).toBe('listening');
-    expect((c as any).pendingCcReply).toBeNull();
-    expect((c as any).comfortPlaying).toBe(false);
+    c._testInjectServerState('ending');
+    expect(c.state).toBe('ending');
   });
 
-  it('speech_started while listening: no state change (already listening)', () => {
+  it('backend state frames do not clobber error state', () => {
     const c = makeController();
-    c._testForceState('listening');
-    c._testOnAsrFrame({ type: 'speech_started' });
-    expect(c.state).toBe('listening');
+    c._testForceError('voice_dropped');
+    expect(c.state).toBe('error');
+    c._testInjectServerState('talking');
+    expect(c.state).toBe('error'); // unchanged
+  });
+
+  it('backend state frames do not clobber ending state', () => {
+    const c = makeController();
+    c._testForceState('ending');
+    c._testInjectServerState('greeting');
+    expect(c.state).toBe('ending');
+  });
+
+  it('user-final transcript fires onUserMessage for optimistic bubble', () => {
+    const onUserMessage = vi.fn();
+    const c = makeController({ onUserMessage });
+    c._testInjectTranscript({
+      type: 'transcript', role: 'user', text: '你好', interim: false,
+    });
+    expect(onUserMessage).toHaveBeenCalledWith('你好');
+  });
+
+  it('user-interim transcripts do NOT fire onUserMessage', () => {
+    const onUserMessage = vi.fn();
+    const c = makeController({ onUserMessage });
+    c._testInjectTranscript({
+      type: 'transcript', role: 'user', text: '你', interim: true,
+    });
+    expect(onUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('bot transcripts do NOT fire onUserMessage', () => {
+    const onUserMessage = vi.fn();
+    const c = makeController({ onUserMessage });
+    c._testInjectTranscript({
+      type: 'transcript', role: 'bot', text: '好的', interim: false,
+    });
+    expect(onUserMessage).not.toHaveBeenCalled();
   });
 
   it('hangup from any active state moves to ending then idle', () => {
@@ -103,25 +108,18 @@ describe('VoiceCallController state machine', () => {
     expect(['ending', 'idle']).toContain(c.state);
   });
 
-  it('start() transitions idle → preparing', async () => {
+  it('start() transitions idle → preparing (will then fail in jsdom — that is fine)', async () => {
     const c = makeController();
-    // Do not await — start is async and will fail without real browser APIs
     void c.start().catch(() => {});
-    // allow microtask
     await Promise.resolve();
     expect(['preparing', 'error']).toContain(c.state);
   });
 
-  it('comfort text pool does not repeat last 3', () => {
-    const c = makeController({ comfortPool: ['a', 'b', 'c', 'd'] });
-    const seen: string[] = [];
-    for (let i = 0; i < 20; i++) {
-      seen.push((c as any).pickComfort());
-    }
-    // No window of 4 consecutive identical
-    for (let i = 0; i + 3 < seen.length; i++) {
-      const slice = seen.slice(i, i + 4);
-      expect(new Set(slice).size).toBeGreaterThan(1);
-    }
+  it('onCcReply is a no-op in /ws/voice mode (legacy hook)', () => {
+    const c = makeController();
+    c._testForceState('listening');
+    c.onCcReply('this is now backend-driven');
+    // State unchanged — no setState was triggered.
+    expect(c.state).toBe('listening');
   });
 });

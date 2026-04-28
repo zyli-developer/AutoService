@@ -1,8 +1,54 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MarkdownText } from '@autoservice/ui-components';
 import { useTranslation } from '@autoservice/i18n';
 import type { ChatMessage } from '../store/chatStore';
 import { useChatStore } from '../store/chatStore';
+
+/** Per-character reveal interval for the voice typewriter animation.
+ *  Tuned for spoken Chinese (~4-5 chars/sec) so the visible text reveal
+ *  roughly matches the audio playback pace. Tweak if voices are mostly
+ *  English or the speaker pace is faster. */
+const _VOICE_TYPEWRITER_INTERVAL_MS = 60;
+/** Reveal this many characters per tick — combined with the interval
+ *  above the effective speed is ~33 chars/sec at 60ms × 2 chars. Plenty
+ *  visible "growth" without flooding requestAnimationFrame. */
+const _VOICE_TYPEWRITER_STEP = 2;
+
+/** Hook: when ``enabled`` is true, animate ``fullContent`` from 0 chars
+ *  up to its full length, returning the currently-revealed prefix. When
+ *  disabled, returns the full content immediately. */
+function useTypewriter(fullContent: string, enabled: boolean): string {
+  const [visible, setVisible] = useState(() => (enabled ? '' : fullContent));
+  const lastContentRef = useRef(fullContent);
+
+  useEffect(() => {
+    if (!enabled) {
+      setVisible(fullContent);
+      lastContentRef.current = fullContent;
+      return;
+    }
+    // Content changed beneath us (rare — voice messages don't get
+    // edited mid-flight today, but be defensive). Reset and re-animate.
+    if (lastContentRef.current !== fullContent) {
+      setVisible('');
+      lastContentRef.current = fullContent;
+    }
+  }, [fullContent, enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (visible.length >= fullContent.length) return;
+    const timer = setInterval(() => {
+      setVisible((prev) => {
+        if (prev.length >= fullContent.length) return prev;
+        return fullContent.slice(0, prev.length + _VOICE_TYPEWRITER_STEP);
+      });
+    }, _VOICE_TYPEWRITER_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [fullContent, enabled, visible.length]);
+
+  return visible;
+}
 
 type Role = 'customer' | 'agent' | 'operator' | 'system';
 
@@ -26,6 +72,21 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   const brandName = useChatStore((s) => s.brandName);
   const attachmentUrl = message.metadata?.attachment_url as string | undefined;
   const isImage = !!attachmentUrl && !imgError;
+
+  // Voice agent replies are sent in one shot from the backend (so
+  // Doubao TTS plays as one continuous synth), but the chat bubble
+  // gets a client-side typewriter reveal so the visual matches the
+  // audio progressively unfolding. Trigger only on agent voice
+  // messages (metadata.voice=true and not a greeting echo, since the
+  // greeting plays before the user opens chat).
+  const isVoiceAgent = role === 'agent'
+    && message.metadata?.voice === true
+    && !isImage;
+  const typewriterContent = useTypewriter(message.content, isVoiceAgent);
+  const displayContent = isVoiceAgent ? typewriterContent : message.content;
+  // Show the streaming cursor while the typewriter is still revealing.
+  const typewriterActive = isVoiceAgent
+    && typewriterContent.length < message.content.length;
 
   useEffect(() => {
     if (!message.justEdited) return;
@@ -92,7 +153,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
               {t('image.error')}
             </div>
           ) : (
-            <MarkdownText>{message.content}</MarkdownText>
+            <MarkdownText>{displayContent}</MarkdownText>
           )}
           {message.status === 'sending' && (
             <span data-testid="sending-indicator" style={{ fontSize: 10, opacity: 0.6 }}> ...</span>
@@ -100,7 +161,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           {message.status === 'failed' && (
             <span data-testid="failed-indicator" style={{ fontSize: 10, color: 'var(--vermillion-500)', fontWeight: 500 }}> !</span>
           )}
-          {message.isStreaming && (
+          {(message.isStreaming || typewriterActive) && (
             <span
               data-testid="streaming-cursor"
               style={{

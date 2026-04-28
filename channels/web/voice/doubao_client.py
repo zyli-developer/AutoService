@@ -24,14 +24,41 @@ class DoubaoClient:
         self.logid = ""
 
     async def connect(self) -> str:
+        """Connect to Doubao with limited retry on transient OS-level
+        socket errors. Windows is particularly prone to ``WinError 64``
+        ("specified network name is no longer available") right after a
+        previous voice session closed — the kernel hasn't fully released
+        the prior socket yet. A short backoff usually clears it; without
+        a retry the second consecutive ``/ws/voice`` open fails outright.
+        """
+        import asyncio
         headers = get_ws_headers()
-        self.ws = await websockets.connect(
-            DOUBAO_WS_URL,
-            additional_headers=headers,
-            ping_interval=None,
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                self.ws = await websockets.connect(
+                    DOUBAO_WS_URL,
+                    additional_headers=headers,
+                    ping_interval=None,
+                )
+                if attempt > 0:
+                    log.info("Connected to doubao (after %d retries)", attempt)
+                else:
+                    log.info("Connected to doubao")
+                return ""
+            except (OSError, ConnectionError) as exc:
+                last_exc = exc
+                # Backoff: 0.3s, 0.8s — enough to let Windows release
+                # the socket without making the user feel a noticeable hang.
+                delay = 0.3 + attempt * 0.5
+                log.warning(
+                    "Doubao connect failed (attempt %d/3): %s — retrying in %.1fs",
+                    attempt + 1, exc, delay,
+                )
+                await asyncio.sleep(delay)
+        raise last_exc if last_exc is not None else ConnectionError(
+            "Doubao connect failed without exception",
         )
-        log.info("Connected to doubao")
-        return ""
 
     async def send_start_connection(self) -> None:
         frame = build_client_frame(EVENT_START_CONNECTION, payload={})

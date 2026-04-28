@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import { VoiceCallController, VoiceState, VoiceErrorReason } from './VoiceCallController';
 
 export interface UseVoiceCallOpts {
-  asrUrl: string;
-  ttsUrl: string;
-  comfortPool: string[];
-  onUserMessage: (text: string) => void;
-  onSendTextToChat: (text: string) => void;
+  voiceUrl: string;
+  mode?: 'e2e_session' | 'split';
+  greeting?: string;
+  comfortText?: string;
+  systemRole?: string;
+  onUserMessage?: (text: string) => void;
 }
 
 export function useVoiceCall(opts: UseVoiceCallOpts) {
@@ -30,7 +31,7 @@ export function useVoiceCall(opts: UseVoiceCallOpts) {
       controllerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.asrUrl, opts.ttsUrl]);
+  }, [opts.voiceUrl, opts.mode]);
 
   // visibilitychange → auto hangup
   useEffect(() => {
@@ -47,6 +48,7 @@ export function useVoiceCall(opts: UseVoiceCallOpts) {
     start: () => controllerRef.current?.start(),
     hangup: () => controllerRef.current?.hangup(),
     retry: () => controllerRef.current?.retry(),
+    /** Legacy no-op kept for callers that still reference it. */
     onCcReply: (t: string) => controllerRef.current?.onCcReply(t),
   };
 }

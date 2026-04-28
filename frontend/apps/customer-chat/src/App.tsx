@@ -1,6 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useTenantId } from '@autoservice/shared';
-import { useTranslation } from '@autoservice/i18n';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useChatStore } from './store/chatStore';
 import { MerchantSite } from './components/MerchantSite';
@@ -48,13 +47,12 @@ function resolveWsBase(): string {
  *   1. `VITE_VOICE_GATEWAY_URL` env var (e.g. `http://localhost:8089`)
  *   2. Same-origin fallback (`wss://` on HTTPS, `ws://` on HTTP)
  *
- * Returns the URL with the given path appended (e.g. `/asr` or `/tts`).
+ * Returns the URL with the given path appended.
  */
-function resolveVoiceWsUrl(path: '/asr' | '/tts'): string {
+function resolveVoiceWsUrl(path: '/asr' | '/tts' | '/ws/voice'): string {
   const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
   const base = env?.VITE_VOICE_GATEWAY_URL;
   if (base) {
-    // Convert http(s):// to ws(s):// if needed
     const wsBase = base.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://');
     return `${wsBase.replace(/\/$/, '')}${path}`;
   }
@@ -123,13 +121,22 @@ function TenantFallback() {
 }
 
 function ChatApp({ tenantId }: { tenantId: string }) {
+  // customerId moved above wsUrl so the chat WS can self-register in the
+  // backend's _customer_ws_by_conv registry on connect (using the
+  // deterministic conv_id `web_{source}`), letting voice persistence
+  // push agent bubbles to chat WITHOUT needing the user to type first.
+  const customerId = useMemo(getCustomerId, []);
   const wsUrl = useMemo(
-    () => `${resolveWsBase()}/ws/customer?tenant=${encodeURIComponent(tenantId)}`,
-    [tenantId],
+    () => {
+      const qs = new URLSearchParams();
+      qs.set('tenant', tenantId);
+      qs.set('source', customerId);
+      return `${resolveWsBase()}/ws/customer?${qs.toString()}`;
+    },
+    [tenantId, customerId],
   );
   const { send } = useWebSocket(wsUrl, 'customer-chat');
   const { messages, connectionStatus, isReplaying, replayCount } = useChatStore();
-  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(() => {
     // Auto-open on mobile viewports so the bottom sheet is always visible
     if (typeof window !== 'undefined' && window.matchMedia) {
@@ -139,32 +146,38 @@ function ChatApp({ tenantId }: { tenantId: string }) {
   });
   const [sheet, setSheet] = useState<SheetState>(getInitialSheet);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customerId = useMemo(getCustomerId, []);
 
   // ---------------- Voice wiring ----------------
-  const asrUrl = useMemo(() => resolveVoiceWsUrl('/asr'), []);
-  const ttsUrl = useMemo(() => resolveVoiceWsUrl('/tts'), []);
-  const comfortPool = useMemo(
-    () => [
-      t('voice.comfort.1'),
-      t('voice.comfort.2'),
-      t('voice.comfort.3'),
-      t('voice.comfort.4'),
-    ],
-    [t],
-  );
-
-  // Shared id between the optimistic-bubble insert (onUserMessage) and the
-  // WS send (onSendTextToChat) so message_confirm can dedupe correctly.
-  const pendingAsrClientMsgIdRef = useRef<string | null>(null);
+  // /ws/voice handles ASR + LLM + TTS in one WebSocket (default mode
+  // 'e2e_session' uses Doubao Realtime Dialogue underneath; backend then
+  // injects cc_pool's reply via send_chat_rag_text).
+  //
+  // conversation_id: prefer the chatStore value (set after /ws/customer
+  // server_hello / first message_confirm). When unset (user opens voice
+  // before typing) fall back to the deterministic `web_{customerId}` —
+  // backend's create_conversation is idempotent so chat and voice
+  // converge on the same conversation when chat eventually catches up.
+  const conversationId = useChatStore(s => s.conversationId);
+  const voiceUrl = useMemo(() => {
+    const base = resolveVoiceWsUrl('/ws/voice');
+    const qs = new URLSearchParams();
+    qs.set('tenant', tenantId);
+    qs.set('conversation_id', conversationId ?? `web_${customerId}`);
+    qs.set('source', customerId);
+    return `${base}?${qs.toString()}`;
+  }, [tenantId, conversationId, customerId]);
 
   const voice = useVoiceCall({
-    asrUrl,
-    ttsUrl,
-    comfortPool,
+    voiceUrl,
+    mode: 'e2e_session',
     onUserMessage: (text: string) => {
+      // Bubble for the user's voice utterance. ASR final IS the canonical
+      // text (no in-flight network round-trip to confirm), and the
+      // backend persists its own copy with push_to_customer=False, so
+      // there's no message_confirm coming back to flip status. Use
+      // 'sent' directly — otherwise MessageBubble's sending indicator
+      // ("...") sticks to the bubble forever.
       const clientMsgId = crypto.randomUUID();
-      pendingAsrClientMsgIdRef.current = clientMsgId;
       useChatStore.getState().addMessage({
         id: clientMsgId,
         clientMsgId,
@@ -174,40 +187,10 @@ function ChatApp({ tenantId }: { tenantId: string }) {
         visibility: 'public',
         timestamp: new Date().toISOString(),
         sequenceNumber: 0,
-        status: 'sending',
-      });
-    },
-    onSendTextToChat: (text: string) => {
-      const clientMsgId = pendingAsrClientMsgIdRef.current ?? crypto.randomUUID();
-      pendingAsrClientMsgIdRef.current = null;
-      const convId = useChatStore.getState().conversationId;
-      void send('customer_message', {
-        content: text,
-        source: customerId,
-        client_msg_id: clientMsgId,
-        ...(convId ? { conversation_id: convId } : {}),
+        status: 'sent',
       });
     },
   });
-
-  // When a new agent/bot message lands in the store AND voice is active,
-  // forward the content to the voice controller so it can TTS the reply.
-  const lastBotSignature = useRef<string | null>(null);
-  useEffect(() => {
-    if (voice.state === 'idle' || voice.state === 'error') return;
-    // Find the most recent agent/operator message in the message list
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.sourceRole === 'agent' || m.sourceRole === 'operator') {
-        const signature = `${m.id}:${m.content}`;
-        if (signature !== lastBotSignature.current && m.content && !m.isStreaming) {
-          lastBotSignature.current = signature;
-          voice.onCcReply(m.content);
-        }
-        break; // only care about the latest bot message
-      }
-    }
-  }, [messages, voice]);
 
   // Auto-open/close when viewport crosses the mobile breakpoint
   useEffect(() => {
